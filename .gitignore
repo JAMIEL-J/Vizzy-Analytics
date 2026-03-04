@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+workspace_env/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# AI Agents & Workspace
+.agent/
+.gemini/
+.ai/
+
+# Logs and Debugging
+*.log
+logs/
+_trace_*.py
+_debug_*.py
+_test_*.py
+_*.txt
+tmp_*.txt
+temp_*.py
+tmp_test_executor.py
+test_charts_result.json
+
+# Database & Data
+*.db
+*.sqlite
+*.sqlite3
+data/
+uploads/
+**/data/
+**/uploads/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nosepy
+nosetests.xml
+coverage.xml
+
+# Node (Frontend)
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.eslintcache
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.vercel/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# System specific
+vizzy_system_architecture_*.png
+vizzy_architecture.html
+project_documentation.html

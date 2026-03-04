@@ -1,0 +1,2457 @@
+"""
+Chart Recommender - Smart chart selection based on data signals and domain.
+
+Recommends optimal chart types for the dataset.
+Uses BI dashboard best practices to prioritize business-critical metrics.
+"""
+
+import logging
+from typing import Dict, Any, List, Optional, Set
+from dataclasses import dataclass
+import pandas as pd
+from .domain_detector import DomainType
+from .column_filter import ColumnClassification, _clean_header
+from .business_questions import get_smart_chart_title, get_tenure_group, get_tenure_group_order
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# SMART TITLE SYSTEM - Map column names to professional businessterms
+# ============================================================================
+
+COLUMN_TO_BUSINESS_TERM = {
+    # Shipping & Logistics
+    'ship_mode': 'Shipping Method',
+    'shipmode': 'Shipping Method',
+    'ship_date': 'Ship Date',
+    'shipdate': 'Ship Date',
+    'shipping_type': 'Shipping Type',
+    'days_for_shipment_scheduled': 'Scheduled Delivery Days',
+    'days_for_shipment_real': 'Actual Delivery Days',
+    'delivery_status': 'Delivery Status',
+    'late_delivery_risk': 'Late Delivery Risk',
+    
+    # Products
+    'product_name': 'Product',
+    'productname': 'Product',
+    'product': 'Product',
+    'category': 'Product Category',
+    'category_name': 'Category',
+    'categoryname': 'Category',
+    'sub_category': 'Subcategory',
+    'subcategory': 'Subcategory',
+    'sub-category': 'Subcategory',
+    
+    # Customers
+    'customer_name': 'Customer',
+    'customername': 'Customer',
+    'customer_segment': 'Customer Segment',
+    'segment': 'Customer Segment',
+    'customer_id': 'Customer',
+    
+    # Geography
+    'region': 'Region',
+    'country': 'Country',
+    'state': 'State',
+    'city': 'City',
+    'market': 'Market',
+    'order_region': 'Order Region',
+    'order_country': 'Order Country',
+    'order_city': 'Order City',
+    
+    # Revenue Metrics
+    'sales': 'Revenue',
+    'revenue': 'Revenue',
+    'profit': 'Profit',
+    'quantity': 'Units Sold',
+    'discount': 'Discount',
+    'order_quantity': 'Order Quantity',
+    'order_profit_per_order': 'Profit per Order',
+    'benefit_per_order': 'Benefit per Order',
+    
+    # Orders
+    'order_id': 'Order',
+    'orderid': 'Order',
+    'order_date': 'Order Date',
+    'order_priority': 'Order Priority',
+    'order_status': 'Order Status',
+    
+    # Churn/Telecom specific
+    'tenure': 'Customer Tenure',
+    'monthlycharges': 'Monthly Charges',
+    'monthly_charges': 'Monthly Charges',
+    'totalcharges': 'Total Charges',
+    'total_charges': 'Total Charges',
+    'seniorcitizen': 'Senior Citizen',
+    'senior_citizen': 'Senior Citizen',
+    'phoneservice': 'Phone Service',
+    'phone_service': 'Phone Service',
+    'internetservice': 'Internet Service',
+    'internet_service': 'Internet Service',
+    'onlinesecurity': 'Online Security',
+    'online_security': 'Online Security',
+    'onlinebackup': 'Online Backup',
+    'online_backup': 'Online Backup',
+    'techsupport': 'Tech Support',
+    'tech_support': 'Tech Support',
+    'streamingtv': 'Streaming TV',
+    'streaming_tv': 'Streaming TV',
+    'streamingmovies': 'Streaming Movies',
+    'streaming_movies': 'Streaming Movies',
+    'paperlessbilling': 'Paperless Billing',
+    'paperless_billing': 'Paperless Billing',
+    'churn': 'Churn Status',
+    
+    # Generic
+    'type': 'Type',
+    'status': 'Status',
+    'gender': 'Gender',
+    'contract': 'Contract Type',
+    'payment_method': 'Payment Method',
+    'paymentmethod': 'Payment Method',
+}
+
+# Low-value columns to EXCLUDE from primary charts (operational noise)
+LOW_VALUE_COLUMN_PATTERNS = [
+    'days_for_shipment', 'days_for_shipping', 'ship_date', 'order_date',
+    'zipcode', 'postal_code',
+    'row_id', 'row_number',
+    'customer_id', 'order_id', 'product_id',
+    'latitude', 'longitude',
+]
+
+EXACT_LOW_VALUE_WORDS = {'zip', 'postal', 'index', 'lat', 'lng', 'geo', 'id'}
+
+# Metric type prefixes for chart titles
+METRIC_TYPE_PREFIX = {
+    'revenue': 'Revenue',
+    'sales': 'Revenue', 
+    'profit': 'Profit',
+    'quantity': 'Units',
+    'discount': 'Discount',
+    'count': 'Count',
+    'order': 'Orders',
+    'cost': 'Cost',
+    'price': 'Price',
+    'amount': 'Amount',
+    'total': 'Total',
+}
+
+# DA Grade Metrics Categorization
+AVG_KEYWORDS = [
+    'age', 'tenure', 'rate', 'score', 'temperature', 'pressure', 'los', 
+    'stay', 'margin', 'percentage', 'pct', 'ratio', 'price', 'discount',
+    'satisfaction', 'nps', 'rating', 'prevalence', 'incidence', 'mortality',
+    'probability', 'likelihood'
+]
+
+def _should_average_metric(metric: str) -> bool:
+    """Return True if the metric should be aggregated using mean instead of sum."""
+    if not metric:
+        return False
+    metric_lower = metric.lower().replace('-', '').replace('_', '').replace(' ', '')
+    return any(kw in metric_lower for kw in AVG_KEYWORDS)
+
+def _smart_aggregate(df: pd.DataFrame, group_col: str, metric_col: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Smartly decide between SUM and MEAN based on metric nature."""
+    # Ensure numeric normalization if it's currently a string/object
+    if metric_col in df.columns and (df[metric_col].dtype == 'object' or df[metric_col].dtype == 'string'):
+        df[metric_col] = pd.to_numeric(df[metric_col], errors='coerce')
+        
+    if _should_average_metric(metric_col):
+        return _safe_groupby_mean(df, group_col, metric_col, limit)
+    return _safe_groupby_sum(df, group_col, metric_col, limit)
+
+
+def _beautify_column_name(col: str) -> str:
+    """Convert column name to professional business term."""
+    col_lower = col.lower().replace('-', '_')
+    
+    # Check exact match first
+    if col_lower in COLUMN_TO_BUSINESS_TERM:
+        return COLUMN_TO_BUSINESS_TERM[col_lower]
+    
+    # Check partial match
+    for pattern, term in COLUMN_TO_BUSINESS_TERM.items():
+        if pattern in col_lower:
+            return term
+    
+    # Default: Title case with underscores replaced
+    return col.replace('_', ' ').replace('-', ' ').title()
+
+
+def _get_metric_prefix(metric_col: str) -> str:
+    """Get the business metric type for a column."""
+    metric_lower = metric_col.lower().replace('_', '')
+    
+    for keyword, prefix in METRIC_TYPE_PREFIX.items():
+        if keyword in metric_lower:
+            return prefix
+    
+    return "Value"
+
+
+def _is_low_value_column(col: str) -> bool:
+    """Check if column should be excluded from primary charts."""
+    col_lower = col.lower().replace('-', '_')
+    if any(pattern in col_lower for pattern in LOW_VALUE_COLUMN_PATTERNS):
+        return True
+        
+    words = col_lower.replace('_', ' ').split()
+    if any(w in EXACT_LOW_VALUE_WORDS for w in words):
+        return True
+        
+    if col_lower.endswith('_id') or col_lower == 'id':
+        return True
+        
+    return False
+
+def _create_smart_title(metric_col: Optional[str], dimension_col: str, chart_purpose: str = "") -> str:
+    """Create a professional chart title with business context."""
+    dim_name = _beautify_column_name(dimension_col)
+    
+    if metric_col:
+        metric_name = _beautify_column_name(metric_col)
+        agg_prefix = "Average" if _should_average_metric(metric_col) else "Total"
+        
+        # If the metric name already contains "Rate" or similar, "Average" might be redundant but "Total" is definitely wrong
+        if agg_prefix == "Average" and any(kw in metric_name.lower() for kw in ['rate', 'ratio', 'percentage', 'avg']):
+            return f"{metric_name} by {dim_name}"
+            
+        return f"{agg_prefix} {metric_name} by {dim_name}"
+    else:
+        # Distribution chart
+        return f"{dim_name} Distribution"
+
+
+def _deduplicate_charts(charts: List['ChartRecommendation']) -> List['ChartRecommendation']:
+    """Remove duplicate/similar charts to avoid repetition."""
+    seen_dims: Set[str] = set()
+    seen_titles: Set[str] = set()
+    unique_charts = []
+    
+    for chart in charts:
+        # Extract dimension from title (last part after "by")
+        title_lower = chart.title.lower()
+        
+        # Check for exact title duplicates
+        if title_lower in seen_titles:
+            continue
+        
+        # Extract dimension key for deduplication
+        dim_key = None
+        if ' by ' in title_lower:
+            dim_key = title_lower.split(' by ')[-1].strip()
+        elif 'distribution' in title_lower:
+            dim_key = title_lower.replace(' distribution', '').strip()
+
+        # Allow max 2 charts per dimension (e.g., Revenue & Profit by Category)
+        if dim_key:
+            dim_count = sum(1 for seen in seen_dims if dim_key in seen)
+            if dim_count >= 3: # ← was 2, should be 3 for rate+value+volume
+                continue
+            seen_dims.add(f"{dim_key}_{len(unique_charts)}")
+        
+        seen_titles.add(title_lower)
+        unique_charts.append(chart)
+    
+    return unique_charts
+
+
+# ============================================================================
+# BI DASHBOARD PRIORITIZATION
+# As a BI dashboard builder, prioritize metrics in this order:
+# 1. Revenue/Sales (most critical for business)
+# 2. Cost/Expense (second most critical)
+# 3. Profit/Margin (calculated importance)
+# 4. Customer/Volume metrics
+# 5. Engagement/Activity metrics
+# 6. Other numerical columns
+# ============================================================================
+
+METRIC_PRIORITY_KEYWORDS = [
+    # Tier 1: Revenue & Sales (highest priority)
+    ['revenue', 'sales', 'totalcharges', 'total_charges', 'income', 'gross'],
+    # Tier 2: Cost & Expense
+    ['cost', 'expense', 'spending', 'monthlycharges', 'monthly_charges', 'price'],
+    # Tier 3: Profit & Margins
+    ['profit', 'margin', 'net', 'earning'],
+    # Tier 4: Volume & Quantity
+    ['quantity', 'count', 'volume', 'orders', 'transactions'],
+    # Tier 5: Engagement & Activity
+    ['tenure', 'clicks', 'impressions', 'views', 'visits', 'sessions'],
+]
+
+DIMENSION_PRIORITY_KEYWORDS = [
+    # Tier 1: Business Segmentation (most insightful)
+    ['contract', 'segment', 'category', 'type', 'tier', 'plan'],
+    # Tier 2: Customer Segments
+    ['customer', 'gender', 'age', 'region', 'country'],
+    # Tier 3: Product/Service
+    ['product', 'service', 'internetservice', 'phoneservice', 'channel'],
+    # Tier 4: Payment/Method
+    ['payment', 'method', 'paymentmethod', 'payment_method'],
+    # Tier 5: Other categorical
+    ['status', 'state', 'city', 'department'],
+]
+
+def _prioritize_metrics(metrics: List[str]) -> List[str]:
+    """Prioritize metrics based on BI importance - revenue first!"""
+    prioritized = []
+    remaining = metrics.copy()
+
+    try:
+        from .semantic_resolver import semantic_similarity
+        def _is_match(col, keywords):
+            return any(semantic_similarity(kw, col) >= 0.55 for kw in keywords)
+    except ImportError:
+        def _is_match(col, keywords):
+            return any(kw in col.lower().replace('_', '') for kw in keywords)
+
+    for tier_keywords in METRIC_PRIORITY_KEYWORDS:
+        for metric in remaining[:]:
+            if _is_match(metric, tier_keywords):
+                prioritized.append(metric)
+                remaining.remove(metric)
+
+    # Add remaining metrics at the end
+    prioritized.extend(remaining)
+    return prioritized
+
+
+def _prioritize_dimensions(dimensions: List[str]) -> List[str]:
+    """Prioritize dimensions based on BI importance - business segments first!"""
+    prioritized = []
+    remaining = dimensions.copy()
+
+    try:
+        from .semantic_resolver import semantic_similarity
+        def _is_match(col, keywords):
+            return any(semantic_similarity(kw, col) >= 0.55 for kw in keywords)
+    except ImportError:
+        def _is_match(col, keywords):
+            return any(kw in col.lower().replace('_', '') for kw in keywords)
+
+    for tier_keywords in DIMENSION_PRIORITY_KEYWORDS:
+        for dim in remaining[:]:
+            if _is_match(dim, tier_keywords):
+                prioritized.append(dim)
+                remaining.remove(dim)
+
+    # Add remaining dimensions at the end
+    prioritized.extend(remaining)
+    return prioritized
+# ============================================================================
+# GEO DETECTION HELPERS
+# ============================================================================
+
+US_STATE_ABBREVS = {
+    'al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'de', 'fl', 'ga',
+    'hi', 'id', 'il', 'in', 'ia', 'ks', 'ky', 'la', 'me', 'md',
+    'ma', 'mi', 'mn', 'ms', 'mo', 'mt', 'ne', 'nv', 'nh', 'nj',
+    'nm', 'ny', 'nc', 'nd', 'oh', 'ok', 'or', 'pa', 'ri', 'sc',
+    'sd', 'tn', 'tx', 'ut', 'vt', 'va', 'wa', 'wv', 'wi', 'wy', 'dc'
+}
+
+US_STATE_FULL_NAMES = {
+    'alabama', 'alaska', 'arizona', 'arkansas', 'california', 'colorado',
+    'connecticut', 'delaware', 'florida', 'georgia', 'hawaii', 'idaho',
+    'illinois', 'indiana', 'iowa', 'kansas', 'kentucky', 'louisiana',
+    'maine', 'maryland', 'massachusetts', 'michigan', 'minnesota',
+    'mississippi', 'missouri', 'montana', 'nebraska', 'nevada',
+    'new hampshire', 'new jersey', 'new mexico', 'new york',
+    'north carolina', 'north dakota', 'ohio', 'oklahoma', 'oregon',
+    'pennsylvania', 'rhode island', 'south carolina', 'south dakota',
+    'tennessee', 'texas', 'utah', 'vermont', 'virginia', 'washington',
+    'west virginia', 'wisconsin', 'wyoming', 'district of columbia'
+}
+
+COUNTRY_KEYWORDS = {
+    'usa', 'us', 'united states', 'uk', 'united kingdom', 'germany',
+    'france', 'china', 'india', 'brazil', 'australia', 'canada',
+    'japan', 'russia', 'mexico', 'italy', 'spain', 'south korea',
+    'indonesia', 'argentina', 'turkey', 'netherlands', 'saudi arabia'
+}
+
+
+WORLD_KEYWORDS = {
+    'usa', 'us', 'united states', 'uk', 'united kingdom', 'germany',
+    'france', 'china', 'india', 'brazil', 'australia', 'canada',
+    'japan', 'russia', 'mexico', 'italy', 'spain', 'south korea'
+}
+
+def _detect_map_type(col_values: List[str]) -> str:
+    """
+    Detect the appropriate map type based on the values in a geo column.
+    Returns: 'us_states', 'world'
+    """
+    if not col_values:
+        return 'world'
+
+    sample_raw = [str(v).lower().strip() for v in col_values[:100]] # Increased sample
+    
+    # 1. Check for explicit "World" indicators
+    # If we see things like 'France' or 'China' or 'USA', it's almost certainly a world map
+    world_indicator_matches = sum(1 for v in sample_raw if v in WORLD_KEYWORDS)
+    if world_indicator_matches > 0:
+        return 'world'
+
+    # 2. Check for US State abbreviations (e.g. CA, TX, NY)
+    abbrev_matches = sum(1 for v in sample_raw if v in US_STATE_ABBREVS)
+    if abbrev_matches / max(len(sample_raw), 1) > 0.3: # Lowered threshold slightly
+        return 'us_states'
+
+    # 3. Check for US State full names
+    full_matches = sum(1 for v in sample_raw if v in US_STATE_FULL_NAMES)
+    if full_matches / max(len(sample_raw), 1) > 0.3: # Lowered threshold slightly
+        return 'us_states'
+
+    # 4. Require at least SOME matches to call it a world map, otherwise None
+    if world_indicator_matches > 0 or abbrev_matches > 0 or full_matches > 0:
+        return 'world'
+
+    return None
+
+
+@dataclass
+class ChartRecommendation:
+    """Represents a chart recommendation."""
+    slot: str
+    title: str
+    chart_type: str  # bar, hbar, pie, donut, line, scatter, stacked, geo_map
+    data: List[Dict[str, Any]]
+    confidence: str
+    reason: str
+    categories: Optional[List[str]] = None  # For stacked charts
+    geo_meta: Optional[Dict[str, Any]] = None  # For geo_map charts
+    format_type: Optional[str] = None  # e.g., 'currency', 'percentage', 'number'
+    value_label: Optional[str] = None  # What the value represents: 'Orders', 'Customers', etc.
+
+
+def _safe_groupby_sum(df: pd.DataFrame, group_col: str, value_col: str, limit: int = 10) -> List[Dict]:
+    """Safely group by and sum, returning top N."""
+    try:
+        grouped = df.groupby(group_col)[value_col].sum().sort_values(ascending=False).head(limit)
+        return [{"name": str(k), "value": float(v)} for k, v in grouped.items()]
+    except Exception:
+        return []
+
+
+def _safe_groupby_mean(df: pd.DataFrame, group_col: str, value_col: str, limit: int = 10) -> List[Dict]:
+    """Safely group by and calculate mean, returning top N."""
+    try:
+        grouped = df.groupby(group_col)[value_col].mean().sort_values(ascending=False).head(limit)
+        return [{"name": str(k), "value": round(float(v), 2)} for k, v in grouped.items()]
+    except Exception:
+        return []
+
+
+def _safe_value_counts(df: pd.DataFrame, col: str, limit: int = 10) -> List[Dict]:
+    """Safely get value counts with 'Others' aggregation."""
+    try:
+        counts = df[col].value_counts()
+        top = counts.head(limit)
+        result = [{"name": str(k), "value": int(v)} for k, v in top.items()]
+        # Aggregate remaining into "Others" if they exist
+        remaining = counts.iloc[limit:].sum() if len(counts) > limit else 0
+        if remaining > 0:
+            result.append({"name": "Others", "value": int(remaining)})
+        return result
+    except Exception:
+        return []
+
+
+def _get_target_distribution(df: pd.DataFrame, target_col: str) -> List[Dict]:
+    """Get target column distribution with domain-aware labels."""
+    if not target_col or target_col not in df.columns:
+        return []
+    data = _safe_value_counts(df, target_col, limit=5)
+    for d in data:
+        d['name'] = _format_categorical_value(target_col, d['name'])
+    return data
+
+
+def _distribution_chart(
+    df: pd.DataFrame,
+    col: str,
+    title: str,
+    confidence: str = "MEDIUM",
+    reason: str = "",
+    value_label: str = "Records",
+    prefer_pie: bool = True,
+) -> Optional[ChartRecommendation]:
+    """
+    DA-grade cardinality router for distribution charts.
+
+    Rules:
+      <= 5 unique  ->  pie (clean, all values shown)
+      6 - 14       ->  donut (top values + Others bucket)
+      15+          ->  hbar (top 15, horizontal bar for readability)
+    """
+    if col not in df.columns:
+        return None
+
+    nuniq = df[col].nunique()
+    if nuniq < 1:
+        return None
+
+    if nuniq <= 5:
+        data = _safe_value_counts(df, col, limit=5)
+        chart_type = "pie" if prefer_pie else "donut"
+    elif nuniq <= 14:
+        data = _safe_value_counts(df, col, limit=10)
+        chart_type = "donut"
+    else:
+        data = _safe_value_counts(df, col, limit=10)
+        data = [d for d in data if d["name"] != "Others"]
+        chart_type = "hbar"
+
+    if not data:
+        return None
+
+    return ChartRecommendation(
+        slot="",
+        title=title,
+        chart_type=chart_type,
+        data=data,
+        confidence=confidence,
+        reason=reason,
+        value_label=value_label,
+    )
+
+def _get_target_by_segment(df: pd.DataFrame, target_col: str, segment_col: str) -> List[Dict]:
+    """Get target counts by segment."""
+    if not target_col or not segment_col:
+        return []
+    
+    try:
+        positive_keywords = ['yes', 'true', '1', 'churned', 'converted', 'active']
+        df_temp = df.copy()
+        df_temp['_positive'] = df_temp[target_col].astype(str).str.lower().isin(positive_keywords).astype(int)
+        grouped = df_temp.groupby(segment_col)['_positive'].sum().sort_values(ascending=False).head(10)
+        return [{"name": str(k), "value": int(v)} for k, v in grouped.items()]
+    except Exception:
+        return []
+
+
+def _get_time_trend(df: pd.DataFrame, date_col: str, value_col: str) -> List[Dict]:
+    """Get time trend data."""
+    if not date_col or not value_col:
+        return []
+    
+    try:
+        df_temp = df.copy()
+        df_temp[date_col] = pd.to_datetime(df_temp[date_col], errors='coerce')
+        df_temp = df_temp.dropna(subset=[date_col])
+        df_temp = df_temp.sort_values(date_col)
+        
+        # Group by day/week/month based on date range
+        date_range = (df_temp[date_col].max() - df_temp[date_col].min()).days
+        if date_range > 365:
+            freq = 'ME'  # Monthly (end)
+        elif date_range > 60:
+            freq = 'W-MON'  # Weekly (Monday start)
+        else:
+            freq = 'D'  # Daily
+            
+        if _should_average_metric(value_col):
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].mean().tail(30)
+        else:
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].sum().tail(30)
+        return [{"date": str(k.date()), "value": float(v)} for k, v in trend.items() if pd.notna(v)]
+    except Exception:
+        return []
+
+def _get_yoy_comparison(df: pd.DataFrame, date_col: str, value_col: str) -> List[Dict]:
+    """Get Year-over-Year comparison data."""
+    if not date_col or not value_col:
+        return []
+        
+    try:
+        df_temp = df.dropna(subset=[date_col, value_col]).copy()
+        dates = pd.to_datetime(df_temp[date_col], errors='coerce')
+        valid_mask = dates.notna()
+        df_temp = df_temp[valid_mask]
+        dates = dates[valid_mask]
+        
+        if df_temp.empty:
+            return []
+            
+        df_temp['year'] = dates.dt.year
+        
+        # Only do YoY if we have multiple years
+        if df_temp['year'].nunique() < 2:
+            return []
+            
+        if _should_average_metric(value_col):
+            grp = df_temp.groupby('year')[value_col].mean().sort_index()
+        else:
+            grp = df_temp.groupby('year')[value_col].sum().sort_index()
+        return [{"name": str(int(k)), "value": float(v)} for k, v in grp.items() if pd.notna(v)]
+    except Exception:
+        return []
+
+def _get_ytd_comparison(df: pd.DataFrame, date_col: str, value_col: str) -> List[Dict]:
+    """Get Year-to-Date comparison data for the current vs previous year."""
+    if not date_col or not value_col:
+        return []
+        
+    try:
+        df_temp = df.dropna(subset=[date_col, value_col]).copy()
+        dates = pd.to_datetime(df_temp[date_col], errors='coerce')
+        valid_mask = dates.notna()
+        df_temp = df_temp[valid_mask]
+        dates = dates[valid_mask]
+        
+        if df_temp.empty:
+            return []
+        
+        # Extract date properties
+        max_date = dates.max()
+        current_year = max_date.year
+        prev_year = current_year - 1
+        
+        df_temp['year'] = dates.dt.year
+        # Handle leap years safely
+        df_temp['month_day'] = dates.dt.strftime('%m%d')
+        max_month_day = max_date.strftime('%m%d')
+        
+        # Filter for YTD (Jan 1 to max_month_day in both years)
+        ytd_df = df_temp[(df_temp['month_day'] <= max_month_day) & (df_temp['year'].isin([current_year, prev_year]))]
+        
+        if ytd_df.empty or ytd_df['year'].nunique() < 1: # Require at least current year
+            return []
+            
+        if _should_average_metric(value_col):
+            grp = ytd_df.groupby('year')[value_col].mean().sort_index()
+        else:
+            grp = ytd_df.groupby('year')[value_col].sum().sort_index()
+            
+        return [{"name": f"{int(k)} YTD", "value": float(v)} for k, v in grp.items() if pd.notna(v)]
+    except Exception:
+        return []
+
+
+def _get_scatter_data(df: pd.DataFrame, x_col: str, y_col: str, limit: int = 100, label_col: str = None) -> List[Dict]:
+    """Get scatter plot data with optional labels for tooltips."""
+    try:
+        # Find a good label column if not specified - prioritize names over IDs
+        if label_col is None:
+            # Priority 1: Human-readable names (product, category, name)
+            name_keywords = ['productname', 'product_name', 'itemname', 'item_name', 'name', 
+                            'category', 'subcategory', 'description', 'title']
+            for col in df.columns:
+                col_lower = col.lower().replace('_', '').replace('-', '')
+                if any(kw.replace('_', '') in col_lower for kw in name_keywords):
+                    # Avoid columns that are just "name" but are IDs
+                    if df[col].dtype == 'object' and df[col].str.len().mean() > 3:
+                        label_col = col
+                        break
+            
+            # Priority 2: Skip IDs entirely - they're not useful for humans
+            # Only use IDs as last resort if no name columns found
+        
+        # Sample data
+        cols_to_use = [x_col, y_col]
+        if label_col and label_col in df.columns:
+            cols_to_use.append(label_col)
+        
+        sample = df[cols_to_use].dropna().head(limit)
+        
+        result = []
+        for _, row in sample.iterrows():
+            point = {
+                "x": float(row[x_col]), 
+                "y": float(row[y_col]),
+                "xLabel": _beautify_column_name(x_col),
+                "yLabel": _beautify_column_name(y_col)
+            }
+            # Add label for tooltip only if it's a meaningful name
+            if label_col and label_col in row:
+                label_val = str(row[label_col])[:30]  # Truncate long labels
+                # Skip if it looks like an ID (short numeric or code-like)
+                if len(label_val) > 5 or not label_val.replace('_', '').replace('-', '').isdigit():
+                    point["label"] = label_val
+            result.append(point)
+        
+        return result
+    except Exception:
+        return []
+
+
+# =============================================================================
+
+# =============================================================================
+# Domain-Specific Chart Generators
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Churn Helpers (domain-agnostic)
+# ---------------------------------------------------------------------------
+
+def _get_churn_rate_by_segment(df, target_col, segment_col, limit=10):
+    """Churn RATE % per segment — not raw counts."""
+    try:
+        pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+        tmp = df[[target_col, segment_col]].dropna().copy()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        
+        # Auto-detect positive class: if values are 0/1 ints, '1' is positive
+        unique_lower = set(target_vals.unique())
+        if unique_lower <= {'0', '1'}:
+            tmp['_c'] = (target_vals == '1').astype(int)
+        else:
+            tmp['_c'] = target_vals.isin(pos).astype(int)
+            
+        grp = tmp.groupby(segment_col)['_c'].agg(['sum', 'count'])
+        grp['rate'] = (grp['sum'] / grp['count'] * 100).round(1)
+        grp = grp.sort_values('rate', ascending=False).head(limit)
+        
+        result = []
+        for k, v in grp['rate'].items():
+            result.append({'name': _format_categorical_value(segment_col, k), 'value': float(v)})
+        return result
+    except Exception:
+        return []
+
+
+def _get_value_at_risk(df, target_col, segment_col, value_col, limit=10):
+    """Sum of value_col from POSITIVE-class rows per segment (revenue at risk)."""
+    try:
+        pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+        tmp = df[[target_col, segment_col, value_col]].dropna().copy()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        unique_lower = set(target_vals.unique())
+        if unique_lower <= {'0', '1'}:
+            mask = target_vals == '1'
+        else:
+            mask = target_vals.isin(pos)
+        churned = tmp[mask]
+        grp = churned.groupby(segment_col)[value_col].sum().sort_values(ascending=False).head(limit)
+        
+        result = []
+        for k, v in grp.items():
+            result.append({'name': _format_categorical_value(segment_col, k), 'value': round(float(v), 2)})
+        return result
+    except Exception:
+        return []
+
+
+def _get_lifecycle_cohorts(df, numeric_col, target_col=None):
+    """
+    Bucket a numeric column into 4 quartile-based cohorts.
+    Uses data-driven bins (not hardcoded 12/24/48 months).
+    Returns churn rate per cohort if target_col provided, else counts.
+    """
+    try:
+        import pandas as pd
+        import numpy as np
+        vals = pd.to_numeric(df[numeric_col], errors='coerce').dropna()
+        if len(vals) < 10:
+            return []
+
+        # Calculate quartile boundaries from the actual data
+        q25, q50, q75 = np.percentile(vals, [25, 50, 75])
+        mx = vals.max()
+
+        # Smart labels based on column name
+        col_label = _beautify_column_name(numeric_col)
+        labels = [
+            f'Low {col_label} (≤{q25:.0f})',
+            f'Mid-Low (≤{q50:.0f})',
+            f'Mid-High (≤{q75:.0f})',
+            f'High {col_label} (>{q75:.0f})'
+        ]
+        bins = [vals.min() - 1, q25, q50, q75, mx + 1]
+        # Remove duplicate bins
+        unique_bins = sorted(set(bins))
+        if len(unique_bins) < 3:
+            return []
+        # Rebuild labels for unique bins
+        if len(unique_bins) - 1 != len(labels):
+            labels = [f'Group {i+1}' for i in range(len(unique_bins) - 1)]
+
+        tmp = df[[numeric_col]].dropna().copy()
+        tmp['_cohort'] = pd.cut(
+            pd.to_numeric(tmp[numeric_col], errors='coerce'),
+            bins=unique_bins,
+            labels=labels[:len(unique_bins)-1],
+            right=True, duplicates='drop'
+        )
+        if target_col and target_col in df.columns:
+            pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+            target_vals = df[target_col].astype(str).str.strip().str.lower()
+            unique_lower = set(target_vals.unique())
+            if unique_lower <= {'0', '1'}:
+                tmp['_c'] = (target_vals == '1').astype(int)
+            else:
+                tmp['_c'] = target_vals.isin(pos).astype(int)
+            grp = tmp.groupby('_cohort', observed=True)['_c'].agg(['sum', 'count'])
+            grp['rate'] = (grp['sum'] / grp['count'] * 100).round(1)
+            return [{'name': str(k), 'value': float(v)} for k, v in grp['rate'].items() if pd.notna(v)]
+        else:
+            counts = tmp['_cohort'].value_counts().sort_index()
+            return [{'name': str(k), 'value': int(v)} for k, v in counts.items()]
+    except Exception:
+        return []
+
+
+def _find_highest_variance_dim(df, target_col, dimensions, exclude=None):
+    """
+    Find the dimension with the highest variance in churn rate across its categories.
+    This is the "most impactful" segmentation axis — truly data-driven.
+    """
+    exclude = exclude or set()
+    best_dim = None
+    best_var = -1
+    try:
+        pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+        target_vals = df[target_col].astype(str).str.strip().str.lower()
+        unique_lower = set(target_vals.unique())
+        if unique_lower <= {'0', '1'}:
+            is_positive = (target_vals == '1').astype(int)
+        else:
+            is_positive = target_vals.isin(pos).astype(int)
+
+        for dim in dimensions:
+            if dim in exclude or dim == target_col:
+                continue
+            nunique = df[dim].nunique()
+            if nunique < 2 or nunique > 15:
+                continue
+            rates = df.groupby(dim).apply(
+                lambda g: is_positive.loc[g.index].mean() * 100, include_groups=False
+            )
+            var = rates.var()
+            if var > best_var:
+                best_var = var
+                best_dim = dim
+    except Exception:
+        pass
+    return best_dim
+
+
+def _smart_target_label(target_col):
+    """Convert target column name to a domain-aware label."""
+    name = target_col.lower().replace('_', '')
+    if 'churn' in name:
+        return 'Churn'
+    elif 'exit' in name or 'exited' in name:
+        return 'Exit'
+    elif 'attrition' in name:
+        return 'Attrition'
+    elif 'cancel' in name:
+        return 'Cancellation'
+    elif 'left' in name or 'leave' in name:
+        return 'Departure'
+    elif 'default' in name:
+        return 'Default'
+    else:
+        return _beautify_column_name(target_col)
+
+
+def _format_categorical_value(col: str, value: Any) -> str:
+    """Standardize categorical values (0/1 -> No/Yes, specific target maps)."""
+    val_str = str(value).lower().strip().replace('.0', '')
+    col_name = col.lower().replace('_', '').replace('-', '')
+    
+    # Binary pattern matching
+    is_pos = val_str in {'1', 'yes', 'true', 'positive', 'churned', 'exited', 'attrition'}
+    is_neg = val_str in {'0', 'no', 'false', 'negative', 'retained', 'stayed', 'active'}
+    
+    # Priority 1: Domain-specific labels for target-like columns
+    if is_pos or is_neg:
+        if 'churn' in col_name:
+            return 'Churned' if is_pos else 'Retained'
+        if 'exit' in col_name:
+            return 'Exited' if is_pos else 'Stayed'
+        if 'attrition' in col_name:
+            return 'Left' if is_pos else 'Stayed'
+        if 'default' in col_name:
+            return 'Defaulted' if is_pos else 'Performing'
+        
+        # Generic Yes/No for any other 0/1 or Yes/No column
+        return 'Yes' if is_pos else 'No'
+        
+    return str(value)
+
+
+
+# ---------------------------------------------------------------------------
+# New DA-Grade Chart Helpers
+# ---------------------------------------------------------------------------
+
+def _get_stacked_churn_counts(df, target_col, segment_col, limit=10):
+    """Stacked bar data: Yes/No counts per segment (categories = target values)."""
+    try:
+        pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+        tmp = df[[target_col, segment_col]].dropna().copy()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        unique_lower = set(target_vals.unique())
+        if unique_lower <= {'0', '1'}:
+            tmp['_pos'] = (target_vals == '1').astype(int)
+        else:
+            tmp['_pos'] = target_vals.isin(pos).astype(int)
+        tmp['_neg'] = 1 - tmp['_pos']
+        grp = tmp.groupby(segment_col)[['_pos', '_neg']].sum()
+        grp = grp.sort_values('_pos', ascending=False).head(limit)
+        result = []
+        for seg, row in grp.iterrows():
+            name = str(seg)
+            if name == '0': name = 'No'
+            elif name == '1': name = 'Yes'
+            result.append({'name': name, 'positive': int(row['_pos']), 'negative': int(row['_neg'])})
+        return result
+    except Exception:
+        return []
+
+
+def _get_churned_vs_retained_avg(df, target_col, metric_col):
+    """Compare avg of metric_col between churned and retained groups."""
+    try:
+        pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+        tmp = df[[target_col, metric_col]].dropna().copy()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        unique_lower = set(target_vals.unique())
+        if unique_lower <= {'0', '1'}:
+            mask = target_vals == '1'
+        else:
+            mask = target_vals.isin(pos)
+        avg_churned = tmp.loc[mask, metric_col].mean()
+        avg_retained = tmp.loc[~mask, metric_col].mean()
+        import pandas as pd
+        if pd.notna(avg_churned) and pd.notna(avg_retained):
+            return [
+                {'name': 'Churned', 'value': round(float(avg_churned), 2)},
+                {'name': 'Retained', 'value': round(float(avg_retained), 2)}
+            ]
+        return []
+    except Exception:
+        return []
+
+
+def _get_churn_count_by_segment(df, target_col, segment_col, limit=10):
+    """Raw count of positive-class (churned) per segment — volume, not rate."""
+    try:
+        pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+        tmp = df[[target_col, segment_col]].dropna().copy()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        unique_lower = set(target_vals.unique())
+        if unique_lower <= {'0', '1'}:
+            tmp['_c'] = (target_vals == '1').astype(int)
+        else:
+            tmp['_c'] = target_vals.isin(pos).astype(int)
+        grp = tmp.groupby(segment_col)['_c'].sum().sort_values(ascending=False).head(limit)
+        result = []
+        for k, v in grp.items():
+            name = str(k)
+            if name == '0': name = 'No'
+            elif name == '1': name = 'Yes'
+            result.append({'name': name, 'value': int(v)})
+        return result
+    except Exception:
+        return []
+
+
+def _get_metric_cohort_analysis(df, metric_col, target_col, n_bins=4, limit=8):
+    """Quartile-bin a metric and show churn rate per bin — like lifecycle but for any metric."""
+    try:
+        import numpy as np
+        import pandas as pd
+        vals = pd.to_numeric(df[metric_col], errors='coerce').dropna()
+        if len(vals) < 20:
+            return []
+        quantiles = np.linspace(0, 100, n_bins + 1)
+        edges = np.percentile(vals, quantiles)
+        edges = sorted(set([round(e, 1) for e in edges]))
+        if len(edges) < 3:
+            return []
+        col_label = _beautify_column_name(metric_col)
+        labels = []
+        for i in range(len(edges) - 1):
+            labels.append(f'{col_label} {edges[i]:.0f}–{edges[i+1]:.0f}')
+        tmp = df[[metric_col]].copy()
+        tmp['_cohort'] = pd.cut(pd.to_numeric(tmp[metric_col], errors='coerce'),
+                                bins=edges, labels=labels[:len(edges)-1],
+                                right=True, include_lowest=True, duplicates='drop')
+        if target_col and target_col in df.columns:
+            pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
+            target_vals = df[target_col].astype(str).str.strip().str.lower()
+            unique_lower = set(target_vals.unique())
+            if unique_lower <= {'0', '1'}:
+                tmp['_c'] = (target_vals == '1').astype(int)
+            else:
+                tmp['_c'] = target_vals.isin(pos).astype(int)
+            grp = tmp.groupby('_cohort', observed=True)['_c'].agg(['sum', 'count'])
+            grp['rate'] = (grp['sum'] / grp['count'] * 100).round(1)
+            return [{'name': str(k), 'value': float(v)} for k, v in grp['rate'].items() if pd.notna(v)]
+        return []
+    except Exception:
+        return []
+
+
+
+def _generate_churn_charts(df, classification):
+    """
+    Fully domain-agnostic churn dashboard — works for Telco, Bank, Movie, HR, SaaS.
+
+    Column resolution uses SEMANTIC ROLES derived from the data, not keyword matching:
+      - primary_dim: dimension with highest churn rate variance (data-driven)
+      - primary_metric: first metric from priority list (usually revenue/value)
+      - secondary_metric: second metric
+      - lifecycle_col: numeric column most likely representing time/age/tenure
+      - binary_dims: dimensions with exactly 2 values (demographic splits)
+      - multi_dims: dimensions with 3-8 values (product/service groupings)
+    """
+    charts = []
+    target_col = classification.targets[0] if classification.targets else None
+    if not target_col:
+        return charts
+
+    pm = _prioritize_metrics(classification.metrics)
+    pd_ = _prioritize_dimensions(classification.dimensions)
+    primary_dim = _find_highest_variance_dim(df, target_col, pd_)
+    label = _smart_target_label(target_col)  # "Churn" / "Exit" / "Attrition" etc.
+
+    # ── SEMANTIC ROLE ASSIGNMENT ──────────────────────────────────────
+
+    # Helper lambdas for column classification
+    lifecycle_hints = ['tenure', 'age', 'months', 'years', 'duration', 'days',
+                       'yearsatcompany', 'accountage', 'lengthofstay', 'seniority',
+                       'experience', 'vintage', 'period', 'totalworkingyears']
+    senior_hints    = ['senior', 'seniorcitizen', 'seniorcitizenind']
+    value_hints     = ['charge', 'revenue', 'spent', 'billing', 'income', 'balance',
+                       'price', 'amount', 'salary', 'cost', 'fee']
+
+    try:
+        from .semantic_resolver import semantic_similarity
+        
+        def _semantic_check(col, hints, threshold=0.55):
+            return any(semantic_similarity(h, col) >= threshold for h in hints)
+            
+        def _is_lifecycle(col): return _semantic_check(col, lifecycle_hints)
+        def _is_senior(col):    return _semantic_check(col, senior_hints)
+        def _is_financial(col): return _semantic_check(col, value_hints) and not _is_lifecycle(col)
+    except ImportError:
+        def _is_lifecycle(col): return any(h in col.lower().replace('_', '') for h in lifecycle_hints)
+        def _is_senior(col):    return any(h in col.lower().replace('_', '') for h in senior_hints)
+        def _is_financial(col): return any(h in col.lower() for h in value_hints) and not _is_lifecycle(col)
+
+    # Split pm into financial vs non-financial to prevent tenure from being summed
+    financial_metrics = [c for c in pm if _is_financial(c)]
+    # Primary financial metric — strictly used for SUM-based financial charts (Revenue at Risk)
+    primary_value_metric = financial_metrics[0] if financial_metrics else None
+    secondary_metric = next((c for c in financial_metrics if c != primary_value_metric), None)
+
+    # Lifecycle column — strictly for survival/cohort & average charts, NEVER summed for 'At Risk'
+    lifecycle_col = None
+    all_numeric = pm + [c for c in df.select_dtypes('number').columns if c not in pm and c != target_col]
+    for hint in lifecycle_hints:
+        match = next((c for c in all_numeric if hint in c.lower().replace('_', '')), None)
+        if match:
+            lifecycle_col = match
+            break
+
+    # If no financial metric found, we use the first available non-lifecycle metric for secondary charts,
+    # but we will guard the 'At Risk' charts.
+    if not primary_value_metric:
+        primary_value_metric = next((c for c in pm if c != lifecycle_col and not _is_senior(c)), pm[0] if pm else None)
+
+    # Binary dimensions (exactly 2 unique values)
+    binary_dims = [d for d in pd_ if df[d].nunique() == 2 and d != target_col]
+    # SeniorCitizen is often classified as a metric (0/1 int) — rescue it into binary_dims
+    senior_col_match = next((c for c in pm + pd_ if _is_senior(c)), None)
+    if senior_col_match and senior_col_match not in binary_dims:
+        binary_dims.insert(0, senior_col_match)  # Highest priority in binary_dims
+
+    # Multi-value dimensions (3-8 categories)
+    multi_dims = [d for d in pd_ if 2 < df[d].nunique() <= 8 and d != target_col]
+    payment_col_match = next((c for c in pd_ if 'payment' in c.lower()), None)
+
+    # Second-best dimension (different from primary_dim)
+    secondary_dim = next((d for d in pd_ if d != primary_dim and d != target_col), None)
+
+    # Third dimension
+    tertiary_dim = None
+    for d in pd_:
+        if d not in (primary_dim, secondary_dim, target_col):
+            tertiary_dim = d
+            break
+
+    chart_titles = set()
+
+    def add_chart(rec):
+        if rec.title not in chart_titles:
+            charts.append(rec)
+            chart_titles.add(rec.title)
+            logger.debug('[ADD] #%d %r', len(charts), rec.title)
+        else:
+            logger.debug('[DUP] %r', rec.title)
+
+    # 1. Target Distribution — Hero donut
+    data = _get_target_distribution(df, target_col)
+    if data:
+        add_chart(ChartRecommendation(
+            slot='', title=f'{label} Overview', chart_type='donut',
+            data=data, confidence='HIGH',
+            reason=f'Tier 1: Overall {label.lower()} split',
+            value_label='Customers'
+        ))
+
+    # 2. Rate by Primary Dimension (highest variance = most impactful)
+    if primary_dim:
+        data = _get_churn_rate_by_segment(df, target_col, primary_dim)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f'{label} Rate by {_beautify_column_name(primary_dim)} (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason=f'Tier 1: Highest-variance dimension for {label.lower()}'
+            ))
+
+    # 3. Lifecycle Cohort Analysis (data-driven quartile buckets)
+    if lifecycle_col:
+        data = _get_lifecycle_cohorts(df, lifecycle_col, target_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{label} Rate by {_beautify_column_name(lifecycle_col)} Cohort (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason=f'Tier 1: When in the lifecycle do they leave?',
+                format_type='percentage'
+            ))
+    elif secondary_dim and secondary_dim != primary_dim:
+        data = _get_churn_rate_by_segment(df, target_col, secondary_dim)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f'{label} Rate by {_beautify_column_name(secondary_dim)} (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason=f'Tier 1: {label} rate by secondary dimension',
+                format_type='percentage'
+            ))
+
+    # ── TIER 2: FINANCIAL IMPACT ─────────────────────────────────────
+
+    # 4. Value at Risk by Primary Dimension (STRICTLY FINANCIAL)
+    impact_metric = financial_metrics[0] if financial_metrics else None
+    if impact_metric and primary_dim:
+        data = _get_value_at_risk(df, target_col, primary_dim, impact_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{_beautify_column_name(impact_metric)} at Risk by {_beautify_column_name(primary_dim)}',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason=f'Tier 2: Financial impact of {label.lower()} by segment',
+                format_type='currency'
+            ))
+
+    # 5. Metric Distribution — Treemap
+    dim_for_treemap = secondary_dim or primary_dim
+    if primary_value_metric and dim_for_treemap:
+        data = _smart_aggregate(df, dim_for_treemap, primary_value_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=_create_smart_title(primary_value_metric, dim_for_treemap),
+                chart_type='treemap', data=data, confidence='HIGH',
+                reason='Tier 2: Revenue/value share by segment'
+            ))
+
+    # 6. Avg Lifecycle/Value by Primary Dimension
+    avg_metric = lifecycle_col or primary_value_metric
+    if avg_metric and primary_dim:
+        data = _smart_aggregate(df, primary_dim, avg_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=_create_smart_title(avg_metric, primary_dim),
+                chart_type='hbar', data=data, confidence='HIGH',
+                reason='Tier 2: Metric variance by segment'
+            ))
+
+    # ── TIER 3: PRODUCT/SERVICE ANALYSIS ─────────────────────────────
+
+    # 7. Rate by best multi-value dimension (product/service/role)
+    svc_dim = next((d for d in multi_dims if d not in (primary_dim, secondary_dim)), None) or secondary_dim
+    if svc_dim:
+        data = _get_churn_rate_by_segment(df, target_col, svc_dim)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f'{label} Rate by {_beautify_column_name(svc_dim)} (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason=f'Tier 3: Which {_beautify_column_name(svc_dim)} segments have highest {label.lower()}?',
+                format_type='percentage'
+            ))
+
+    # 8. Value at Risk by second multi-value dimension (STRICTLY FINANCIAL)
+    impact_metric = financial_metrics[0] if financial_metrics else None
+    svc_dim2 = next((d for d in multi_dims if d not in (primary_dim, svc_dim)), None)
+    if svc_dim2 and impact_metric:
+        data = _get_value_at_risk(df, target_col, svc_dim2, impact_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{_beautify_column_name(impact_metric)} at Risk by {_beautify_column_name(svc_dim2)}',
+                chart_type='hbar', data=data, confidence='HIGH',
+                reason='Tier 3: Secondary financial risk view',
+                format_type='currency'
+            ))
+    elif secondary_dim and impact_metric and secondary_dim != svc_dim:
+        data = _get_value_at_risk(df, target_col, secondary_dim, impact_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{_beautify_column_name(impact_metric)} at Risk by {_beautify_column_name(secondary_dim)}',
+                chart_type='hbar', data=data, confidence='HIGH',
+                reason=f'Tier 3: Value leakage by secondary dimension',
+                format_type='currency'
+            ))
+
+    # 9. Rate by tertiary dimension or another product/service dim
+    tier3_dim = tertiary_dim or next((d for d in pd_ if d not in (primary_dim, secondary_dim, svc_dim, svc_dim2) and d != target_col), None)
+    if tier3_dim:
+        data = _get_churn_rate_by_segment(df, target_col, tier3_dim)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f'{label} Rate by {_beautify_column_name(tier3_dim)} (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason=f'Tier 3: {label} across {_beautify_column_name(tier3_dim)}'
+            ))
+    elif secondary_metric and primary_dim:
+        data = _safe_groupby_mean(df, primary_dim, secondary_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'Avg {_beautify_column_name(secondary_metric)} by {_beautify_column_name(primary_dim)}',
+                chart_type='hbar', data=data, confidence='MEDIUM',
+                reason='Tier 3: Secondary metric by primary dimension'
+            ))
+
+    # ── TIER 4: DEMOGRAPHIC PROFILE ──────────────────────────────────
+
+    # 10. Distribution of a multi-value dimension (donut)
+    # Prefer payment method for this chart if available
+    profile_dim = payment_col_match or next((d for d in multi_dims if d != primary_dim), None) or (pd_[0] if pd_ else None)
+    if profile_dim:
+        rec = _distribution_chart(
+            df, profile_dim,
+            title=f'{_beautify_column_name(profile_dim)} Distribution',
+            confidence='HIGH',
+            reason=f'Tier 4: Population distribution by {_beautify_column_name(profile_dim)}',
+            value_label='Customers'
+        )
+        if rec:
+            add_chart(rec)
+
+    # 11. Senior Citizen churn rate (guaranteed slot)
+    #     then fall back to any other unused binary dimension
+    used_dims = {primary_dim, secondary_dim, svc_dim, svc_dim2, tier3_dim, profile_dim}
+    if senior_col_match:
+        data = _get_churn_rate_by_segment(df, target_col, senior_col_match)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f'{label} Rate by {_beautify_column_name(senior_col_match)} (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason='Tier 4: Senior vs Non-Senior churn split'
+            ))
+    else:
+        bin1 = next((d for d in binary_dims if d not in used_dims), binary_dims[0] if binary_dims else None)
+        if bin1:
+            data = _get_churn_rate_by_segment(df, target_col, bin1)
+            if data:
+                add_chart(ChartRecommendation(
+                    slot='', title=f'{label} Rate by {_beautify_column_name(bin1)} (%)',
+                    chart_type='bar', data=data, confidence='HIGH',
+                    reason=f'Tier 4: Binary demographic split — {_beautify_column_name(bin1)}'
+                ))
+
+    # 12. A second binary/unused dimension
+    used_dims_after_11 = used_dims | ({senior_col_match} if senior_col_match else set())
+    bin2 = next((d for d in binary_dims if d not in used_dims_after_11 and d != senior_col_match), None)
+    if not bin2:
+        bin2 = next((d for d in pd_ if d not in used_dims_after_11 and d != target_col), None)
+    if bin2:
+        data = _get_churn_rate_by_segment(df, target_col, bin2)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f'{label} Rate by {_beautify_column_name(bin2)} (%)',
+                chart_type='bar', data=data, confidence='MEDIUM',
+                reason=f'Tier 4: Demographic/behavioral split — {_beautify_column_name(bin2)}'
+            ))
+    elif primary_dim:
+        rec = _distribution_chart(
+            df, primary_dim,
+            title=f'{_beautify_column_name(primary_dim)} Distribution',
+            confidence='MEDIUM',
+            reason='Tier 4: Segment distribution',
+            value_label='Customers'
+        )
+        if rec:
+            add_chart(rec)
+
+    # ── TIER 5: BEHAVIORAL DEPTH ─────────────────────────────────────
+
+    # 13. Metric correlations (Scatter)
+    scatter_x = primary_value_metric or pm[0] if pm else None
+    scatter_y = secondary_metric or (pm[1] if len(pm) > 1 else None) or lifecycle_col
+    if scatter_x and scatter_y and scatter_x != scatter_y:
+        data = _get_scatter_data(df, scatter_x, scatter_y, limit=200)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{_beautify_column_name(scatter_x)} vs {_beautify_column_name(scatter_y)}',
+                chart_type='scatter', data=data, confidence='MEDIUM',
+                reason='Tier 5: Correlation between key metrics'
+            ))
+
+    # 14. Time trend OR Value at Risk by another dimension
+    if classification.dates and primary_value_metric:
+        date_col = classification.dates[0]
+        data = _get_time_trend(df, date_col, primary_value_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{_beautify_column_name(primary_value_metric)} Trend Over Time',
+                chart_type='area', data=data, confidence='HIGH',
+                reason='Tier 5: Trend analysis for seasonality'
+            ))
+    elif secondary_metric and secondary_dim:
+        data = _get_value_at_risk(df, target_col, secondary_dim, secondary_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{_beautify_column_name(secondary_metric)} at Risk by {_beautify_column_name(secondary_dim)}',
+                chart_type='hbar', data=data, confidence='MEDIUM',
+                reason='Tier 5: Secondary value at risk'
+            ))
+    elif primary_value_metric and len(pd_) > 1:
+        dim = pd_[1] if pd_[0] == primary_dim else pd_[0]
+        data = _safe_groupby_mean(df, dim, primary_value_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'Avg {_beautify_column_name(primary_value_metric)} by {_beautify_column_name(dim)}',
+                chart_type='hbar', data=data, confidence='MEDIUM',
+                reason='Tier 5: Metric depth fallback'
+            ))
+
+    # 15. Final coverage — exhaustive metric×dim search for any unused combo
+    # Build full candidate list: all metrics (financial first, then lifecycle, then others)
+    candidate_metrics_15 = (
+        [c for c in financial_metrics if c not in (primary_value_metric, secondary_metric)]
+        + ([lifecycle_col] if lifecycle_col else [])
+        + [c for c in pm if c not in financial_metrics and c != lifecycle_col and not _is_senior(c)]
+        + [primary_value_metric, secondary_metric]  # last resort: reuse financial with new dim
+    )
+    candidate_dims_15 = list(pd_)  # all dims, deduplication handles collisions
+
+    added_15 = False
+    for m15 in [c for c in candidate_metrics_15 if c]:  # skip None
+        for d15 in candidate_dims_15:
+            agg_label = 'Total' if m15 in financial_metrics else 'Avg'
+            candidate_title = f'{agg_label} {_beautify_column_name(m15)} by {_beautify_column_name(d15)}'
+            _used = candidate_title in chart_titles
+            logger.debug('[C15] %r used=%s', candidate_title, _used)
+            if _used:
+                continue
+            data = (_safe_groupby_sum(df, d15, m15) if m15 in financial_metrics
+                    else _safe_groupby_mean(df, d15, m15))
+            logger.debug('[C15]   data_ok=%s', bool(data))
+            if data:
+                add_chart(ChartRecommendation(
+                    slot='', title=candidate_title,
+                    chart_type='hbar', data=data, confidence='MEDIUM',
+                    reason='Tier 5: Extended metric coverage'
+                ))
+                added_15 = True
+                break
+        if added_15:
+            break
+
+    # Guaranteed final fallback — always works because title includes 'Distribution'
+    if not added_15 and primary_value_metric and primary_dim:
+        data = _safe_groupby_sum(df, primary_dim, primary_value_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'Total {_beautify_column_name(primary_value_metric)} Distribution by {_beautify_column_name(primary_dim)}',
+                chart_type='treemap', data=data, confidence='MEDIUM',
+                reason='Tier 5: Final summary view'
+            ))
+
+
+    # ── TIER 6: PROFESSIONAL DA DEPTH ────────────────────────────────
+
+    # 16. Stacked Churn Counts by Primary Dimension (Yes/No volume split)
+    if primary_dim:
+        data = _get_stacked_churn_counts(df, target_col, primary_dim)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f'{label} Volume by {_beautify_column_name(primary_dim)}',
+                chart_type='stacked_bar', data=data, confidence='HIGH',
+                categories=['positive', 'negative'],
+                reason='Tier 6: Volume split — see raw count of churned vs retained per segment'
+            ))
+
+    # 17. Churned vs Retained — Avg Primary Metric Comparison
+    if primary_value_metric:
+        data = _get_churned_vs_retained_avg(df, target_col, primary_value_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'Avg {_beautify_column_name(primary_value_metric)}: Churned vs Retained',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason='Tier 6: Price sensitivity — are churned customers paying more or less?'
+            ))
+
+    # 18. Churn Count by Secondary Dimension (volume, not rate)
+    count_dim = secondary_dim or (multi_dims[0] if multi_dims else None)
+    if count_dim and count_dim != primary_dim:
+        data = _get_churn_count_by_segment(df, target_col, count_dim)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{label} Count by {_beautify_column_name(count_dim)}',
+                chart_type='hbar', data=data, confidence='HIGH',
+                reason=f'Tier 6: Where is the volume of {label.lower()} concentrated?'
+            ))
+
+    # 19. Financial Cohort Analysis — churn rate by metric quartile
+    cohort_metric = primary_value_metric or (financial_metrics[0] if financial_metrics else None)
+    if cohort_metric and cohort_metric != lifecycle_col:
+        data = _get_metric_cohort_analysis(df, cohort_metric, target_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{label} Rate by {_beautify_column_name(cohort_metric)} Range (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason='Tier 6: Do high-value customers churn more or less?'
+            ))
+
+    # 20. Churned vs Retained — Avg Lifecycle/Tenure Comparison
+    if lifecycle_col:
+        data = _get_churned_vs_retained_avg(df, target_col, lifecycle_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'Avg {_beautify_column_name(lifecycle_col)}: Churned vs Retained',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason='Tier 6: Do long-tenure customers churn less?'
+            ))
+
+    # 21. Bonus: Secondary metric cohort analysis (if different from primary)
+    if secondary_metric and secondary_metric != cohort_metric:
+        data = _get_metric_cohort_analysis(df, secondary_metric, target_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{label} Rate by {_beautify_column_name(secondary_metric)} Range (%)',
+                chart_type='bar', data=data, confidence='MEDIUM',
+                reason='Tier 6: Secondary metric cohort analysis'
+            ))
+
+    # 22. Bonus: Distribution of a new unused dimension (donut)
+    all_used_dims = {primary_dim, secondary_dim, svc_dim, svc_dim2, tier3_dim, profile_dim, count_dim}
+    bonus_dim = next((d for d in pd_ if d not in all_used_dims and d != target_col), None)
+    if bonus_dim:
+        rec = _distribution_chart(
+            df, bonus_dim,
+            title=f'{_beautify_column_name(bonus_dim)} Distribution',
+            confidence='MEDIUM',
+            reason='Tier 6: Additional segment breakdown',
+            value_label='Customers'
+        )
+        if rec:
+            add_chart(rec)
+
+    return charts
+
+def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassification) -> List[ChartRecommendation]:
+    """
+    Tier 6 Data Analyst Grade E-commerce / Sales Dashboard.
+    Highly dynamic: adapts to standard retail, B2B sales, SaaS, and marketplaces.
+    """
+    charts = []
+    chart_titles = set()
+
+    def add_chart(rec):
+        if rec.title not in chart_titles:
+            # We assign dynamic slots later, so leave empty for now
+            rec.slot = '' 
+            charts.append(rec)
+            chart_titles.add(rec.title)
+
+    # ========================================
+    # DYNAMIC COLUMNS DETECTION (SEMANTIC ROLES)
+    # ========================================
+    pm = classification.metrics
+    pd_ = classification.dimensions
+
+    def _find_col(keywords, cols, exclude=None, min_unique=None):
+        exclude = exclude or []
+        
+        # Primary: Semantic mapping
+        try:
+            from .semantic_resolver import semantic_similarity
+            best_score = 0.0
+            best_col = None
+
+            for col in cols:
+                # Check exclusions
+                col_norm = col.lower().replace('_', '').replace('-', '')
+                if any(ex in col_norm for ex in exclude):
+                    continue
+                
+                # Check cardinality constraint
+                if min_unique and df[col].nunique() < min_unique:
+                    continue
+
+                for kw in keywords:
+                    score = semantic_similarity(kw, col)
+                    if score > best_score:
+                        best_score = score
+                        best_col = col
+
+            if best_col and best_score >= 0.55:
+                return best_col
+        except ImportError:
+            pass
+
+        # Fallback: Substring matching
+        for col in cols:
+            col_lower = col.lower().replace('_', '').replace('-', '')
+            if any(kw in col_lower for kw in keywords):
+                if not any(ex in col_lower for ex in exclude):
+                    if min_unique:
+                        if df[col].nunique() >= min_unique:
+                            return col
+                    else:
+                        return col
+        return None
+
+    revenue_col = _find_col(['revenue', 'sales', 'amount', 'total', 'gmv'], pm) or (pm[0] if pm else None)
+    qty_col = _find_col(['quantity', 'qty', 'units', 'count', 'volume'], pm)
+    profit_col = _find_col(['profit', 'margin', 'net', 'earnings'], pm)
+    discount_col = _find_col(['discount', 'rebate', 'reduction', 'coupon'], pm)
+    cost_col = _find_col(['cost', 'cogs', 'expense'], pm)
+
+    product_col = _find_col(['product', 'item', 'sku', 'service'], pd_)
+    category_col = _find_col(['category', 'subcategory', 'segment', 'department', 'type', 'group'], pd_)
+    
+    # Stricter detection for high-cardinality entities
+    entity_excludes = ['segment', 'type', 'group', 'class', 'region', 'state', 'tier', 'status', 'category', 'profile', 'city', 'country', 'zip', 'postal', 'zone']
+    customer_col = _find_col(['customer', 'client', 'buyer', 'account', 'user', 'email'], pd_, exclude=entity_excludes, min_unique=5)
+    order_col = _find_col(['order', 'invoice', 'receipt', 'transaction', 'cart'], pd_, exclude=entity_excludes, min_unique=5)
+    
+    date_col = classification.dates[0] if classification.dates else None
+
+    # Geo columns
+    country_col = _find_col(['country', 'nation'], pd_)
+    state_col = _find_col(['state', 'province'], pd_)
+    city_col = _find_col(['city', 'town'], pd_)
+    region_col = _find_col(['region', 'market', 'territory', 'zone'], pd_)
+    geo_col = country_col or state_col or region_col or city_col
+
+    # Fallback dim
+    primary_dim = category_col or product_col or geo_col or (pd_[0] if pd_ else None)
+    secondary_dim = next((d for d in pd_ if d not in (primary_dim, customer_col, order_col)), None)
+
+    # ── TIER 1: EXECUTIVE OVERVIEW (HERO CHARTS) ─────────────────────
+    
+    # 1. Top Segments by Revenue (Bar/HBar)
+    hero_dim = product_col or category_col or primary_dim
+    if hero_dim and revenue_col:
+        data = _smart_aggregate(df, hero_dim, revenue_col, limit=10)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=_create_smart_title(revenue_col, hero_dim),
+                chart_type="hbar", data=data, confidence="HIGH",
+                reason="Hero Chart: Best-selling segments by revenue",
+                format_type="currency"
+            ))
+
+    # 2. Geographic Revenue Distribution — handled by _generate_geo_charts (multi-metric)
+
+    # 3. Time Intelligence (Line/Area)
+    if date_col and revenue_col:
+        data = _get_time_trend(df, date_col, revenue_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=_create_smart_title(revenue_col, date_col) + " Trend",
+                chart_type='line', data=data, confidence='HIGH',
+                reason='Tier 1: Sales velocity and seasonality',
+                format_type="currency"
+            ))
+            
+    # 4. Growth Benchmarking (YoY/YTD)
+    if date_col and revenue_col:
+        yoy_data = _get_yoy_comparison(df, date_col, revenue_col)
+        if yoy_data:
+            add_chart(ChartRecommendation(
+                slot='', title=f"Year-over-Year {_beautify_column_name(revenue_col)}",
+                chart_type="bar", data=yoy_data, confidence="HIGH",
+                reason="Macro Growth: Annual performance trajectory",
+                format_type="currency"
+            ))
+        
+        ytd_data = _get_ytd_comparison(df, date_col, revenue_col)
+        if ytd_data:
+            add_chart(ChartRecommendation(
+                slot='', title=f"Year-to-Date {_beautify_column_name(revenue_col)} Benchmark",
+                chart_type="bar", data=ytd_data, confidence="HIGH",
+                reason="Strategic Target: Current year performance vs same period last year",
+                format_type="currency"
+            ))
+
+    # 5. Categorical Mix (Treemap/Donut)
+    mix_dim = category_col or secondary_dim
+    if mix_dim and revenue_col:
+        data = _smart_aggregate(df, mix_dim, revenue_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f"{_beautify_column_name(revenue_col)} Composition by {_beautify_column_name(mix_dim)}",
+                chart_type="treemap", data=data, confidence="HIGH",
+                reason="Categorical composition of revenue",
+                format_type="currency"
+            ))
+
+    # ── TIER 2: ADVANCED PROFITABILITY & ECONOMICS ───────────────────
+    
+    # 6. Profitability per Segment
+    if profit_col:
+        p_dim = category_col or primary_dim
+        if p_dim:
+            data = _smart_aggregate(df, p_dim, profit_col, limit=10)
+            if data:
+                add_chart(ChartRecommendation(
+                    slot='', title=_create_smart_title(profit_col, p_dim),
+                    chart_type="bar", data=data, confidence="HIGH",
+                    reason="Bottom-line analysis per segment",
+                    format_type="currency"
+                ))
+
+    # 7. Unit Economics (Margins & Discounts)
+    if revenue_col and profit_col and category_col:
+        try:
+            cat_group = df.groupby(category_col)[[profit_col, revenue_col]].sum().reset_index()
+            cat_group = cat_group[cat_group[revenue_col] > 0]
+            cat_group['margin_pct'] = (cat_group[profit_col] / cat_group[revenue_col]) * 100
+            top_margins = cat_group.sort_values('margin_pct', ascending=False).head(10)
+            data = top_margins.rename(columns={category_col: 'name', 'margin_pct': 'value'}).to_dict('records')
+            if data:
+                add_chart(ChartRecommendation(
+                    slot='', title=f"Profit Margin (%) by {_beautify_column_name(category_col)}",
+                    chart_type="hbar", data=data, confidence="HIGH",
+                    reason="Unit Economics: Which segments are actually profitable?",
+                    format_type="percentage"
+                ))
+        except: pass
+
+    # 6. Discount Impact
+    if discount_col and revenue_col:
+        d_dim = category_col or secondary_dim or geo_col
+        if d_dim:
+            data = _safe_groupby_sum(df, d_dim, discount_col, limit=10)
+            if data:
+                add_chart(ChartRecommendation(
+                    slot='', title=f"{_beautify_column_name(discount_col)} Value by {_beautify_column_name(d_dim)}",
+                    chart_type="bar", data=data, confidence="HIGH",
+                    reason="Revenue Leakage: Where are we losing margin?",
+                    format_type="currency"
+                ))
+
+    # 7. Discount vs Profit Scatter
+    if discount_col and profit_col:
+        data = _get_scatter_data(df, discount_col, profit_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f"{_beautify_column_name(discount_col)} vs {_beautify_column_name(profit_col)}",
+                chart_type="scatter", data=data, confidence="MEDIUM",
+                reason="Promotional Effectiveness: Do discounts kill profitability?",
+                format_type="currency"
+            ))
+
+    # ── TIER 3: CUSTOMER-CENTRIC (RFM Proxies) ─────────────
+    
+    if customer_col:
+        # 8. Purchase Frequency
+        if order_col:
+            try:
+                order_counts = df.groupby(customer_col)[order_col].nunique()
+                bins = [0, 1, 2, 5, 100000]
+                labels = ['1 Order', '2 Orders', '3-5 Orders', '5+ Orders']
+                freq_dist = pd.cut(order_counts, bins=bins, labels=labels).value_counts().reset_index()
+                freq_dist.columns = ['name', 'value']
+                data = freq_dist.to_dict('records')
+                # Filter out zeroes
+                data = [d for d in data if d['value'] > 0]
+                if data:
+                    add_chart(ChartRecommendation(
+                        slot='', title=f"{_beautify_column_name(customer_col)} Purchase Frequency",
+                        chart_type="donut", data=data, confidence="HIGH",
+                        reason="Customer Loyalty: One-time buyers vs. Repeat customers",
+                        format_type="number",
+                        value_label='Customers'
+                    ))
+            except Exception:
+                pass
+
+        # 9. Top Customers by Revenue
+        if revenue_col:
+            data = _smart_aggregate(df, customer_col, revenue_col, limit=10)
+            if data:
+                add_chart(ChartRecommendation(
+                    slot='', title=_create_smart_title(revenue_col, customer_col),
+                    chart_type="hbar", data=data, confidence="HIGH",
+                    reason="Client Concentration: High-value VIP customers",
+                    format_type="currency"
+                ))
+
+        # 10. Avg Order Value (AOV)
+        if order_col and revenue_col and category_col:
+            try:
+                aov_df = df.groupby(category_col).agg({revenue_col: 'sum', order_col: 'nunique'}).reset_index()
+                aov_df = aov_df[aov_df[order_col] > 0]
+                aov_df['AOV'] = aov_df[revenue_col] / aov_df[order_col]
+                data = aov_df.sort_values('AOV', ascending=False).head(10).rename(columns={category_col: 'name', 'AOV': 'value'}).to_dict('records')
+                if data:
+                    add_chart(ChartRecommendation(
+                        slot='', title=f"Avg. {_beautify_column_name(order_col)} Value by {_beautify_column_name(category_col)}",
+                        chart_type="bar", data=data, confidence="HIGH",
+                        reason="Basket Size: Which segments spend more per checkout?",
+                        format_type="currency"
+                    ))
+            except Exception:
+                pass
+
+    # ── TIER 4: OPERATIONAL & GEOGRAPHIC VOLUME ──────────────────────
+
+    # 11. Geographic Spread
+    if geo_col and revenue_col:
+        data = _smart_aggregate(df, geo_col, revenue_col, limit=10)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=_create_smart_title(revenue_col, geo_col),
+                chart_type="hbar", data=data, confidence="HIGH",
+                reason="Market Penetration: Top performing regions",
+                format_type="currency"
+            ))
+            
+    # 12. Quantity Trend
+    if date_col and qty_col:
+        data = _get_time_trend(df, date_col, qty_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=f"{_get_metric_prefix(qty_col)} Movement Trend",
+                chart_type="line", data=data, confidence="MEDIUM",
+                reason="Operational Volume Forecasting",
+                format_type="number"
+            ))
+
+    # 13. Top Products by Quantity
+    if product_col and qty_col:
+        data = _smart_aggregate(df, product_col, qty_col, limit=10)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='', title=_create_smart_title(qty_col, product_col),
+                chart_type="hbar", data=data, confidence="MEDIUM",
+                reason="Velocity: Products with highest movement/turnover",
+                format_type="number"
+            ))
+
+    # ── TIER 5: SMART FALLBACKS (Ensure 15+ rich charts) ─────────────
+    
+    extra_dims = [d for d in pd_ if d not in (product_col, category_col, geo_col, customer_col, order_col)]
+    for i, edim in enumerate(extra_dims):
+        if len(charts) >= 22:
+            break
+            
+        # Segment Distribution
+        rec = _distribution_chart(
+            df, edim,
+            title=f"{_beautify_column_name(edim)} Breakdown",
+            confidence="MEDIUM",
+            reason="Data Diversity: Exploring secondary segments",
+            value_label='Orders'
+        )
+        if rec:
+            add_chart(rec)
+            
+        # Metric by Extra Dim
+        if revenue_col:
+            data = _safe_groupby_sum(df, edim, revenue_col, limit=10)
+            if data:
+                add_chart(ChartRecommendation(
+                    slot='', title=f"{_get_metric_prefix(revenue_col)} by {_beautify_column_name(edim)}",
+                    chart_type="hbar", data=data, confidence="MEDIUM",
+                    reason="Deep Dive: Uncovering hidden revenue pockets"
+                ))
+    
+    # Fill remaining slots using secondary metrics with primary dimensions
+    for metric in pm:
+        if len(charts) >= 22:
+            break
+        if metric in (revenue_col, qty_col, profit_col, discount_col, cost_col):
+            continue
+            
+        if category_col:
+             data = _safe_groupby_sum(df, category_col, metric, limit=10)
+             if data:
+                 add_chart(ChartRecommendation(
+                     slot='', title=f"{_beautify_column_name(metric)} by {_beautify_column_name(category_col)}",
+                     chart_type="bar", data=data, confidence="LOW",
+                     reason="Exhaustive metric coverage fallback"
+                 ))
+
+    # Final guarantee to ensure we don't fall short if data is extremely simple
+    if primary_dim and qty_col and len(charts) < 15:
+        data = _safe_groupby_sum(df, primary_dim, qty_col)
+        if data:
+             add_chart(ChartRecommendation(
+                 slot='', title=f"{_get_metric_prefix(qty_col)} breakdown by {_beautify_column_name(primary_dim)}",
+                 chart_type="donut", data=data, confidence="LOW",
+                 reason="Volume breakdown"
+             ))
+
+    # Slot normalization
+    for i, c in enumerate(charts):
+        c.slot = f"slot_{i+1}"
+
+    return charts
+
+
+
+def _generate_geo_charts(df: pd.DataFrame, classification: ColumnClassification) -> List[ChartRecommendation]:
+    """
+    Generate a SINGLE multi-metric geographic map chart.
+    Merges revenue, profit, and other financial metrics into one map.
+    Tooltip will display: California — Revenue: $2M, Profit: $500K
+    """
+    charts = []
+
+    # Fetch semantic_similarity safely
+    try:
+        from .semantic_resolver import semantic_similarity
+        def _semantic_check(col, keywords, threshold=0.8):
+            return any(semantic_similarity(kw, col) >= threshold for kw in keywords)
+    except ImportError:
+        def _semantic_check(col, keywords, threshold=0.8):
+            return any(kw in col.lower() for kw in keywords)
+
+    # 1. Find all geo-type dimension columns
+    geo_keywords = ['country', 'state', 'province', 'region', 'continent', 'nation', 'territory']
+    geo_cols = [d for d in classification.dimensions if _semantic_check(d, geo_keywords)]
+
+    if not geo_cols:
+        return charts
+
+    # 2. Match ALL financial metrics (not just one)
+    revenue_keywords = ['revenue', 'sales', 'profit', 'amount', 'total_charges', 'monthly_charges', 'cost', 'earnings']
+    financial_metrics = [m for m in classification.metrics if _semantic_check(m, revenue_keywords)]
+    
+    # Fallback: use first metric if no financial ones found
+    if not financial_metrics:
+        financial_metrics = classification.metrics[:1] if classification.metrics else []
+    
+    if not financial_metrics:
+        return charts
+
+    primary_metric = financial_metrics[0]
+
+    # 3. Prefer State column for US drilling; fallback to Country, then first geo
+    priority_order = ['state', 'country', 'region']
+    best_geo = geo_cols[0]
+    for priority in priority_order:
+        match = next((c for c in geo_cols if _semantic_check(c, [priority])), None)
+        if match:
+            best_geo = match
+            break
+
+    # 4. Build multi-metric data payload
+    # Primary metric for coloring (value field), additional metrics embedded
+    try:
+        grouped = df.groupby(best_geo)
+        primary_data = grouped[primary_metric].sum().sort_values(ascending=False).head(60)
+        
+        # Build secondary metric aggregations
+        secondary_aggs = {}
+        for m in financial_metrics[1:3]:  # Max 3 metrics total (primary + 2 secondary)
+            secondary_aggs[m] = grouped[m].sum()
+        
+        data = []
+        for geo_name, primary_val in primary_data.items():
+            if pd.isna(primary_val):
+                continue
+            entry = {
+                "name": str(geo_name),
+                "value": round(float(primary_val), 2),
+            }
+            
+            # Embed additional metrics for multi-metric tooltip
+            if secondary_aggs:
+                metrics_dict = {_beautify_column_name(primary_metric): round(float(primary_val), 2)}
+                for m, agg_series in secondary_aggs.items():
+                    val = agg_series.get(geo_name, 0)
+                    if pd.notna(val):
+                        metrics_dict[_beautify_column_name(m)] = round(float(val), 2)
+                entry["metrics"] = metrics_dict
+            
+            data.append(entry)
+    except Exception:
+        data = _smart_aggregate(df, best_geo, primary_metric, limit=60)
+
+    if not data:
+        return charts
+
+    # 5. Detect map type
+    col_values = df[best_geo].dropna().unique().tolist()
+    map_type = _detect_map_type(col_values)
+
+    if map_type:
+        # Build a professional title
+        metric_names = [_beautify_column_name(m) for m in financial_metrics[:3]]
+        title = f"{'& '.join(metric_names)} by {_beautify_column_name(best_geo)} Map" if len(metric_names) > 1 else _create_smart_title(primary_metric, best_geo) + " Map"
+        
+        charts.append(ChartRecommendation(
+            slot="slot_geo",
+            title=title,
+            chart_type="geo_map",
+            data=data,
+            confidence="HIGH",
+            reason=f"Multi-metric geographic analysis across {best_geo}",
+            geo_meta={
+                "map_type": map_type,
+                "geo_col": best_geo,
+                "metric_col": primary_metric,
+                "metrics": [_beautify_column_name(m) for m in financial_metrics[:3]],
+            },
+            format_type="currency"
+        ))
+
+    return charts
+
+
+def _generate_generic_charts(df: pd.DataFrame, classification: ColumnClassification) -> List[ChartRecommendation]:
+    """Generate charts for Generic/Unknown domain."""
+    charts = []
+    
+    # 1. Primary analysis
+    if classification.metrics and classification.dimensions:
+        metric = classification.metrics[0]
+        dim = classification.dimensions[0]
+        data = _smart_aggregate(df, dim, metric)
+        if data:
+            charts.append(ChartRecommendation(
+                slot="slot_1", title=_create_smart_title(metric, dim),
+                chart_type="bar", data=data, confidence="MEDIUM",
+                reason="Primary metric breakdown"
+            ))
+    
+    # 2. Secondary analysis
+    if len(classification.metrics) > 1 and len(classification.dimensions) > 1:
+        metric = classification.metrics[1]
+        dim = classification.dimensions[1]
+        data = _smart_aggregate(df, dim, metric)
+        if data:
+            charts.append(ChartRecommendation(
+                slot="slot_2", title=_create_smart_title(metric, dim),
+                chart_type="hbar", data=data, confidence="MEDIUM",
+                reason="Secondary analysis"
+            ))
+    
+    # 3. Time trend
+    if classification.dates and classification.metrics:
+        date_col = classification.dates[0]
+        metric = classification.metrics[0]
+        data = _get_time_trend(df, date_col, metric)
+        if data:
+            charts.append(ChartRecommendation(
+                slot="slot_3", title=_create_smart_title(metric, date_col) + " Trend",
+                chart_type="line", data=data, confidence="MEDIUM",
+                reason="Time series analysis"
+            ))
+    
+    # 4. Correlation
+    if len(classification.metrics) >= 2:
+        m1, m2 = classification.metrics[:2]
+        data = _get_scatter_data(df, m1, m2)
+        if data:
+            charts.append(ChartRecommendation(
+                slot="slot_4", title=_create_smart_title(m1, "") + " vs " + _beautify_column_name(m2),
+                chart_type="scatter", data=data, confidence="MEDIUM",
+                reason="Metric correlation"
+            ))
+    
+    # 5+. Distributions
+    for dim in classification.dimensions:
+        if len(charts) >= 12: break
+        rec = _distribution_chart(
+            df, dim, title=f"{_beautify_column_name(dim)} Distribution",
+            confidence="MEDIUM", reason="Category distribution", value_label='Records'
+        )
+        if rec:
+            rec.slot = f"slot_{len(charts) + 1}"
+            charts.append(rec)
+    
+    return charts
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+
+def _generate_marketing_charts(df: pd.DataFrame, classification: ColumnClassification) -> List[ChartRecommendation]:
+    """Generate charts tailored for the Marketing domain."""
+    charts = []
+    def add_chart(rec):
+        if rec: charts.append(rec)
+            
+    pm = classification.metrics
+    pd_ = classification.dimensions
+    dates = classification.dates
+    
+    imp_col = next((c for c in pm if 'impression' in c.lower() or 'view' in c.lower()), None)
+    click_col = next((c for c in pm if 'click' in c.lower()), None)
+    spend_col = next((c for c in pm if 'spend' in c.lower() or 'cost' in c.lower()), None)
+    conv_col = next((c for c in pm if 'conversion' in c.lower() or 'lead' in c.lower()), None)
+    
+    campaign_col = next((c for c in pd_ if 'campaign' in c.lower() or 'ad' in c.lower()), None)
+    channel_col = next((c for c in pd_ if 'channel' in c.lower() or 'source' in c.lower() or 'medium' in c.lower()), None)
+    
+    primary_dim = channel_col or campaign_col or (pd_[0] if pd_ else None)
+    
+    if primary_dim and spend_col:
+        data = _safe_groupby_sum(df, primary_dim, spend_col)
+        add_chart(ChartRecommendation('', f'Ad Spend by {_beautify_column_name(primary_dim)}', 'hbar', data, 'HIGH', 'Spend allocation', format_type='currency'))
+        
+    if primary_dim and conv_col:
+        data = _safe_groupby_sum(df, primary_dim, conv_col)
+        add_chart(ChartRecommendation('', f'Conversions by {_beautify_column_name(primary_dim)}', 'donut', data, 'HIGH', 'Top performing sources', format_type='number'))
+
+    if spend_col and conv_col:
+        data = _get_scatter_data(df, spend_col, conv_col, label_col=primary_dim)
+        add_chart(ChartRecommendation('', 'Spend vs Conversions', 'scatter', data, 'HIGH', 'Cost acquisition efficiency', format_type='number'))
+
+    if dates and click_col:
+        data = _get_time_trend(df, dates[0], click_col)
+        add_chart(ChartRecommendation('', 'Daily Traffic (Clicks)', 'line', data, 'HIGH', 'Traffic volume over time', format_type='number'))
+
+    charts.extend(_generate_generic_charts(df, classification))
+    return charts
+
+
+def _generate_finance_charts(df: pd.DataFrame, classification: ColumnClassification) -> List[ChartRecommendation]:
+    """Generate charts tailored for the Finance domain."""
+    charts = []
+    def add_chart(rec):
+        if rec: charts.append(rec)
+
+    pm = classification.metrics
+    pd_ = classification.dimensions
+    dates = classification.dates
+
+    income_col = next((c for c in pm if 'income' in c.lower() or 'revenue' in c.lower()), None)
+    expense_col = next((c for c in pm if 'expense' in c.lower() or 'cost' in c.lower()), None)
+    
+    dept_col = next((c for c in pd_ if 'department' in c.lower() or 'dept' in c.lower()), None)
+    cat_col = next((c for c in pd_ if 'categor' in c.lower() or 'type' in c.lower()), None)
+    primary_dim = dept_col or cat_col or (pd_[0] if pd_ else None)
+
+    if primary_dim and income_col:
+        data = _safe_groupby_sum(df, primary_dim, income_col)
+        add_chart(ChartRecommendation('', f'Income by {_beautify_column_name(primary_dim)}', 'bar', data, 'HIGH', 'Revenue sources', format_type='currency'))
+
+    if primary_dim and expense_col:
+        data = _safe_groupby_sum(df, primary_dim, expense_col)
+        add_chart(ChartRecommendation('', f'Expenses by {_beautify_column_name(primary_dim)}', 'donut', data, 'HIGH', 'Cost centers', format_type='currency'))
+
+    if dates and income_col:
+        data = _get_time_trend(df, dates[0], income_col)
+        add_chart(ChartRecommendation('', 'Cash Flow Trend', 'line', data, 'HIGH', 'Historical cashflow', format_type='currency'))
+        
+    charts.extend(_generate_generic_charts(df, classification))
+    return charts
+
+
+def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassification) -> List[ChartRecommendation]:
+    """Generate operational/clinical charts for the Healthcare domain.
+    
+    Priority order:
+    1. Condition Distribution (Bar) — where to focus expertise
+    2. Avg Age by Condition (Bar) — demographic risk factors
+    3. Insurance Provider Breakdown (Donut) — payer mix / revenue source
+    4. Billing by Condition (HBar) — highest cost conditions
+    5. Admission Types (Pie) — intake method breakdown
+    6. Billing Trend (Line) — revenue timeline
+    7. Admissions Over Time (Line) — patient volume trend
+    8. Gender (Pie) — demographics
+    
+    Explicitly EXCLUDED: Blood Type (clutter for general dashboards).
+    """
+    charts = []
+    def add_chart(rec):
+        if rec: charts.append(rec)
+
+    pm = classification.metrics
+    pd_ = classification.dimensions
+    dates = classification.dates
+
+    # Detect columns
+    cost_col = next((c for c in pm if any(kw in c.lower() for kw in ['cost', 'charge', 'bill'])), None)
+    age_col = next((c for c in pm if 'age' in c.lower()), None)
+    los_col = next((c for c in pm if 'los' in c.lower() or 'stay' in c.lower()), None)
+    
+    condition_col = next((c for c in pd_ if any(kw in c.lower() for kw in ['condition', 'diagnos', 'disease'])), None)
+    insurance_col = next((c for c in pd_ if 'insurance' in c.lower()), None)
+    admission_type_col = next((c for c in pd_ if 'admission' in c.lower()), None)
+    gender_col = next((c for c in pd_ if 'gender' in c.lower() or 'sex' in c.lower()), None)
+    dept_col = next((c for c in pd_ if 'department' in c.lower() or 'ward' in c.lower()), None)
+
+    # ── 1. Condition Distribution (Bar) ──────────────────────────────────────
+    if condition_col:
+        add_chart(_distribution_chart(
+            df, condition_col,
+            'Top Medical Conditions', 'HIGH',
+            'Identifies where expertise and equipment should be focused',
+            'Patients', prefer_pie=False
+        ))
+
+    # ── 2. Avg Age by Condition (Bar) ────────────────────────────────────────
+    if age_col and condition_col:
+        data = _safe_groupby_mean(df, condition_col, age_col)
+        if data:
+            add_chart(ChartRecommendation(
+                '', 'Avg Patient Age by Condition', 'bar', data, 'HIGH',
+                'Correlates age groups with illnesses to predict patient surges',
+                format_type='number', value_label='Years'
+            ))
+
+    # ── 3. Insurance Provider Breakdown (Donut) ──────────────────────────────
+    if insurance_col:
+        if cost_col:
+            data = _safe_groupby_sum(df, insurance_col, cost_col)
+            add_chart(ChartRecommendation(
+                '', 'Revenue by Insurance Provider', 'donut', data, 'HIGH',
+                'Payer mix — which insurers dominate your revenue stream',
+                format_type='currency', value_label='Revenue'
+            ))
+        else:
+            add_chart(_distribution_chart(
+                df, insurance_col,
+                'Insurance Provider Breakdown', 'HIGH',
+                'Payer mix by patient count', 'Patients', prefer_pie=False
+            ))
+
+    # ── 4. Billing by Condition (HBar) ───────────────────────────────────────
+    if condition_col and cost_col:
+        data = _safe_groupby_sum(df, condition_col, cost_col)
+        if data:
+            add_chart(ChartRecommendation(
+                '', 'Total Billing by Condition', 'hbar', data, 'HIGH',
+                'Highest cost conditions driving facility expenses',
+                format_type='currency', value_label='Billing Amount'
+            ))
+
+    # ── 5. Admission Types (Pie) ─────────────────────────────────────────────
+    if admission_type_col:
+        add_chart(_distribution_chart(
+            df, admission_type_col,
+            'Admission Types', 'HIGH',
+            'Emergency vs Elective vs Urgent intake breakdown',
+            'Patients', prefer_pie=True
+        ))
+
+    # ── 6. Billing Trend Over Time (Line) ────────────────────────────────────
+    if dates and cost_col:
+        data = _get_time_trend(df, dates[0], cost_col)
+        if data:
+            add_chart(ChartRecommendation(
+                '', 'Hospital Billing Trend', 'line', data, 'HIGH',
+                'Revenue timeline to track financial health',
+                format_type='currency', value_label='Billing'
+            ))
+
+    # ── 7. Patient Admissions Over Time (Line) ───────────────────────────────
+    if dates:
+        try:
+            date_col = dates[0]
+            df_temp = df.copy()
+            df_temp[date_col] = pd.to_datetime(df_temp[date_col], errors='coerce')
+            df_temp = df_temp.dropna(subset=[date_col])
+            
+            date_range = (df_temp[date_col].max() - df_temp[date_col].min()).days
+            freq = 'ME' if date_range > 365 else 'W-MON' if date_range > 60 else 'D'
+            
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq)).size().tail(30)
+            data = [{"date": str(k.date()), "value": int(v)} for k, v in trend.items()]
+            if data:
+                add_chart(ChartRecommendation(
+                    '', 'Patient Admissions Over Time', 'area', data, 'HIGH',
+                    'Patient volume trend over time',
+                    format_type='number', value_label='Admissions'
+                ))
+        except Exception:
+            pass
+
+    # ── 8. Gender Demographics (Pie) ─────────────────────────────────────────
+    if gender_col:
+        add_chart(_distribution_chart(
+            df, gender_col,
+            'Patient Demographics (Gender)', 'MEDIUM',
+            'Gender distribution of patient population',
+            'Patients', prefer_pie=True
+        ))
+
+    # ── 9. Avg LOS by Department/Condition (HBar) ───────────────────────────
+    primary_dim = dept_col or condition_col
+    if primary_dim and los_col:
+        data = _safe_groupby_mean(df, primary_dim, los_col)
+        if data:
+            add_chart(ChartRecommendation(
+                '', f'Avg Length of Stay by {_beautify_column_name(primary_dim)}', 'hbar',
+                data, 'HIGH', 'Resource utilization efficiency',
+                format_type='number', value_label='Days'
+            ))
+
+    # ── 10. Billing by Admission Type (Bar) ──────────────────────────────────
+    if admission_type_col and cost_col:
+        data = _safe_groupby_sum(df, admission_type_col, cost_col)
+        if data:
+            add_chart(ChartRecommendation(
+                '', 'Billing by Admission Type', 'bar', data, 'HIGH',
+                'Cost comparison across intake methods',
+                format_type='currency', value_label='Billing Amount'
+            ))
+
+    # Assign slot numbers
+    for i, chart in enumerate(charts):
+        chart.slot = f"slot_{i + 1}"
+    
+    return charts
+
+
+def _generate_templated_charts(df: pd.DataFrame, classification: ColumnClassification) -> List[ChartRecommendation]:
+    """
+    Phase 3: Universal Key Router.
+    Generates high-value charts based on canonical key combinations.
+    """
+    charts = []
+    maps = classification.mappings
+    mods = classification.modifiers
+    
+    # --- 1. UNCERTAINTY VIEW (Metric + Bounds) ---
+    for canonical_key, col in maps.items():
+        if not canonical_key.startswith('metric_'):
+            continue
+            
+        low_bound = None
+        high_bound = None
+        for c, m in mods.items():
+            if 'low_bound' in m and _clean_header(c) in _clean_header(col):
+                low_bound = c
+            if 'high_bound' in m and _clean_header(c) in _clean_header(col):
+                high_bound = c
+        
+        if low_bound and high_bound and maps.get('dim_date'):
+            date_col = maps['dim_date']
+            data = []
+            try:
+                df_temp = df.copy()
+                df_temp[date_col] = pd.to_datetime(df_temp[date_col], errors='coerce')
+                df_temp = df_temp.dropna(subset=[date_col, col, low_bound, high_bound])
+                df_temp = df_temp.sort_values(date_col)
+                grouped = df_temp.groupby(pd.Grouper(key=date_col, freq='D')).mean().tail(30)
+                for k, v in grouped.iterrows():
+                    data.append({
+                        "date": str(k.date()),
+                        "value": round(float(v[col]), 2),
+                        "low": round(float(v[low_bound]), 2),
+                        "high": round(float(v[high_bound]), 2)
+                    })
+            except: pass
+            
+            if data:
+                charts.append(ChartRecommendation(
+                    slot='', title=f"{_beautify_column_name(col)} with Prediction Intervals",
+                    chart_type="area_bounds", data=data, confidence="HIGH",
+                    reason="Phase 5: DA-Grade Uncertainty analysis",
+                    format_type="percentage" if _should_average_metric(col) else None
+                ))
+
+    # --- 2. TEMPORAL TREND ---
+    date_col = maps.get('dim_date')
+    if date_col:
+        metrics = [v for k, v in maps.items() if k.startswith('metric_')][:2]
+        for metric in metrics:
+            if any(metric == c.data[0].get('value_col') for c in charts if c.chart_type == "area_bounds"): continue
+            data = _get_time_trend(df, date_col, metric)
+            if data:
+                charts.append(ChartRecommendation(
+                    slot='', title=_create_smart_title(metric, date_col) + " Trend",
+                    chart_type="line", data=data, confidence="HIGH",
+                    reason="Phase 5: Time-series pattern recognition",
+                    format_type="percentage" if _should_average_metric(metric) else None
+                ))
+
+    # --- 3. ENTITY PERFORMANCE (e.g., Average Revenue by Product) ---
+    entity_col = maps.get('attr_product') or maps.get('attr_category') or maps.get('attr_diagnosis') or (classification.dimensions[0] if classification.dimensions else None)
+    primary_metric = maps.get('metric_revenue') or maps.get('metric_spend') or (classification.metrics[0] if classification.metrics else None)
+    if entity_col and primary_metric:
+        data = _smart_aggregate(df, entity_col, primary_metric, limit=10)
+        if data:
+            charts.append(ChartRecommendation(
+                slot='', title=_create_smart_title(primary_metric, entity_col),
+                chart_type="hbar", data=data, confidence="HIGH",
+                reason="Phase 5: Top-performer segmentation",
+                format_type="currency" if "revenue" in primary_metric.lower() or "profit" in primary_metric.lower() else None
+            ))
+
+    # --- 4. GEOGRAPHIC HEATMAP ---
+    geo_col = maps.get('dim_region') or maps.get('dim_country')
+    if geo_col and primary_metric:
+        data = _smart_aggregate(df, geo_col, primary_metric, limit=20)
+        if data:
+            map_type = _detect_map_type([str(d['name']) for d in data])
+            if map_type:
+                charts.append(ChartRecommendation(
+                    slot='', title=_create_smart_title(primary_metric, geo_col) + " Map",
+                    chart_type="geo_map", data=data, confidence="HIGH",
+                    reason="Phase 5: Spatial distribution analysis",
+                    geo_meta={"map_type": map_type, "column": geo_col},
+                    format_type="currency" if "revenue" in primary_metric.lower() else None
+                ))
+
+    return charts
+
+def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: ColumnClassification) -> Dict[str, Any]:
+    """
+    Recommend charts based on domain and data classification.
+    
+    Returns dict of charts for API response.
+    """
+    # ========================================
+    # PRE-FILTER & NORMALIZATION
+    # Ensure numeric columns in string format are normalized
+    # ========================================
+    df = df.copy()
+    for col in classification.metrics:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    for col in classification.dates:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
+
+    filtered_metrics = [m for m in classification.metrics if not _is_low_value_column(m)]
+    filtered_dimensions = [d for d in classification.dimensions if not _is_low_value_column(d)]
+    
+    # Create filtered classification (preserve original for reference)
+    from .column_filter import ColumnClassification as CC
+    filtered_classification = CC(
+        metrics=filtered_metrics or classification.metrics[:3],  # Fallback to first 3 if all filtered
+        dimensions=filtered_dimensions or classification.dimensions[:3],
+        targets=classification.targets,
+        dates=classification.dates,
+        excluded=classification.excluded,
+        mappings=classification.mappings
+    )
+    
+    generators = {
+        DomainType.SALES: _generate_sales_charts,
+        DomainType.CHURN: _generate_churn_charts,
+        DomainType.MARKETING: _generate_marketing_charts,
+        DomainType.FINANCE: _generate_finance_charts,
+        DomainType.HEALTHCARE: _generate_healthcare_charts,
+        DomainType.GENERIC: _generate_generic_charts,
+    }
+    
+    generator = generators.get(domain, _generate_generic_charts)
+    charts = generator(df, filtered_classification)
+    
+    # ========================================
+    # PHASE 3: Analytical Templates (Deterministic)
+    # These override generic heuristics with high-value business patterns
+    # ========================================
+    template_charts = _generate_templated_charts(df, classification)
+    geo_charts = _generate_geo_charts(df, classification)
+    
+    # ── Orchestrate Chart Priority ──
+    # Priority: 1. Geo (if hero) 2. Templates 3. Domain-Specific 4. Generic
+    charts = template_charts + charts
+    
+    if geo_charts:
+        charts = geo_charts + charts
+    
+    # ========================================
+    # POST-FILTER: Deduplicate similar charts
+    # Prevents repetitive charts with same dimension
+    # ========================================
+    charts = _deduplicate_charts(charts)
+    
+    # ========================================
+    # PHASE 4: Competitive Scoring (The "Expert" Choice)
+    # Ranks charts by identifying which dimension creates the highest
+    # mathematical spread (variance) in the target metric.
+    # ========================================
+    import statistics
+    for chart in charts:
+        try:
+            # Keep complex visualizations pinned highly
+            if chart.chart_type in ('scatter', 'area_bounds', 'line', 'map', 'geo_map'):
+                chart.variance_score = float('inf')
+            elif chart.data and isinstance(chart.data, list):
+                # Calculate the standard deviation (spread) of the grouped values
+                values = [float(d.get('value', 0)) for d in chart.data if 'value' in d and d.get('value') is not None]
+                if len(values) > 1:
+                    chart.variance_score = statistics.stdev(values)
+                else:
+                    chart.variance_score = 0
+            else:
+                chart.variance_score = 0
+        except Exception:
+            chart.variance_score = 0
+            
+    # Sort descending by variance to surface highest-impact insights
+    charts.sort(key=lambda x: getattr(x, 'variance_score', 0), reverse=True)
+    
+    # Allow up to 25 charts — churn domain produces 15 analytically distinct charts
+    charts = charts[:25]
+    
+    # Convert to dict format for API
+    result = {}
+    for i, chart in enumerate(charts):
+        # Reassign slots after deduplication
+        slot = f"slot_{i + 1}"
+        
+        # Smart unit detection
+        format_type = getattr(chart, "format_type", None)
+        title_lower = chart.title.lower()
+        if not format_type:
+            percentage_keywords = ["rate", "margin", "percent", "%", "ratio", "proportion"]
+            if any(kw in title_lower for kw in percentage_keywords):
+                format_type = "percentage"
+            elif any(kw in title_lower for kw in ['tenure', 'age', 'duration', 'months', 'years', 'days']):
+                format_type = "number"
+                if not getattr(chart, "value_label", None):
+                    chart.value_label = "Months" if 'tenure' in title_lower or 'month' in title_lower else "Years" if 'year' in title_lower else "Days"
+        
+        result[slot] = {
+            "title": chart.title,
+            "type": chart.chart_type,
+            "data": chart.data,
+            "confidence": chart.confidence,
+            "reason": chart.reason,
+            "is_percentage": format_type == "percentage"
+        }
+        if chart.categories:
+            result[slot]["categories"] = chart.categories
+        if chart.geo_meta:
+            result[slot]["geo_meta"] = chart.geo_meta
+        if format_type:
+            result[slot]["format_type"] = format_type
+        if getattr(chart, "value_label", None):
+            result[slot]["value_label"] = chart.value_label
+    
+    return result
+

@@ -1,0 +1,536 @@
+import { useState, useRef, useEffect } from 'react';
+import { chatService, type ChatMessage, type ChatSession } from '../../lib/api/chat';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { datasetService, type Dataset } from '../../lib/api/dataset';
+import ChartRenderer from '../../components/chat/ChartRenderer';
+import { PlusIcon, ChatBubbleLeftIcon, Bars3Icon, XMarkIcon, TrashIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+
+export default function ChatInterface() {
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [inputValue, setInputValue] = useState('');
+    const [isTyping, setIsTyping] = useState(false);
+    const [datasets, setDatasets] = useState<Dataset[]>([]);
+    const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const [expandedSqlMsgId, setExpandedSqlMsgId] = useState<string | null>(null);
+    const [chartModes, setChartModes] = useState<Record<string, 'chart' | 'table'>>({});
+
+    // Session History State
+    const [sessions, setSessions] = useState<ChatSession[]>([]);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages, isTyping]);
+
+    // Load datasets on mount
+    // Load available datasets
+    useEffect(() => {
+        loadDatasets();
+    }, []);
+
+    // Load session history on mount
+    useEffect(() => {
+        loadSessions();
+    }, []);
+
+    const loadDatasets = async () => {
+        try {
+            const data = await datasetService.listDatasets();
+            setDatasets(data);
+            if (data.length > 0 && !selectedDatasetId) {
+                setSelectedDatasetId(data[0].id);
+            }
+        } catch (error) {
+            console.error('Failed to load datasets:', error);
+        }
+    };
+
+    const loadSessions = async () => {
+        try {
+            const data = await chatService.listSessions();
+            setSessions(data);
+        } catch (error) {
+            console.error('Failed to load sessions:', error);
+        }
+    };
+
+    const loadSession = async (sessionId: string) => {
+        try {
+            const session = await chatService.getSession(sessionId);
+            setCurrentSessionId(session.id);
+
+            // If session has a dataset, select it
+            if (session.dataset_id) {
+                setSelectedDatasetId(session.dataset_id);
+            }
+
+            const msgs = await chatService.getMessages(sessionId);
+            // Function to map API messages if needed, or just use as is if they match
+            setMessages(msgs);
+
+            // Mobile: close sidebar on selection
+            if (window.innerWidth < 768) {
+                setIsSidebarOpen(false);
+            }
+        } catch (error) {
+            console.error('Failed to load session:', error);
+        }
+    };
+
+    const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+        e.stopPropagation();
+        if (!confirm('Are you sure you want to delete this chat session?')) return;
+
+        try {
+            await chatService.deleteSession(sessionId);
+            setSessions(prev => prev.filter(s => s.id !== sessionId));
+
+            if (currentSessionId === sessionId) {
+                setCurrentSessionId(null);
+                setMessages([]);
+            }
+        } catch (error) {
+            console.error('Failed to delete session:', error);
+        }
+    };
+
+    const handleNewChat = () => {
+        setCurrentSessionId(null);
+        setMessages([]);
+        // Keep selected dataset
+        if (window.innerWidth < 768) {
+            setIsSidebarOpen(false);
+        }
+    };
+
+    const handleDownloadCSV = (data: any, title: string) => {
+        const rows = data.data?.rows || data.rows || data.data || [];
+        if (!Array.isArray(rows) || rows.length === 0) return;
+
+        const headers = Object.keys(rows[0]).join(',');
+        const csvRows = rows.map((row: any) =>
+            Object.values(row).map(val => `"${val}"`).join(',')
+        );
+        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...csvRows].join('\n');
+        const link = document.createElement("a");
+        link.setAttribute("href", encodeURI(csvContent));
+        link.setAttribute("download", `${title || 'vizzy-data'}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleDownloadImage = (messageId: string, title: string) => {
+        const container = document.getElementById(`msg-${messageId}`);
+        if (!container) return;
+
+        // Target the chart renderer container specifically
+        const chartWrapper = container.querySelector('.vizzy-chart-container');
+        if (!chartWrapper) return;
+
+        const svg = chartWrapper.querySelector('svg');
+        if (!svg) return;
+
+        const serializer = new XMLSerializer();
+        let source = serializer.serializeToString(svg);
+        if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+            source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+        }
+
+        const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${title || 'vizzy-chart'}.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+
+    const handleSendMessage = async (text: string) => {
+        if (!text.trim()) return;
+
+        let sessionId = currentSessionId;
+
+        // If no session exists, create one first
+        if (!sessionId) {
+            try {
+                // Generate a title from the first message
+                const title = text.length > 30 ? text.substring(0, 30) + '...' : text;
+                const newSession = await chatService.createSession(selectedDatasetId || undefined, undefined, title);
+                sessionId = newSession.id;
+                setCurrentSessionId(sessionId);
+
+                // Refresh list to show new session
+                loadSessions();
+            } catch (error) {
+                console.error('Failed to create new session:', error);
+                return;
+            }
+        }
+
+        // Optimistic update
+        const tempId = Date.now().toString();
+        const userMsg: ChatMessage = {
+            id: tempId,
+            role: 'user',
+            content: text,
+            sequence: messages.length + 1
+        };
+
+        setMessages(prev => [...prev, userMsg]);
+        setInputValue('');
+        setIsTyping(true);
+
+        try {
+            const response = await chatService.sendMessage(sessionId, text);
+
+            // Replace optimistic msg with real one and add AI response
+            setMessages(prev => {
+                const filtered = prev.filter(m => m.id !== tempId);
+                return [...filtered, response.user_message, response.assistant_message];
+            });
+        } catch (error) {
+            console.error('Failed to send message:', error);
+            // TODO: Show error in UI
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: 'Sorry, I encountered an error responding to your request.',
+                sequence: prev.length + 1,
+                intent_type: 'error'
+            }]);
+        } finally {
+            setIsTyping(false);
+        }
+    };
+
+    return (
+        <div className="flex h-full bg-white dark:bg-[#0D0F12] transition-colors duration-500">
+            {/* Sidebar */}
+            <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-white dark:bg-[#16181D] border-r border-gray-200 dark:border-gray-800 transition-all duration-300 flex flex-col flex-shrink-0 overflow-hidden`}>
+                <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                    <h2 className="font-semibold text-gray-700 dark:text-gray-300">Chat History</h2>
+                    <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white">
+                        <XMarkIcon className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="p-3">
+                    <button
+                        onClick={handleNewChat}
+                        className="w-full flex items-center justify-center space-x-2 bg-primary-blue text-white py-2.5 rounded-lg hover:bg-blue-700 transition"
+                    >
+                        <PlusIcon className="w-5 h-5" />
+                        <span>New Chat</span>
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
+                    {sessions.map(session => (
+                        <div
+                            key={session.id}
+                            className={`group w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm transition cursor-pointer ${currentSessionId === session.id
+                                ? 'bg-blue-50 dark:bg-blue-900/20 text-primary-blue dark:text-blue-400 font-bold'
+                                : 'text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                }`}
+                            onClick={() => loadSession(session.id)}
+                        >
+                            <div className="flex items-start space-x-3 overflow-hidden">
+                                <ChatBubbleLeftIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                <div className="min-w-0">
+                                    <p className="font-medium truncate">{session.title || 'Untitled Chat'}</p>
+                                    <p className="text-xs text-gray-500 truncate mt-0.5">
+                                        {session.message_count} messages
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={(e) => handleDeleteSession(e, session.id)}
+                                className={`p-1.5 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 hover:text-red-600 dark:hover:text-red-400 transition opacity-0 group-hover:opacity-100 ${currentSessionId === session.id ? 'opacity-100' : ''
+                                    }`}
+                                title="Delete Session"
+                            >
+                                <TrashIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
+                    {sessions.length === 0 && (
+                        <div className="text-center py-8 text-gray-400 text-sm">
+                            No recent chats
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                {/* Header */}
+                <header className="bg-white dark:bg-[#111318] border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex-shrink-0 flex items-center justify-between transition-colors">
+                    <div className="flex items-center">
+                        <button
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            className="mr-4 text-gray-500 hover:text-primary-blue focus:outline-none transition-colors"
+                        >
+                            <Bars3Icon className="w-6 h-6" />
+                        </button>
+                        <div>
+                            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Chat Analytics</h1>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                        <span className="text-sm text-gray-600 dark:text-gray-400 hidden md:inline">Dataset:</span>
+                        <select
+                            value={selectedDatasetId}
+                            onChange={(e) => setSelectedDatasetId(e.target.value)}
+                            className="px-3 py-2 bg-white dark:bg-[#16181D] border border-gray-300 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none max-w-[200px] transition-colors"
+                        >
+                            <option value="">Select a dataset...</option>
+                            {datasets.map(ds => (
+                                <option key={ds.id} value={ds.id}>{ds.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </header>
+
+                {/* Chat Area */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {messages.length === 0 ? (
+                        <div className="flex justify-center mt-10">
+                            <div className="text-center max-w-xl">
+                                <div className="w-16 h-16 bg-gradient-to-br from-primary-blue to-accent-cyan rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Start asking questions!</h3>
+                                <p className="text-gray-600 dark:text-gray-400 mb-6">I'm your AI analytics assistant. Ask me anything about your data.</p>
+
+                                {selectedDatasetId && (
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <button onClick={() => handleSendMessage('What is the total sales?')} className="p-3 bg-white dark:bg-[#16181D] rounded-lg border border-gray-200 dark:border-gray-800 hover:border-primary-blue hover:bg-blue-50 dark:hover:bg-blue-900/10 transition text-left">
+                                            <span className="text-gray-700 dark:text-gray-300 font-medium">💰 What is the total sales?</span>
+                                        </button>
+                                        <button onClick={() => handleSendMessage('Show me revenue by region')} className="p-3 bg-white dark:bg-[#16181D] rounded-lg border border-gray-200 dark:border-gray-800 hover:border-primary-blue hover:bg-blue-50 dark:hover:bg-blue-900/10 transition text-left">
+                                            <span className="text-gray-700 dark:text-gray-300 font-medium">📊 Show me revenue by region</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {messages.map((msg) => (
+                                <div key={msg.id} id={`msg-${msg.id}`} className={`flex w-full mb-8 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'max-w-7xl w-full' : 'max-w-xl'} flex items-start space-x-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                                        {msg.role === 'assistant' && (
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-navy to-primary-blue flex items-center justify-center flex-shrink-0">
+                                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                            </div>
+                                        )}
+                                        <div className={`px-5 py-4 shadow-sm ${msg.role === 'user' ? 'bg-primary-blue text-white rounded-2xl rounded-tr-sm' : 'bg-white dark:bg-[#1C1F26] border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 rounded-2xl rounded-tl-sm'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
+                                            <div className="text-sm leading-relaxed">
+                                                {['analysis', 'visualization', 'dashboard', 'text_query'].includes(msg.intent_type || '') ? (
+                                                    <div className="space-y-4 w-full">
+                                                        <div className="markdown-content text-gray-800 dark:text-gray-200">
+                                                            <ReactMarkdown
+                                                                remarkPlugins={[remarkGfm]}
+                                                                components={{
+                                                                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                                                    h1: ({ node, ...props }) => <h1 className="text-xl font-bold text-gray-900 dark:text-white mt-4 mb-2" {...props} />,
+                                                                    h2: ({ node, ...props }) => <h2 className="text-lg font-bold text-gray-900 dark:text-white mt-3 mb-2" {...props} />,
+                                                                    ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
+                                                                    ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
+                                                                    li: ({ node, ...props }) => <li className="" {...props} />,
+                                                                    strong: ({ node, ...props }) => <strong className="font-bold text-gray-900 dark:text-white" {...props} />,
+                                                                    a: ({ node, ...props }) => <a className="text-primary-blue dark:text-blue-400 hover:underline" {...props} />,
+                                                                    code: ({ node, ...props }) => <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-sm font-mono text-red-500 dark:text-red-400" {...props} />,
+                                                                }}
+                                                            >
+                                                                {msg.content}
+                                                            </ReactMarkdown>
+                                                        </div>
+
+                                                        {msg.output_data && (() => {
+                                                            // Unwrap NL2SQL data if present for proper rendering and downloads
+                                                            const targetData = msg.output_data.type === 'nl2sql' && msg.output_data.chart
+                                                                ? { ...msg.output_data.chart, sql: msg.output_data.sql }
+                                                                : msg.output_data;
+
+                                                            const isTableMode = chartModes[msg.id] === 'table';
+                                                            const sqlQuery = targetData.sql || msg.output_data.sql;
+
+                                                            return (
+                                                                <div className={`mt-6 w-full vizzy-chart-container bg-white dark:bg-[#1C1F26] rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm pb-3`}>
+                                                                    <ChartRenderer
+                                                                        type={isTableMode ? 'table' : (targetData.type || 'unknown')}
+                                                                        data={targetData}
+                                                                        title={targetData.title || targetData.chart?.title}
+                                                                        currency={targetData.currency}
+                                                                        variant="minimal"
+                                                                    />
+
+                                                                    {/* Actions Bar */}
+                                                                    <div className="mt-4 flex flex-col border-t border-gray-100 dark:border-gray-800 pt-3">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <div className="flex items-center space-x-4">
+                                                                                {/* Visual/Data Toggle */}
+                                                                                {targetData.type !== 'kpi' && msg.output_data.response_type !== 'text' && (
+                                                                                    <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg shadow-inner">
+                                                                                        <button
+                                                                                            onClick={() => setChartModes(prev => ({ ...prev, [msg.id]: 'chart' }))}
+                                                                                            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${!isTableMode ? 'bg-white dark:bg-gray-700 text-primary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                                                        >
+                                                                                            Visual
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={() => setChartModes(prev => ({ ...prev, [msg.id]: 'table' }))}
+                                                                                            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${isTableMode ? 'bg-white dark:bg-gray-700 text-primary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                                                        >
+                                                                                            Data
+                                                                                        </button>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {sqlQuery && (
+                                                                                    <button
+                                                                                        onClick={() => setExpandedSqlMsgId(expandedSqlMsgId === msg.id ? null : msg.id)}
+                                                                                        className={`text-[10px] uppercase tracking-wider font-bold transition-colors flex items-center space-x-1.5 ${expandedSqlMsgId === msg.id ? 'text-primary-blue' : 'text-gray-400 hover:text-primary-blue'}`}
+                                                                                    >
+                                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                                                                                        <span>{expandedSqlMsgId === msg.id ? 'Hide Query' : 'View SQL'}</span>
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+
+                                                                            <div className="flex items-center space-x-3">
+                                                                                <button
+                                                                                    onClick={() => handleDownloadCSV(targetData, targetData.title || 'data')}
+                                                                                    className="flex items-center space-x-1.5 text-[10px] uppercase tracking-wider font-bold text-gray-400 hover:text-green-600 transition-colors p-1"
+                                                                                    title="Download CSV"
+                                                                                >
+                                                                                    <ArrowDownTrayIcon className="w-4 h-4" />
+                                                                                    <span>CSV</span>
+                                                                                </button>
+
+                                                                                {targetData.type !== 'kpi' && msg.output_data.response_type !== 'text' && (
+                                                                                    <button
+                                                                                        onClick={() => handleDownloadImage(msg.id, targetData.title || 'chart')}
+                                                                                        className="flex items-center space-x-1.5 text-[10px] uppercase tracking-wider font-bold text-gray-400 hover:text-blue-600 transition-colors p-1"
+                                                                                        title="Download SVG"
+                                                                                    >
+                                                                                        <ArrowDownTrayIcon className="w-4 h-4" />
+                                                                                        <span>SVG</span>
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {expandedSqlMsgId === msg.id && sqlQuery && (
+                                                                            <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-[11px] font-mono text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap border border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                                                {sqlQuery}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
+
+                                                        {/* Follow-up Suggestions */}
+                                                        {msg.output_data?.followup_suggestions?.length > 0 && (
+                                                            <div className="mt-6 flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2 duration-700">
+                                                                {msg.output_data.followup_suggestions.map((suggestion: string, idx: number) => (
+                                                                    <button
+                                                                        key={idx}
+                                                                        onClick={() => handleSendMessage(suggestion)}
+                                                                        className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-full text-xs font-medium text-primary-blue dark:text-blue-400 hover:bg-primary-blue hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all duration-300 transform hover:scale-105"
+                                                                    >
+                                                                        {suggestion}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="markdown-content">
+                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                            {msg.content}
+                                                        </ReactMarkdown>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {msg.role === 'user' && (
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-blue to-accent-cyan flex items-center justify-center text-white font-bold flex-shrink-0">
+                                                U
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            {isTyping && (
+                                <div className="flex justify-start">
+                                    <div className="max-w-xl flex items-start space-x-3">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-800 to-primary-blue flex items-center justify-center flex-shrink-0">
+                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                        </div>
+                                        <div className="bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-800 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm transition-colors duration-300">
+                                            <div className="flex space-x-1">
+                                                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce"></div>
+                                                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce delay-75"></div>
+                                                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce delay-150"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Area */}
+                <div className="bg-white dark:bg-[#111318] border-t border-gray-200 dark:border-gray-800 p-6 flex-shrink-0 transition-colors duration-500">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="flex items-end space-x-4">
+                            <div className="flex-1">
+                                <textarea
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSendMessage(inputValue);
+                                        }
+                                    }}
+                                    rows={1}
+                                    placeholder="Type your question here..."
+                                    disabled={!selectedDatasetId}
+                                    className="w-full px-4 py-3 bg-white dark:bg-[#1C1F26] border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent resize-none outline-none disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-colors"
+                                ></textarea>
+                            </div>
+                            <button
+                                onClick={() => handleSendMessage(inputValue)}
+                                disabled={!inputValue.trim() || isTyping || !selectedDatasetId}
+                                className="px-6 py-3 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <span>Send</span>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                            </button>
+                        </div>
+                        {!selectedDatasetId && <p className="text-xs text-red-500 mt-2">Please select a dataset to start chatting</p>}
+                        <p className="text-xs text-gray-500 mt-2">Press Enter to send • Shift+Enter for new line</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}

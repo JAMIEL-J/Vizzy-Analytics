@@ -1,0 +1,218 @@
+"""
+Security and authentication module.
+
+Belongs to: core layer
+Responsibility: JWT auth, token management, role verification, password hashing
+Restrictions: No business logic, no datasets, no analytics
+"""
+
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import Annotated, Callable, Optional
+
+from fastapi import Depends, Header
+from jose import JWTError, jwt
+import bcrypt
+from pydantic import BaseModel
+
+from .config import get_settings
+from .exceptions import AuthenticationError, AuthorizationError
+
+
+def hash_password(password: str) -> str:
+    """
+    Hash a plain-text password using bcrypt.
+    """
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a plain-text password against a hashed password.
+    """
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+
+
+class UserRole(str, Enum):
+    """User role definitions."""
+
+    USER = "user"
+    ADMIN = "admin"
+
+
+class TokenData(BaseModel):
+    """Token payload data."""
+
+    user_id: str
+    role: UserRole
+    exp: datetime
+
+
+class CurrentUser(BaseModel):
+    """Authenticated user context."""
+
+    user_id: str
+    role: UserRole
+
+
+def create_access_token(
+    user_id: str,
+    role: UserRole,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """
+    Create a JWT access token.
+    """
+    settings = get_settings()
+
+    expire = datetime.now(timezone.utc) + (
+        expires_delta
+        if expires_delta
+        else timedelta(minutes=settings.auth.access_token_expire_minutes)
+    )
+
+    payload = {
+        "sub": user_id,
+        "role": role.value,
+        "exp": int(expire.timestamp()),  # FIX: exp as UNIX timestamp
+        "type": "access",
+    }
+
+    return jwt.encode(
+        payload,
+        settings.auth.secret_key.get_secret_value(),
+        algorithm=settings.auth.algorithm,
+    )
+
+
+def create_refresh_token(
+    user_id: str,
+    role: UserRole,
+) -> str:
+    """
+    Create a JWT refresh token.
+    """
+    settings = get_settings()
+
+    expire = datetime.now(timezone.utc) + timedelta(
+        days=settings.auth.refresh_token_expire_days
+    )
+
+    payload = {
+        "sub": user_id,
+        "role": role.value,
+        "exp": int(expire.timestamp()),  # FIX: exp as UNIX timestamp
+        "type": "refresh",
+    }
+
+    return jwt.encode(
+        payload,
+        settings.auth.secret_key.get_secret_value(),
+        algorithm=settings.auth.algorithm,
+    )
+
+
+def verify_token(token: str, token_type: str = "access") -> TokenData:
+    """
+    Verify and decode a JWT token.
+    """
+    settings = get_settings()
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.auth.secret_key.get_secret_value(),
+            algorithms=[settings.auth.algorithm],
+        )
+    except JWTError as e:
+        raise AuthenticationError("Invalid token", details=str(e))
+
+    if payload.get("type") != token_type:
+        raise AuthenticationError(
+            message=f"Invalid token type, expected {token_type}"
+        )
+
+    user_id = payload.get("sub")
+    role_str = payload.get("role")
+    exp = payload.get("exp")
+
+    if not user_id or not role_str or not exp:
+        raise AuthenticationError("Invalid token payload")
+
+    try:
+        role = UserRole(role_str)
+    except ValueError:
+        raise AuthenticationError("Invalid role in token")
+
+    exp_dt = datetime.fromtimestamp(exp, tz=timezone.utc)
+
+    # FIX: explicit expiration check
+    if datetime.now(timezone.utc) > exp_dt:
+        raise AuthenticationError("Token expired")
+
+    return TokenData(
+        user_id=user_id,
+        role=role,
+        exp=exp_dt,
+    )
+
+
+async def get_current_user(
+    authorization: Optional[str] = Header(default=None),
+) -> CurrentUser:
+    """
+    FastAPI dependency to get current authenticated user.
+    """
+    # FIX: explicit missing-header handling
+    if not authorization:
+        raise AuthenticationError("Authorization header missing")
+
+    if not authorization.startswith("Bearer "):
+        raise AuthenticationError("Invalid authorization header format")
+
+    token = authorization[7:]
+    token_data = verify_token(token)
+
+    return CurrentUser(
+        user_id=token_data.user_id,
+        role=token_data.role,
+    )
+
+
+def require_role(required_role: UserRole) -> Callable:
+    """
+    Create a dependency that requires a specific role.
+    """
+
+    async def role_checker(
+        current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    ) -> CurrentUser:
+        if current_user.role == UserRole.ADMIN:
+            return current_user
+
+        if current_user.role != required_role:
+            raise AuthorizationError(
+                message="Insufficient permissions",
+                details=f"Required role: {required_role.value}",
+            )
+
+        return current_user
+
+    return role_checker
+
+
+def verify_resource_ownership(
+    resource_owner_id: str,
+    current_user: CurrentUser,
+) -> None:
+    """
+    Verify that the current user owns the resource or is admin.
+    """
+    if current_user.role == UserRole.ADMIN:
+        return
+
+    if current_user.user_id != resource_owner_id:
+        raise AuthorizationError(
+            message="Access denied",
+            details="You do not have access to this resource",
+        )

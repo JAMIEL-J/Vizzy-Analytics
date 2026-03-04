@@ -1,0 +1,100 @@
+/* Import Tailwind first */
+@import 'tailwindcss';
+
+/* Import custom animations (must come before any other statements) */
+@import './pages/public/landing.css';
+
+/* Tailwind v4: use .dark class strategy (config darkMode:'class' is ignored in v4) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Vizzy Custom Theme - Tailwind v4 */
+@theme {
+    --color-navy: #14213d;
+    --color-primary-blue: #2962ff;
+    --color-accent-cyan: #00c2ff;
+    --color-accent-orange: #ff6b35;
+    --color-admin-purple: #7c3aed;
+}
+
+/* Custom gradient utilities to match prototype */
+.gradient-bg {
+    background: linear-gradient(135deg, #14213d 0%, #2962ff 100%);
+}
+
+.gradient-bg-dark {
+    background: linear-gradient(135deg, #0a0f1c 0%, #1a2a4a 100%);
+}
+
+.gradient-text {
+    background: linear-gradient(135deg, #120f1a 0%, #4b4a4d 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: inline-block;
+    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.3));
+}
+
+/* Landing page font - Groote */
+.font-landing {
+    font-family: 'Groote', Inter, system-ui, sans-serif;
+}
+
+:root {
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    /* Theme Variables */
+    --bg-main: #f9fafb;
+    --bg-card: #ffffff;
+    --text-main: #111827;
+    --text-muted: #6b7280;
+    --border-main: #f3f4f6;
+}
+
+.dark {
+    --bg-main: #0a0f1c;
+    --bg-card: #111827;
+    --text-main: #f9fafb;
+    --text-muted: #9ca3af;
+    --border-main: #1f2937;
+}
+
+body {
+    background-color: var(--bg-main);
+    /* Fix #11: Fallback gradient so no white flash before WebGL canvas loads */
+    background-image: linear-gradient(135deg, #dd5fd7 0%, #6acee2 50%, #125d7d 100%);
+    color: var(--text-main);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Fix #14: Smooth anchor scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Fix #19: Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+body {
+    min-height: 100vh;
+}
+
+#root {
+    min-height: 100vh;
+}
