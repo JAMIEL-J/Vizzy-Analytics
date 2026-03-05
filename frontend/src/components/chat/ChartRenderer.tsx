@@ -192,8 +192,8 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             axisLine={{ stroke: gridColor }}
                             tickLine={false}
                             interval={0}
-                            angle={chartData.length > 5 ? -45 : 0}
-                            textAnchor={chartData.length > 5 ? "end" : "middle"}
+                            angle={0}
+                            textAnchor="middle"
                             height={60}
                         />
                         <YAxis
