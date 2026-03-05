@@ -39,6 +39,8 @@ def build_chart_from_nl2sql(nl2sql_result: dict) -> Dict[str, Any]:
     y_axis = nl2sql_result.get("y_axis", "")
     explanation_text = nl2sql_result.get("explanation", "")
 
+    column_metadata = nl2sql_result.get("column_metadata", {})
+
     if not data:
         return _empty_result(title)
 
@@ -53,6 +55,12 @@ def build_chart_from_nl2sql(nl2sql_result: dict) -> Dict[str, Any]:
 
     builder = builders.get(chart_type, _build_table)
     chart_spec = builder(data, columns, title, x_axis, y_axis)
+    
+    # Attach column metadata for frontend formatting
+    chart_spec["column_metadata"] = {
+        col: column_metadata.get(col, {})
+        for col in columns
+    }
 
     return {
         "chart": chart_spec,

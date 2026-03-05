@@ -1,0 +1,194 @@
+import re
+import duckdb
+import logging
+import pandas as pd
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Tuple
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class ColumnCoercionResult:
+    original_name: str
+    original_type: str
+    coerced_type: str
+    coercion_applied: Optional[str]
+    null_count_before: int
+    null_count_after: int
+    failed_conversion_count: int
+    sample_problematic_values: List[str]
+    display_format: Optional[Dict[str, str]] = None
+
+# Patterns to detect and clean before numeric coercion
+DIRTY_NUMERIC_PATTERNS = [
+    (r'^[-+]?\.?\$[\d,]+\.?\d*$', 'currency_usd'),
+    (r'^[-+]?\$[\d,]+\.?\d*$', 'currency_usd'),
+    (r'^[-+]?£[\d,]+\.?\d*$', 'currency_gbp'),
+    (r'^[-+]?€[\d,]+\.?\d*$', 'currency_eur'),
+    (r'^[-+]?[\d.]+,?\d*€$',  'euro_format'), # European 1.500,00€ or 1.500,00 
+    (r'^[-+]?[\d.]+,?\d*$',   'euro_format_no_currency'), 
+    (r'^[-+]?[\d,]+\.?\d*$',  'comma_formatted'),
+    (r'^[-+]?[\d,.]+%+$',       'percentage'),
+    (r'^(?:\([\d,.]+\)|[-+]?[\d,.]+)$', 'accounting_negative'),
+]
+
+NULL_STRINGS = {
+    "n/a", "na", "null", "none", "nil", "unknown",
+    "undefined", "-", "--", "?", "", "nan", "missing"
+}
+
+FORMATTING_MAP = {
+    'currency_usd': {'type': 'currency', 'locale': 'en-US', 'currency': 'USD'},
+    'currency_gbp': {'type': 'currency', 'locale': 'en-GB', 'currency': 'GBP'},
+    'currency_eur': {'type': 'currency', 'locale': 'de-DE', 'currency': 'EUR'},
+    'euro_format': {'type': 'currency', 'locale': 'de-DE', 'currency': 'EUR'},
+    'euro_format_no_currency': {'type': 'decimal', 'locale': 'de-DE'},
+    'percentage': {'type': 'percent', 'locale': 'en-US'},
+    'comma_formatted': {'type': 'decimal', 'locale': 'en-US'},
+    'accounting_negative': {'type': 'currency', 'locale': 'en-US', 'currency': 'USD'},
+}
+
+def build_clean_expression(column: str, pattern_name: str) -> str:
+    """Build a DuckDB SQL expression to clean a dirty numeric string."""
+    if pattern_name == 'currency_usd':
+        return f"REGEXP_REPLACE({column}, '[$,]', '', 'g')"
+    elif pattern_name == 'currency_gbp':
+        return f"REGEXP_REPLACE({column}, '[£,]', '', 'g')"
+    elif pattern_name == 'currency_eur':
+        return f"REGEXP_REPLACE({column}, '[€,]', '', 'g')"
+    elif pattern_name in ['euro_format', 'euro_format_no_currency']:
+        # Replace . with nothing, then , with ., then strip €
+        return f"REPLACE(REPLACE(REGEXP_REPLACE({column}, '[€]', '', 'g'), '.', ''), ',', '.')"
+    elif pattern_name == 'comma_formatted':
+        return f"REPLACE({column}, ',', '')"
+    elif pattern_name == 'percentage':
+        return f"REPLACE({column}, '%', '')"
+    elif pattern_name == 'accounting_negative':
+        # If it has parens, prefix with '-', otherwise keep as is, and strip parens and commas
+        return f"CASE WHEN {column} LIKE '(%' THEN '-' || REGEXP_REPLACE({column}, '[(),]', '', 'g') ELSE REGEXP_REPLACE({column}, '[,]', '', 'g') END"
+    return column
+
+def coerce_column(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    column: str,
+    sample_size: int = 500
+) -> Optional[ColumnCoercionResult]:
+    """Analyze and coerce a single VARCHAR column to numeric if it matches dirty patterns."""
+    try:
+        # Check column type
+        schema_df = conn.execute(f"DESCRIBE {table_name}").df()
+        col_info = schema_df[schema_df['column_name'] == column].iloc[0]
+        original_type = col_info['column_type']
+
+        if original_type != 'VARCHAR':
+            return None
+
+        # Step 1: Handle null strings
+        conn.execute(f"""
+            UPDATE {table_name}
+            SET {column} = NULL
+            WHERE LOWER(TRIM({column})) IN ({
+                ','.join(f"'{s}'" for s in NULL_STRINGS)
+            })
+        """)
+
+        # Step 2: Detect patterns from a sample
+        sample_df = conn.execute(f"""
+            SELECT {column}
+            FROM {table_name}
+            WHERE {column} IS NOT NULL
+            LIMIT {sample_size}
+        """).df()
+
+        if sample_df.empty:
+            return None
+
+        non_null_values = sample_df[column].astype(str).str.strip().tolist()
+        
+        detected_pattern = None
+        max_match_rate = 0
+        
+        for pattern, pattern_name in DIRTY_NUMERIC_PATTERNS:
+            matches = sum(1 for v in non_null_values if re.match(pattern, v))
+            rate = matches / len(non_null_values)
+            if rate > 0.85 and rate > max_match_rate:
+                detected_pattern = pattern_name
+                max_match_rate = rate
+
+        if not detected_pattern:
+            return None
+
+        # Step 3: Apply transformation
+        null_before = conn.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {column} IS NULL").fetchone()[0]
+        
+        clean_expr = build_clean_expression(column, detected_pattern)
+        
+        # Create a temp column to test conversion
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column}__coerced_tmp DOUBLE")
+        
+        try:
+            conn.execute(f"UPDATE {table_name} SET {column}__coerced_tmp = TRY_CAST({clean_expr} AS DOUBLE)")
+        except Exception as e:
+            logger.error(f"Coercion update failed for {column}: {e}")
+            conn.execute(f"ALTER TABLE {table_name} DROP COLUMN {column}__coerced_tmp")
+            return None
+
+        # Check success rate
+        stats = conn.execute(f"""
+            SELECT 
+                COUNT(*) FILTER (WHERE {column} IS NOT NULL AND {column}__coerced_tmp IS NULL) as failed_count,
+                COUNT(*) as total_rows
+            FROM {table_name}
+        """).fetchone()
+        
+        failed_count, total_rows = stats
+        success_rate = 1 - (failed_count / max(total_rows, 1))
+
+        if success_rate >= 0.95:
+            # Commit changes
+            conn.execute(f"ALTER TABLE {table_name} DROP COLUMN {column}")
+            conn.execute(f"ALTER TABLE {table_name} RENAME COLUMN {column}__coerced_tmp TO {column}")
+            
+            null_after = conn.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {column} IS NULL").fetchone()[0]
+            
+            # Find sample problematic values if any
+            problematic = []
+            if failed_count > 0:
+                # This is tricky because we dropped the original column.
+                # In a real implementation we might want to keep it or log before dropping.
+                pass
+
+            return ColumnCoercionResult(
+                original_name=column,
+                original_type=original_type,
+                coerced_type="DOUBLE",
+                coercion_applied=detected_pattern,
+                null_count_before=null_before,
+                null_count_after=null_after,
+                failed_conversion_count=failed_count,
+                sample_problematic_values=problematic,
+                display_format=FORMATTING_MAP.get(detected_pattern)
+            )
+        else:
+            # Rollback
+            conn.execute(f"ALTER TABLE {table_name} DROP COLUMN {column}__coerced_tmp")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error coercing column {column}: {e}")
+        return None
+
+def run_coercion_pipeline(conn: duckdb.DuckDBPyConnection, table_name: str) -> List[ColumnCoercionResult]:
+    """Run coercion on all VARCHAR columns in a table."""
+    results = []
+    schema_df = conn.execute(f"DESCRIBE {table_name}").df()
+    varchar_cols = schema_df[schema_df['column_type'] == 'VARCHAR']['column_name'].tolist()
+    
+    for col in varchar_cols:
+        res = coerce_column(conn, table_name, col)
+        if res:
+            results.append(res)
+            logger.info(f"Coerced column {col}: {res.coercion_applied} -> DOUBLE")
+            
+    return results

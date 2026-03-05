@@ -31,6 +31,7 @@ class Executor:
             return {"success": False, "error": f"Schema extraction failed: {schema['error']}"}
 
         current_error = None
+        column_metadata = schema.get('column_metadata', {})
 
         for attempt in range(self.MAX_RETRIES):
             # ── Semantic Column Hinting ──
@@ -45,28 +46,17 @@ class Executor:
             for kw in keywords:
                 match = find_column([kw], available_cols, threshold=0.7)
                 if match and match not in [h['column'] for h in hints]:
-                    # Check if this column is a string but contains numbers (like TotalCharges)
-                    col_type = schema.get('columns', {}).get(match, "").upper()
-                    needs_cast = False
-                    if "VARCHAR" in col_type or "STRING" in col_type:
-                        # Scan sample data
-                        samples = [str(r.get(match)) for r in schema.get('sample_data', []) if r.get(match) is not None]
-                        # If samples look like numbers (digits + .), suggest casting
-                        for s in samples:
-                            # Remove currency symbols if present
-                            s_clean = s.replace("$", "").replace(",", "").strip()
-                            try:
-                                float(s_clean)
-                                needs_cast = True
-                                break
-                            except ValueError:
-                                continue
-
+                    col_meta = column_metadata.get(match, {})
+                    col_type = col_meta.get("type", "").upper()
+                    
+                    # Use automated coercion metadata instead of manual scanning
+                    was_coerced = col_meta.get("coerced", False)
+                    
                     hints.append({
                         "keyword": kw, 
                         "column": match, 
                         "type": col_type,
-                        "needs_cast": needs_cast
+                        "was_coerced": was_coerced
                     })
             
             # Build prompt — append prior error on retries
@@ -75,11 +65,11 @@ class Executor:
                 hint_lines = []
                 for h in hints:
                     msg = f"- '{h['keyword']}' maps to column '{h['column']}'"
-                    if h['needs_cast']:
-                        msg += f" (NOTE: This is stored as {h['type']}; use TRY_CAST(\"{h['column']}\" AS DOUBLE) for math)"
+                    if h['was_coerced']:
+                        msg += f" (NOTE: This column was automatically cleaned and cast to DOUBLE for numeric analysis)"
                     hint_lines.append(msg)
                 
-                prompt_query = f"{prompt_query}\n\nColumn Mapping & Type Hints:\n" + "\n".join(hint_lines)
+                prompt_query = f"{prompt_query}\n\nColumn Mapping & Hinting:\n" + "\n".join(hint_lines)
 
             if current_error:
                 prompt_query += (
@@ -97,7 +87,14 @@ class Executor:
 
             try:
                 SQLValidator.validate(raw_sql)
-                result_df = db.execute_query(raw_sql)
+                
+                # Determine optimal timeout based on query type as recommended
+                raw_sql_upper = raw_sql.upper()
+                is_aggregative = any(kw in raw_sql_upper for kw in ["GROUP BY", "SUM(", "AVG(", "COUNT(", "MIN(", "MAX(", "WINDOW"])
+                timeout_sec = 20 if is_aggregative else 10 # AGGREGATIVE vs RETRIEVAL
+                
+                # execute_query is now async
+                result_df = await db.execute_query(raw_sql, timeout_seconds=timeout_sec)
 
                 # Ensure result is JSON-serializable (Timestamps, etc.)
                 result_json = result_df.to_json(orient="records", date_format="iso")
@@ -108,6 +105,7 @@ class Executor:
                     "sql": raw_sql,
                     "data": result_data,
                     "columns": list(result_df.columns),
+                    "column_metadata": column_metadata,  # Pass metadata through
                     "row_count": len(result_df),
                     "chart_type": chart_type,
                     "title": title,
