@@ -56,7 +56,8 @@ DOMAIN_KEYWORDS: Dict[DomainType, Dict[str, Dict[str, int]]] = {
         "secondary": {
             "status": 3, "charges": 3, "monthly": 3, "mrr": 3,
             "billing": 3, "vintage": 3, "exit": 3, "left": 3,
-            "complain": 3, "satisfaction": 3, "nps": 3, "loyalty": 3
+            "complain": 3, "satisfaction": 3, "nps": 3, "loyalty": 3,
+            "ticket": 3, "support": 3, "incident": 3, "call": 3
         }
     },
     DomainType.MARKETING: {

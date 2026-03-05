@@ -514,7 +514,7 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
             key="churn_rate",
             title=f"{label} Rate",
             value=round(churn_rate, 1),
-            format="percentage",
+            format="percent",
             icon="trending-down",
             confidence="HIGH",
             reason=f"Percentage of customers where {target_col} indicates departure"
@@ -572,27 +572,93 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
             key="retention_rate",
             title="Retention Rate",
             value=round(retention_rate, 1),
-            format="percentage",
+            format="percent",
             icon="trending-up",
             confidence="HIGH",
             reason="Inverse of the churn rate"
         ))
 
-    # 7. Secondary Metric Impact (Saliency Check)
-    if secondary_value_col and churned_mask is not None:
-        avg_val_churned = pd.to_numeric(df.loc[churned_mask, secondary_value_col], errors='coerce').mean()
-        if pd.notna(avg_val_churned):
+    # 7. ARPU (Average Revenue Per User)
+    arpu = 0
+    if value_col:
+        arpu = _safe_mean(df, value_col)
+        if arpu > 0:
             kpis.append(KPI(
-                key="secondary_impact",
-                title=f"Avg {_beautify_column_name(secondary_value_col)}",
-                value=round(float(avg_val_churned), 1),
-                format="currency" if any(h in secondary_value_col.lower() for h in ['salary', 'balance', 'charge', 'limit']) else "number",
-                icon="pie-chart",
-                confidence="MEDIUM",
-                reason=f"Mean {secondary_value_col} for the churned segment"
+                key="arpu",
+                title="ARPU",
+                value=round(float(arpu), 2),
+                format="currency" if any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
+                icon="user-plus",
+                confidence="HIGH",
+                reason=f"Average {_beautify_column_name(value_col)} per customer",
+                subtitle="Avg Revenue Per User"
             ))
 
-    return kpis[:10]
+    # 8. Customer Lifetime Value (LTV)
+    # LTV = ARPU / Churn Rate
+    if arpu > 0 and 'churn_rate' in locals() and churn_rate > 0:
+        ltv = arpu / (churn_rate / 100)
+        kpis.append(KPI(
+            key="ltv",
+            title="Estimated LTV",
+            value=round(float(ltv), 2),
+            format="currency" if any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
+            icon="trending-up",
+            confidence="MEDIUM",
+            reason="ARPU / Churn Rate",
+            subtitle="Customer Lifetime Value"
+        ))
+    elif arpu > 0 and tenure_col:
+        # Fallback LTV estimate based on tenure if no churn detected
+        avg_tenure = _safe_mean(df, tenure_col)
+        ltv = arpu * avg_tenure
+        kpis.append(KPI(
+            key="ltv",
+            title="Projected LTV",
+            value=round(float(ltv), 2),
+            format="currency" if any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
+            icon="trending-up",
+            confidence="LOW",
+            reason="ARPU × Avg Tenure",
+            subtitle="Projected Lifetime Value"
+        ))
+
+    # 9. Support Intensity (Tickets/Calls)
+    ticket_col = _find_column(df, ['ticket', 'complaint', 'incident', 'call', 'support', 'issue'], classification)
+    if ticket_col:
+        total_tickets = _safe_sum(df, ticket_col)
+        avg_tickets = total_tickets / total_customers if total_customers > 0 else 0
+        kpis.append(KPI(
+            key="support_intensity",
+            title="Avg Support Tickets",
+            value=round(float(avg_tickets), 2),
+            format="number",
+            icon="help-circle",
+            confidence="HIGH",
+            reason=f"Mean of {ticket_col} per customer",
+            subtitle=f"{int(total_tickets)} total tickets"
+        ))
+
+    # 10. High Value Churners (Count of churned customers above 75th percentile of value)
+    if value_col and churned_mask is not None:
+        try:
+            q75 = df[value_col].quantile(0.75)
+            high_value_churners = df[churned_mask & (df[value_col] > q75)]
+            if len(high_value_churners) > 0:
+                kpis.append(KPI(
+                    key="hv_churners",
+                    title="High Value Churners",
+                    value=len(high_value_churners),
+                    format="number",
+                    icon="users",
+                    confidence="MEDIUM",
+                    reason=f"Count of churned users in top 25% of {value_col}",
+                    subtitle=f"Above {round(q75, 0)} {value_col}"
+                ))
+        except:
+            pass
+
+    return kpis[:12] # Increased limit to accommodate new KPIs
 
 
 def _generate_marketing_kpis(df: pd.DataFrame, classification: ColumnClassification) -> List[KPI]:
