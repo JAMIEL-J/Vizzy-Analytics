@@ -76,10 +76,14 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
     const axisColor = isDark ? '#9CA3AF' : '#6B7280';
     const cursorFill = isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB';
 
+    // ── Explicit Formatting Hints (from Phase 1 Coercion) ──
+    const columnMetadata = data.column_metadata || data.data?.column_metadata || {};
+
     // Determine if this should be formatted as a percentage
     const isPercentage =
         data.is_percentage === true ||
         data.data?.is_percentage === true ||
+        Object.values(columnMetadata).some((m: any) => m.display_format?.type === 'percent') ||
         data.format === 'percent' ||
         data.format === 'percentage' ||
         data.format_type === 'percentage' ||
@@ -88,27 +92,33 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
         data.response_type === 'percentage';
 
     // Determine if this chart should use currency formatting
-    const shouldUseCurrency = () => {
-        // If explicitly a percentage, never use currency
-        if (isPercentage) return false;
+    const getCurrencyInfo = () => {
+        // Find if any metric in this chart has explicit currency metadata
+        const metadataValues: any[] = Object.values(columnMetadata);
+        const explicitCurrency = metadataValues.find((m: any) => m.display_format?.type === 'currency');
 
-        // EXPLICIT money keywords (unambiguous)
-        const explicitMoneyKeywords = [
-            'revenue', 'profit', 'income', 'earnings', 'cost', 'expense',
-            'price', 'charges', 'payment', 'budget', 'salary', 'wage',
-            'fee', 'sales', 'discount'
-        ];
+        if (explicitCurrency) {
+            return {
+                isCurrency: true,
+                symbol: explicitCurrency.display_format.currency === 'USD' ? '$' :
+                    explicitCurrency.display_format.currency === 'GBP' ? '£' :
+                        explicitCurrency.display_format.currency === 'EUR' ? '€' : '$'
+            };
+        }
 
+        // Fallback to legacy heuristic
+        if (isPercentage) return { isCurrency: false, symbol: '$' };
+        const explicitMoneyKeywords = ['revenue', 'profit', 'income', 'earnings', 'cost', 'expense', 'price', 'charges', 'payment', 'budget', 'salary', 'wage', 'fee', 'sales', 'discount'];
         const titleLower = (title || '').toLowerCase();
         const dataStr = JSON.stringify(data).toLowerCase();
+        const hasKeyword = explicitMoneyKeywords.some(keyword => titleLower.includes(keyword) || dataStr.includes(keyword));
 
-        return explicitMoneyKeywords.some(keyword =>
-            titleLower.includes(keyword) || dataStr.includes(keyword)
-        );
+        return { isCurrency: hasKeyword, symbol: currency || '$' };
     };
 
-    const isCurrencyChart = shouldUseCurrency();
-    const effectiveCurrency = currency || '$'; // Fallback to $ if explicitly using currency
+    const currencyInfo = getCurrencyInfo();
+    const isCurrencyChart = currencyInfo.isCurrency;
+    const effectiveCurrency = currencyInfo.symbol;
 
     // Handle NL2SQL wrapper
     if (type === 'nl2sql') {
