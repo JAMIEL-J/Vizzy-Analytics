@@ -36,9 +36,11 @@ class KPI:
     subtitle: Optional[str] = None  # e.g., "209 unique orders"
 
 
-def _find_column(df: pd.DataFrame, keywords: List[str], classification: ColumnClassification) -> Optional[str]:
+def _find_column(df: pd.DataFrame, keywords: List[str], classification: ColumnClassification, search_excluded: bool = False) -> Optional[str]:
     """Find a column matching any of the keywords using fuzzy semantic matching."""
     all_cols = classification.metrics + classification.dimensions + classification.targets
+    if search_excluded:
+        all_cols = all_cols + classification.excluded
 
     # Primary: semantic resolver (handles abbreviations, CamelCase, fuzzy)
     try:
@@ -103,12 +105,47 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
     # Find key columns
     revenue_col = _find_column(df, ['revenue', 'sales', 'amount', 'total_sales', 'totalsales'], classification)
     profit_col = _find_column(df, ['profit', 'gross_profit', 'net_profit'], classification)
-    quantity_col = _find_column(df, ['quantity', 'qty', 'units', 'volume', 'order_quantity'], classification)
+    quantity_col = _find_column(df, ['quantity', 'qty', 'units', 'volume', 'order_quantity', 'ordered'], classification)
     discount_col = _find_column(df, ['discount', 'discount_amount', 'discount_percent'], classification)
     customer_col = _find_column(df, ['customer', 'customerid', 'customer_id', 'client'], classification)
-    order_col = _find_column(df, ['order', 'orderid', 'order_id', 'transaction', 'invoice', 'invoice_no', 'invoiceno', 'ref', 'order_number', 'orderno'], classification)
     
-    # Find dimension columns
+    # Improved Order Identifier Logic:
+    # 1. Search for explicit ID/Number columns first
+    order_col = _find_column(df, ['orderid', 'order_id', 'invoiceid', 'invoice_no', 'invoiceno', 'orderno', 'order_number', 'transaction_id', 'transactionid'], classification, search_excluded=True)
+    
+    # 2. Fallback to broader terms if no explicit ID found
+    if not order_col:
+        order_col = _find_column(df, ['order', 'invoice', 'transaction', 'ref'], classification, search_excluded=True)
+
+    # 3. False Positive Check (Line Item IDs vs Grouping IDs):
+    # If the column is unique for every row (cardinality 1:1), it's likely a Line ID.
+    # We should prefer a column that has SOME duplicates (grouping items into orders).
+    if order_col:
+        nunique = df[order_col].nunique()
+        if nunique == len(df) and len(df) > 1:
+            # This is a Line ID. Try to find a Grouping ID (Invoice/OrderNo)
+            # We search for the same keywords but exclude the current 1:1 column
+            broader_keywords = ['orderid', 'invoice', 'orderno', 'parent_id', 'transactionid']
+            # Create a temporary classification with the current col removed
+            temp_classification = ColumnClassification(
+                metrics=[m for m in classification.metrics if m != order_col],
+                dimensions=[d for d in classification.dimensions if d != order_col],
+                excluded=[e for e in classification.excluded if e != order_col],
+                targets=classification.targets
+            )
+            broader_col = _find_column(df, broader_keywords, temp_classification, search_excluded=True)
+            if broader_col and broader_col != order_col:
+                # Only switch if the broader col isn't also 1:1
+                if df[broader_col].nunique() < len(df):
+                    order_col = broader_col
+
+    # 4. Cardinality Guard: Still reject extremely low cardinality (likely categories)
+    if order_col:
+        nunique = df[order_col].nunique()
+        if len(df) > 50 and nunique < 5:
+            order_col = None
+    
+    total_orders = df[order_col].nunique() if order_col else len(df)
     product_col = None
     region_col = None
     for dim in classification.dimensions:
@@ -372,20 +409,25 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
         ))
     
     # 8. Total Orders
-    # Primary value = total line items (rows) — consistent with chart counts.
-    # Subtitle = unique order IDs for DA-grade context.
-    unique_orders = df[order_col].nunique() if order_col else None
+    # Main value = total records (line items).
+    # Subtitle = unique order identifiers (if found).
+    total_records = len(df)
     order_subtitle = None
-    if unique_orders and unique_orders != len(df):
-        order_subtitle = f"{unique_orders:,} unique orders"
+    order_reason = "Total transaction line items"
+    
+    if order_col:
+        unique_count = df[order_col].nunique()
+        order_subtitle = f"{unique_count:,} unique orders"
+        order_reason = f"Line items grouped by {order_col} ({unique_count} distinct)"
+
     kpis.append(KPI(
         key="total_orders",
         title="Total Orders",
-        value=len(df),
+        value=total_records,
         format="number",
         icon="shopping-cart",
         confidence="HIGH",
-        reason="Total transaction line items",
+        reason=order_reason,
         subtitle=order_subtitle
     ))
     
