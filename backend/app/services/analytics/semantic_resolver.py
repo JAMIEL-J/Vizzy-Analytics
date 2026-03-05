@@ -61,9 +61,10 @@ ABBREVIATION_MAP = {
     "avg": "average", "std": "standard",
     "dt": "date", "ts": "timestamp", "tm": "time",
     "desc": "description", "nm": "name",
-    "id": "identifier", "idx": "index",
+    "id": "identifier", "idx": "index", "ref": "reference",
     "grp": "group", "typ": "type", "st": "status",
     "pct": "percent", "perc": "percent",
+    "inv": "invoice",
 }
 
 

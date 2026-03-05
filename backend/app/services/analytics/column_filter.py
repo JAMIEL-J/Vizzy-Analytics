@@ -58,6 +58,7 @@ DOMAIN_SCHEMAS: Dict[DomainType, Dict[str, List[str]]] = {
         "attr_product": ["product", "item", "sku", "service"],
         "attr_category": ["category", "subcategory", "department", "type"],
         "attr_customer": ["customer", "client", "buyer", "account"],
+        "attr_order": ["order", "invoice", "transaction", "ref"],
     },
     DomainType.CHURN: {
         "metric_tenure": ["tenure", "age", "months", "duration", "vintage"],

@@ -106,7 +106,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
     quantity_col = _find_column(df, ['quantity', 'qty', 'units', 'volume', 'order_quantity'], classification)
     discount_col = _find_column(df, ['discount', 'discount_amount', 'discount_percent'], classification)
     customer_col = _find_column(df, ['customer', 'customerid', 'customer_id', 'client'], classification)
-    order_col = _find_column(df, ['order', 'orderid', 'order_id', 'transaction'], classification)
+    order_col = _find_column(df, ['order', 'orderid', 'order_id', 'transaction', 'invoice', 'invoice_no', 'invoiceno', 'ref', 'order_number', 'orderno'], classification)
     
     # Find dimension columns
     product_col = None
