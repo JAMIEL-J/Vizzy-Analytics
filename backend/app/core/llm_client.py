@@ -5,10 +5,9 @@ Belongs to: core layer
 Responsibility: LLM API calls with retry and fallback
 Restrictions: No business logic, returns raw responses only
 
-Providers (in fallback order):
-1. Gemini (Primary)
-2. Groq (Secondary)
-3. Gemini Flash (Fallback)
+Providers:
+1. Groq (Primary)
+2. Groq Fallback (Secondary)
 """
 
 import json
@@ -28,10 +27,8 @@ logger = get_logger(__name__)
 
 class LLMProvider(str, Enum):
     """Available LLM providers."""
-    GEMINI = "gemini"
     GROQ = "groq"
     GROQ_FALLBACK = "groq_fallback"
-    GEMINI_FALLBACK = "gemini_fallback"
 
 
 @dataclass
@@ -99,29 +96,16 @@ class LLMClient:
         max_tokens: int = 1024,
     ) -> LLMResponse:
         """
-        Send completion request with automatic fallback.
+        Send completion request using Groq with internal fallback.
         
-        Tries providers in order based on configuration:
-        - Primary (Gemini or Groq)
-        - Secondary (Groq or Gemini)
-        - Fallback (Gemini Flash)
+        Tries:
+        1. Groq (Llama 3.3 70B)
+        2. Groq Fallback (Llama 3.1 70B)
         """
-        # Default order: Gemini -> Groq -> Gemini Fallback
         providers = [
-            (LLMProvider.GEMINI, self._call_gemini),
             (LLMProvider.GROQ, self._call_groq),
             (LLMProvider.GROQ_FALLBACK, self._call_groq_fallback),
-            (LLMProvider.GEMINI_FALLBACK, self._call_gemini_fallback),
         ]
-
-        # If Groq is primary, swap the first two
-        if self.settings.primary_provider == "groq":
-            providers = [
-                (LLMProvider.GROQ, self._call_groq),
-                (LLMProvider.GROQ_FALLBACK, self._call_groq_fallback),
-                (LLMProvider.GEMINI, self._call_gemini),
-                (LLMProvider.GEMINI_FALLBACK, self._call_gemini_fallback),
-            ]
 
         last_error: Optional[Exception] = None
 
@@ -147,45 +131,6 @@ class LLMClient:
             details=str(last_error) if last_error else "Unknown error",
         )
 
-    async def _call_gemini(
-        self,
-        *,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float,
-        max_tokens: int,
-    ) -> LLMResponse:
-        """Call Google Gemini API."""
-        api_key = self.settings.gemini_api_key.get_secret_value()
-        if not api_key:
-            raise ValueError("Gemini API key not configured")
-
-        model = self.settings.gemini_model
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-
-        client = await self._get_client()
-        response = await client.post(
-            url,
-            params={"key": api_key},
-            json={
-                "contents": [
-                    {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}]}
-                ],
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_tokens,
-                },
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        content = data["candidates"][0]["content"]["parts"][0]["text"]
-        return LLMResponse(
-            content=content,
-            provider=LLMProvider.GEMINI,
-            model=model,
-        )
 
     async def _call_groq(
         self,
@@ -269,48 +214,6 @@ class LLMClient:
             usage=data.get("usage"),
         )
 
-    async def _call_gemini_fallback(
-        self,
-        *,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float,
-        max_tokens: int,
-    ) -> LLMResponse:
-        """Call Gemini Fallback (Flash model)."""
-        api_key = self.settings.gemini_fallback_api_key.get_secret_value()
-        if not api_key:
-            # Use primary key if fallback not set
-            api_key = self.settings.gemini_api_key.get_secret_value()
-        if not api_key:
-            raise ValueError("Gemini fallback API key not configured")
-
-        model = self.settings.gemini_fallback_model
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-
-        client = await self._get_client()
-        response = await client.post(
-            url,
-            params={"key": api_key},
-            json={
-                "contents": [
-                    {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}]}
-                ],
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_tokens,
-                },
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        content = data["candidates"][0]["content"]["parts"][0]["text"]
-        return LLMResponse(
-            content=content,
-            provider=LLMProvider.GEMINI_FALLBACK,
-            model=model,
-        )
 
 
 def parse_json_response(content: str) -> Dict[str, Any]:

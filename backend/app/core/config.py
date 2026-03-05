@@ -95,21 +95,18 @@ class LLMSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Primary: Gemini
-    gemini_api_key: SecretStr = Field(default=SecretStr(""))
-    gemini_model: str = Field(default="gemini-2.5-pro")  # Primary model
-
-    # Secondary: Groq
+    # Primary: Groq (using Llama 3.3 70B for high-performance SQL/Analytics)
     groq_api_key: SecretStr = Field(default=SecretStr(""))
     groq_model: str = Field(default="llama-3.3-70b-versatile")
     groq_fallback_model: str = Field(default="llama-3.1-70b-versatile")
 
-    # Fallback: Gemini Flash
-    gemini_fallback_api_key: SecretStr = Field(default=SecretStr(""))
-    gemini_fallback_model: str = Field(default="gemini-2.5-pro")
+    # Groq (Main analytical engine)
+    groq_api_key: SecretStr = Field(default=SecretStr(""))
+    groq_model: str = Field(default="llama-3.3-70b-versatile")
+    groq_fallback_model: str = Field(default="llama-3.1-70b-versatile")
 
-    # Primary Provider Selection
-    primary_provider: Literal["gemini", "groq"] = Field(default="gemini")
+    # Provider Selection (Always Groq)
+    primary_provider: Literal["groq"] = Field(default="groq")
 
     # Token optimization settings (IMPORTANT for free tier)
     max_tokens: int = Field(default=512, ge=64, le=8192)  # Increased for Pro model
