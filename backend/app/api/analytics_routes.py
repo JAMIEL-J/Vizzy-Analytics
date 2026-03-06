@@ -89,7 +89,19 @@ class DashboardAnalyticsResponse(BaseModel):
     columns: Dict[str, List[str]]
     target_column: Optional[str] = None
     target_values: List[str] = []
-    geo_filters: Dict[str, List[str]] = {}  # {"customer_state": ["CA", "TX", ...], ...}
+    geo_filters: Dict[str, List[str]] = {}
+    raw_data: List[Dict[str, Any]] = []
+    chart_configs: Dict[str, Any] = {}
+
+
+class DashboardStateRequest(BaseModel):
+    """Request payload containing the full dashboard state from Zustand."""
+    dataset_id: UUID
+    target_value: Optional[str] = None
+    active_filters: Dict[str, List[str]] = {}
+    chart_overrides: Dict[str, Any] = {}
+    classification_overrides: Dict[str, str] = {}
+    selected_domain: Optional[str] = None
 
 
 # =============================================================================
@@ -121,17 +133,15 @@ def _find_target_column(df: pd.DataFrame) -> Optional[str]:
 # =============================================================================
 
 
-@router.get(
+@router.post(
     "/analytics/dashboard",
     response_model=DashboardAnalyticsResponse,
     summary="Get dashboard analytics",
 )
 def get_dashboard_analytics(
+    state: DashboardStateRequest,
     session: DBSession,
     current_user: AuthenticatedUser,
-    dataset_id: Optional[UUID] = None,
-    target_value: Optional[str] = None,
-    filters: str = "{}",  # JSON: {"Region": ["East"], "Segment": ["Consumer"]}
 ) -> DashboardAnalyticsResponse:
     """
     Get analytics data for user dashboard.
@@ -139,11 +149,11 @@ def get_dashboard_analytics(
     Uses intelligent domain detection to generate appropriate KPIs and charts.
     """
     try:
-        if not dataset_id:
+        if not state.dataset_id:
             raise HTTPException(status_code=400, detail="Please provide a dataset_id")
         
         # Load dataset
-        latest_version = get_latest_version(session=session, dataset_id=dataset_id)
+        latest_version = get_latest_version(session=session, dataset_id=state.dataset_id)
         if not latest_version:
             raise HTTPException(status_code=404, detail="Version not found")
 
@@ -157,10 +167,44 @@ def get_dashboard_analytics(
         
         # Detect domain
         domain, scores = detect_domain(df)
+        
+        # Apply manual domain override if provided
+        if state.selected_domain and state.selected_domain.lower() != 'auto':
+            try:
+                # Validate the domain exists in DomainType
+                domain = DomainType(state.selected_domain.lower())
+            except ValueError:
+                # Log warning and fall back to detected domain if invalid override provided
+                print(f"Warning: Invalid domain override '{state.selected_domain}', falling back to detected: {domain}")
+        
         confidence = get_domain_confidence(scores)
         
         # Classify columns
         classification = filter_columns(df, domain)
+        
+        # Apply classification overrides
+        if state.classification_overrides:
+            for col, role in state.classification_overrides.items():
+                if col in df.columns:
+                    # Remove from current lists
+                    if col in classification.metrics: classification.metrics.remove(col)
+                    if col in classification.dimensions: classification.dimensions.remove(col)
+                    if col in classification.targets: classification.targets.remove(col)
+                    if col in classification.dates: classification.dates.remove(col)
+                    if col in classification.excluded: classification.excluded.remove(col)
+                    
+                    # Add to new list
+                    role_lower = role.lower()
+                    if role_lower.startswith('metric'):
+                        classification.metrics.append(col)
+                    elif role_lower == 'dimension':
+                        classification.dimensions.append(col)
+                    elif role_lower == 'target':
+                        classification.targets.append(col)
+                    elif role_lower == 'date':
+                        classification.dates.append(col)
+                    elif role_lower == 'excluded':
+                        classification.excluded.append(col)
         
         # Find target column for filtering
         target_col = classification.targets[0] if classification.targets else _find_target_column(df)
@@ -170,24 +214,21 @@ def get_dashboard_analytics(
         
         # Apply target filter if specified
         df_filtered = df.copy()
-        if target_value and target_value.lower() != 'all' and target_col:
+        if state.target_value and state.target_value.lower() != 'all' and target_col:
             positive_keywords = ['yes', 'true', '1']
             negative_keywords = ['no', 'false', '0']
             
-            if target_value.lower() in positive_keywords:
+            if state.target_value.lower() in positive_keywords:
                 search_vals = positive_keywords + ['Yes', 'True', 1, True]
-            elif target_value.lower() in negative_keywords:
+            elif state.target_value.lower() in negative_keywords:
                 search_vals = negative_keywords + ['No', 'False', 0, False]
             else:
-                search_vals = [target_value]
+                search_vals = [state.target_value]
             
             df_filtered = df[df[target_col].astype(str).str.lower().isin([str(x).lower() for x in search_vals])].copy()
         
         # Parse and apply multi-column filters
-        try:
-            active_filters: Dict[str, List[str]] = json.loads(filters)
-        except (json.JSONDecodeError, TypeError):
-            active_filters = {}
+        active_filters = state.active_filters or {}
         
         for col, values in active_filters.items():
             if col in df_filtered.columns and values:
@@ -219,11 +260,11 @@ def get_dashboard_analytics(
         # Only DATA values are recomputed from df_filtered.
         # This prevents new charts appearing / old ones disappearing when a filter is applied,
         # which is how Power BI / Tableau / Looker behave.
-        charts_full = recommend_charts(df, domain, classification)
+        charts_full = recommend_charts(df, domain, classification, overrides=state.chart_overrides)
 
         is_filtered = len(df_filtered) < len(df)
         if is_filtered:
-            charts_filtered = recommend_charts(df_filtered, domain, classification)
+            charts_filtered = recommend_charts(df_filtered, domain, classification, overrides=state.chart_overrides)
 
             # Build a title → filtered chart lookup.
             # Title is STABLE across runs (derived from column names, not data cardinality).
@@ -252,12 +293,59 @@ def get_dashboard_analytics(
 
 
         
-        dataset = session.get(Dataset, dataset_id)
+        dataset = session.get(Dataset, state.dataset_id)
         dataset_name = dataset.name if dataset else latest_version.source_reference.split('/')[-1]
+
+        # Prepare raw data payload (50k limit) with Stratified Sampling
+        max_raw_rows = 50000
+        total_len = len(df)
+        
+        if total_len <= max_raw_rows:
+            df_raw = df.copy()
+        else:
+            # Prefer primary dimension from recommendations for stratification
+            primary_dim = None
+            for chart in charts_full.values():
+                d = chart.get("dimension")
+                if d and d in df.columns and df[d].nunique() > 1:
+                    primary_dim = d
+                    break
+            
+            if primary_dim:
+                # Sample proportionally per group, then take top/random to fill budget
+                frac = max_raw_rows / total_len
+                df_raw = df.groupby(primary_dim, group_keys=False).apply(
+                    lambda x: x.sample(n=max(1, int(len(x) * frac)), random_state=42) if len(x) > 0 else x
+                )
+                # If we undersampled due to rounding, fill up with random sample from remainders
+                if len(df_raw) < max_raw_rows:
+                    remaining_indices = df.index.difference(df_raw.index)
+                    if not remaining_indices.empty:
+                        extra_n = min(max_raw_rows - len(df_raw), len(remaining_indices))
+                        extra_df = df.loc[remaining_indices].sample(n=extra_n, random_state=42)
+                        df_raw = pd.concat([df_raw, extra_df])
+                elif len(df_raw) > max_raw_rows:
+                    df_raw = df_raw.sample(n=max_raw_rows, random_state=42)
+            else:
+                df_raw = df.sample(n=max_raw_rows, random_state=42).reset_index(drop=True)
+                
+        # Final safety: Ensure no NaN/Infinity break the JSON response
+        raw_data_payload = df_raw.replace([np.inf, -np.inf], np.nan).where(pd.notnull(df_raw), None).to_dict(orient="records")
+
+        # Prepare chart configs (extract structural info from charts_full)
+        chart_configs = {}
+        for slot, chart in charts_full.items():
+            chart_configs[slot] = {
+                "title": chart["title"],
+                "type": chart["type"],
+                "dimension": chart.get("dimension"),
+                "metric": chart.get("metric"),
+                "aggregation": chart.get("aggregation")
+            }
 
         return DashboardAnalyticsResponse(
             dataset_name=dataset_name,
-            total_rows=len(df_filtered),
+            total_rows=len(df),
             domain=domain.value,
             domain_confidence=confidence,
             kpis=kpis,
@@ -271,7 +359,9 @@ def get_dashboard_analytics(
             },
             target_column=target_col,
             target_values=target_values,
-            geo_filters=geo_filters
+            geo_filters=geo_filters,
+            raw_data=raw_data_payload,
+            chart_configs=chart_configs
         )
         
     except HTTPException:

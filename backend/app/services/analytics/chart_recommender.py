@@ -12,6 +12,13 @@ import pandas as pd
 from .domain_detector import DomainType
 from .column_filter import ColumnClassification, _clean_header
 from .business_questions import get_smart_chart_title, get_tenure_group, get_tenure_group_order
+from .outlier_detection import detect_outliers_iqr
+
+class AggregationData(list):
+    def __init__(self, data, outliers=None, data_without_outliers=None):
+        super().__init__(data)
+        self.outliers = outliers
+        self.data_without_outliers = data_without_outliers
 
 logger = logging.getLogger(__name__)
 
@@ -427,24 +434,50 @@ class ChartRecommendation:
     geo_meta: Optional[Dict[str, Any]] = None  # For geo_map charts
     format_type: Optional[str] = None  # e.g., 'currency', 'percentage', 'number'
     value_label: Optional[str] = None  # What the value represents: 'Orders', 'Customers', etc.
+    outliers: Optional[Dict[str, Any]] = None
+    data_without_outliers: Optional[List[Dict[str, Any]]] = None
+    dimension: Optional[str] = None
+    metric: Optional[str] = None
+    aggregation: Optional[str] = None  # 'sum', 'mean', 'count'
+
+    def __post_init__(self):
+        if hasattr(self.data, "outliers") and self.data.outliers:
+            self.outliers = self.data.outliers
+            self.data_without_outliers = getattr(self.data, "data_without_outliers", None)
 
 
 def _safe_groupby_sum(df: pd.DataFrame, group_col: str, value_col: str, limit: int = 10) -> List[Dict]:
     """Safely group by and sum, returning top N."""
     try:
+        outlier_mask = detect_outliers_iqr(df, value_col)
+        outliers = None
+        data_clean = None
+        if outlier_mask.sum() > 0:
+            outliers = {"count": int(outlier_mask.sum()), "metric": value_col}
+            cleaned = df[~outlier_mask].groupby(group_col)[value_col].sum().sort_values(ascending=False).head(limit)
+            data_clean = [{"name": str(k), "value": float(v)} for k, v in cleaned.items()]
+
         grouped = df.groupby(group_col)[value_col].sum().sort_values(ascending=False).head(limit)
-        return [{"name": str(k), "value": float(v)} for k, v in grouped.items()]
+        return AggregationData([{"name": str(k), "value": float(v)} for k, v in grouped.items()], outliers, data_clean)
     except Exception:
-        return []
+        return AggregationData([])
 
 
 def _safe_groupby_mean(df: pd.DataFrame, group_col: str, value_col: str, limit: int = 10) -> List[Dict]:
     """Safely group by and calculate mean, returning top N."""
     try:
+        outlier_mask = detect_outliers_iqr(df, value_col)
+        outliers = None
+        data_clean = None
+        if outlier_mask.sum() > 0:
+            outliers = {"count": int(outlier_mask.sum()), "metric": value_col}
+            cleaned = df[~outlier_mask].groupby(group_col)[value_col].mean().sort_values(ascending=False).head(limit)
+            data_clean = [{"name": str(k), "value": round(float(v), 2)} for k, v in cleaned.items()]
+
         grouped = df.groupby(group_col)[value_col].mean().sort_values(ascending=False).head(limit)
-        return [{"name": str(k), "value": round(float(v), 2)} for k, v in grouped.items()]
+        return AggregationData([{"name": str(k), "value": round(float(v), 2)} for k, v in grouped.items()], outliers, data_clean)
     except Exception:
-        return []
+        return AggregationData([])
 
 
 def _safe_value_counts(df: pd.DataFrame, col: str, limit: int = 10) -> List[Dict]:
@@ -518,6 +551,9 @@ def _distribution_chart(
         confidence=confidence,
         reason=reason,
         value_label=value_label,
+        dimension=col,
+        metric=None,
+        aggregation="count"
     )
 
 def _get_target_by_segment(df: pd.DataFrame, target_col: str, segment_col: str) -> List[Dict]:
@@ -1096,7 +1132,8 @@ def _generate_churn_charts(df, classification):
             slot='', title=f'{label} Overview', chart_type='donut',
             data=data, confidence='HIGH',
             reason=f'Tier 1: Overall {label.lower()} split',
-            value_label='Customers'
+            value_label='Customers',
+            dimension=target_col, metric=None, aggregation='count'
         ))
 
     # 2. Rate by Primary Dimension (highest variance = most impactful)
@@ -1106,7 +1143,8 @@ def _generate_churn_charts(df, classification):
             add_chart(ChartRecommendation(
                 slot='', title=f'{label} Rate by {_beautify_column_name(primary_dim)} (%)',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason=f'Tier 1: Highest-variance dimension for {label.lower()}'
+                reason=f'Tier 1: Highest-variance dimension for {label.lower()}',
+                dimension=primary_dim, metric=target_col, aggregation='mean'
             ))
 
     # 3. Lifecycle Cohort Analysis (data-driven quartile buckets)
@@ -1567,7 +1605,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=_create_smart_title(revenue_col, hero_dim),
                 chart_type="hbar", data=data, confidence="HIGH",
                 reason="Hero Chart: Best-selling segments by revenue",
-                format_type="currency"
+                format_type="currency",
+                dimension=hero_dim, metric=revenue_col, aggregation="sum"
             ))
 
     # 2. Geographic Revenue Distribution — handled by _generate_geo_charts (multi-metric)
@@ -1580,7 +1619,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=_create_smart_title(revenue_col, date_col) + " Trend",
                 chart_type='line', data=data, confidence='HIGH',
                 reason='Tier 1: Sales velocity and seasonality',
-                format_type="currency"
+                format_type="currency",
+                dimension=date_col, metric=revenue_col, aggregation="sum"
             ))
             
     # 4. Growth Benchmarking (YoY/YTD)
@@ -1603,16 +1643,17 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 format_type="currency"
             ))
 
-    # 5. Categorical Mix (Treemap/Donut)
+    # 5. Categorical Mix (Donut)
     mix_dim = category_col or secondary_dim
     if mix_dim and revenue_col:
         data = _smart_aggregate(df, mix_dim, revenue_col)
         if data:
             add_chart(ChartRecommendation(
                 slot='', title=f"{_beautify_column_name(revenue_col)} Composition by {_beautify_column_name(mix_dim)}",
-                chart_type="treemap", data=data, confidence="HIGH",
+                chart_type="donut", data=data, confidence="HIGH",
                 reason="Categorical composition of revenue",
-                format_type="currency"
+                format_type="currency",
+                dimension=mix_dim, metric=revenue_col, aggregation="sum"
             ))
 
     # ── TIER 2: ADVANCED PROFITABILITY & ECONOMICS ───────────────────
@@ -1944,7 +1985,9 @@ def _generate_generic_charts(df: pd.DataFrame, classification: ColumnClassificat
             charts.append(ChartRecommendation(
                 slot="slot_1", title=_create_smart_title(metric, dim),
                 chart_type="bar", data=data, confidence="MEDIUM",
-                reason="Primary metric breakdown"
+                reason="Primary metric breakdown",
+                dimension=dim, metric=metric,
+                aggregation="mean" if _should_average_metric(metric) else "sum"
             ))
     
     # 2. Secondary analysis
@@ -1956,7 +1999,9 @@ def _generate_generic_charts(df: pd.DataFrame, classification: ColumnClassificat
             charts.append(ChartRecommendation(
                 slot="slot_2", title=_create_smart_title(metric, dim),
                 chart_type="hbar", data=data, confidence="MEDIUM",
-                reason="Secondary analysis"
+                reason="Secondary analysis",
+                dimension=dim, metric=metric,
+                aggregation="mean" if _should_average_metric(metric) else "sum"
             ))
     
     # 3. Time trend
@@ -1968,7 +2013,9 @@ def _generate_generic_charts(df: pd.DataFrame, classification: ColumnClassificat
             charts.append(ChartRecommendation(
                 slot="slot_3", title=_create_smart_title(metric, date_col) + " Trend",
                 chart_type="line", data=data, confidence="MEDIUM",
-                reason="Time series analysis"
+                reason="Time series analysis",
+                dimension=date_col, metric=metric,
+                aggregation="sum" if not _should_average_metric(metric) else "mean"
             ))
     
     # 4. Correlation
@@ -2276,7 +2323,8 @@ def _generate_templated_charts(df: pd.DataFrame, classification: ColumnClassific
                     slot='', title=f"{_beautify_column_name(col)} with Prediction Intervals",
                     chart_type="area_bounds", data=data, confidence="HIGH",
                     reason="Phase 5: DA-Grade Uncertainty analysis",
-                    format_type="percentage" if _should_average_metric(col) else None
+                    format_type="percentage" if _should_average_metric(col) else None,
+                    dimension=date_col, metric=col, aggregation="mean"
                 ))
 
     # --- 2. TEMPORAL TREND ---
@@ -2284,32 +2332,36 @@ def _generate_templated_charts(df: pd.DataFrame, classification: ColumnClassific
     if date_col:
         metrics = [v for k, v in maps.items() if k.startswith('metric_')][:2]
         for metric in metrics:
-            if any(metric == c.data[0].get('value_col') for c in charts if c.chart_type == "area_bounds"): continue
+            if any(metric == c.metric and c.chart_type == "area_bounds" for c in charts): continue
             data = _get_time_trend(df, date_col, metric)
             if data:
                 charts.append(ChartRecommendation(
                     slot='', title=_create_smart_title(metric, date_col) + " Trend",
                     chart_type="line", data=data, confidence="HIGH",
                     reason="Phase 5: Time-series pattern recognition",
-                    format_type="percentage" if _should_average_metric(metric) else None
+                    format_type="percentage" if _should_average_metric(metric) else None,
+                    dimension=date_col, metric=metric, aggregation="sum" if not _should_average_metric(metric) else "mean"
                 ))
 
     # --- 3. ENTITY PERFORMANCE (e.g., Average Revenue by Product) ---
     entity_col = maps.get('attr_product') or maps.get('attr_category') or maps.get('attr_diagnosis') or (classification.dimensions[0] if classification.dimensions else None)
     primary_metric = maps.get('metric_revenue') or maps.get('metric_spend') or (classification.metrics[0] if classification.metrics else None)
     if entity_col and primary_metric:
+        agg = "mean" if _should_average_metric(primary_metric) else "sum"
         data = _smart_aggregate(df, entity_col, primary_metric, limit=10)
         if data:
             charts.append(ChartRecommendation(
                 slot='', title=_create_smart_title(primary_metric, entity_col),
                 chart_type="hbar", data=data, confidence="HIGH",
                 reason="Phase 5: Top-performer segmentation",
-                format_type="currency" if "revenue" in primary_metric.lower() or "profit" in primary_metric.lower() else None
+                format_type="currency" if "revenue" in primary_metric.lower() or "profit" in primary_metric.lower() else None,
+                dimension=entity_col, metric=primary_metric, aggregation=agg
             ))
 
     # --- 4. GEOGRAPHIC HEATMAP ---
     geo_col = maps.get('dim_region') or maps.get('dim_country')
     if geo_col and primary_metric:
+        agg = "mean" if _should_average_metric(primary_metric) else "sum"
         data = _smart_aggregate(df, geo_col, primary_metric, limit=20)
         if data:
             map_type = _detect_map_type([str(d['name']) for d in data])
@@ -2319,18 +2371,36 @@ def _generate_templated_charts(df: pd.DataFrame, classification: ColumnClassific
                     chart_type="geo_map", data=data, confidence="HIGH",
                     reason="Phase 5: Spatial distribution analysis",
                     geo_meta={"map_type": map_type, "column": geo_col},
-                    format_type="currency" if "revenue" in primary_metric.lower() else None
+                    format_type="currency" if "revenue" in primary_metric.lower() else None,
+                    dimension=geo_col, metric=primary_metric, aggregation=agg
                 ))
 
     return charts
 
-def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: ColumnClassification) -> Dict[str, Any]:
+def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: ColumnClassification, overrides: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Recommend charts based on domain and data classification.
     
     Returns dict of charts for API response.
     """
-    # ========================================
+    if overrides is None:
+        overrides = {}
+        
+    # Apply manual domain override if provided
+    if overrides and "selected_domain" in overrides:
+        sd = overrides["selected_domain"]
+        if sd and sd.lower() != 'auto':
+            try:
+                domain = DomainType(sd.lower())
+                # If domain changed, we must re-classify
+                classification = filter_columns(df, domain)
+            except ValueError:
+                logger.warning(f"Invalid domain override '{sd}', using detected: {domain}")
+    elif domain is None:
+        domain, _ = detect_domain(df)
+        classification = classification or filter_columns(df, domain)
+    elif classification is None:
+        classification = filter_columns(df, domain)
     # PRE-FILTER & NORMALIZATION
     # Ensure numeric columns in string format are normalized
     # ========================================
@@ -2424,6 +2494,29 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
         # Reassign slots after deduplication
         slot = f"slot_{i + 1}"
         
+        # Apply Overrides
+        slot_override = overrides.get(slot, {})
+        if slot_override:
+            # 1. Type Override
+            if "type" in slot_override:
+                chart.chart_type = slot_override["type"]
+            
+            # 2. Aggregation Override
+            if "aggregation" in slot_override and chart.dimension and chart.metric:
+                new_agg = slot_override["aggregation"]
+                if new_agg != chart.aggregation:
+                    if new_agg == "sum":
+                        chart.data = _safe_groupby_sum(df, chart.dimension, chart.metric)
+                        chart.aggregation = "sum"
+                    elif new_agg == "mean":
+                        chart.data = _safe_groupby_mean(df, chart.dimension, chart.metric)
+                        chart.aggregation = "mean"
+                    
+                    # Refresh outlier detection for new aggregation
+                    if hasattr(chart.data, "outliers"):
+                        chart.outliers = chart.data.outliers
+                        chart.data_without_outliers = getattr(chart.data, "data_without_outliers", None)
+
         # Smart unit detection
         format_type = getattr(chart, "format_type", None)
         title_lower = chart.title.lower()
@@ -2444,6 +2537,10 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
             "reason": chart.reason,
             "is_percentage": format_type == "percentage"
         }
+        if chart.dimension:
+            result[slot]["dimension"] = chart.dimension
+        if chart.metric:
+            result[slot]["metric"] = chart.metric
         if chart.categories:
             result[slot]["categories"] = chart.categories
         if chart.geo_meta:
@@ -2452,6 +2549,11 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
             result[slot]["format_type"] = format_type
         if getattr(chart, "value_label", None):
             result[slot]["value_label"] = chart.value_label
+        if getattr(chart, "outliers", None):
+            result[slot]["outliers"] = chart.outliers
+            result[slot]["data_without_outliers"] = chart.data_without_outliers
+        if chart.aggregation:
+            result[slot]["aggregation"] = chart.aggregation
     
     return result
 

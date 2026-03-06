@@ -4,12 +4,14 @@ import { datasetService } from '../../lib/api/dataset';
 import { analyticsService, correlationService, type DashboardAnalytics, type CorrelationMatrix } from '../../lib/api/dashboard';
 import GeoMapCard from './GeoMapCard';
 import SettingsDropdown from '../../components/common/SettingsDropdown';
+import { useFilterStore } from '../../store/useFilterStore';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     AreaChart, Area, PieChart, Pie, Cell, Legend,
     ScatterChart, Scatter, Treemap,
     RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
+import { ColumnClassificationPanel } from '../../components/dashboard/ColumnClassificationPanel';
 
 // ─── Color Palettes ──────────────────────────────────────────────────────────
 
@@ -323,15 +325,19 @@ const KPICard = ({ title, value, icon, index, trend, trend_label, subtitle }: { 
 
 // ─── Chart Card Wrapper ───────────────────────────────────────────────────────
 
-const ChartCard = ({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) => (
+const ChartCard = ({ title, children, className, actions }: { title: string; children: React.ReactNode; className?: string; actions?: React.ReactNode }) => (
     <div className={`bg-white dark:bg-[#111827] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative group transition-colors duration-300 h-full flex flex-col ${className || ''}`}>
         <div className="flex justify-between items-start mb-5 flex-shrink-0">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h3>
-            <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
-                </svg>
-            </button>
+            {actions ? (
+                <div className="relative z-10">{actions}</div>
+            ) : (
+                <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                    </svg>
+                </button>
+            )}
         </div>
         <div className="flex-1 min-h-0 w-full flex flex-col justify-end">
             {children}
@@ -343,13 +349,17 @@ const ChartCard = ({ title, children, className }: { title: string; children: Re
 
 // ─── ChartRenderer ────────────────────────────────────────────────────────────
 
-const ChartRenderer = ({ chart, chartColors, isDark }: { chart: any; chartColors: any; isDark: boolean }) => {
+const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: any; chartColors: any; isDark: boolean; onFilterClick?: (col: string, val: string) => void }) => {
     const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+    const [showOutliers, setShowOutliers] = useState(true);
+
+    const chartData = showOutliers ? chart?.data : (chart?.data_without_outliers || chart?.data);
+
     const gridProps = { stroke: chartColors.grid, strokeDasharray: '3 3' };
     const axisProps = { stroke: chartColors.axis, fontSize: 11, tickLine: false, axisLine: false };
     const textStyle = { fill: chartColors.text };
 
-    if (!chart?.data?.length) {
+    if (!chartData?.length) {
         return (
             <div className="h-48 flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-gray-600">
                 <svg className="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -384,206 +394,263 @@ const ChartRenderer = ({ chart, chartColors, isDark }: { chart: any; chartColors
     };
 
     // Auto-detect label key from first data row
-    const firstRow = chart.data[0] || {};
+    const firstRow = chartData[0] || {};
     const nameKey = 'name' in firstRow ? 'name'
         : Object.keys(firstRow).find(k => typeof firstRow[k] === 'string') || 'name';
     const dateKey = 'date' in firstRow ? 'date' : nameKey;
 
+    // The column name this chart represents (for filtering)
+    // Often passed by backend as chart.x_axis or chart.dimension
+    const filterCol = chart.dimension || chart.x_axis || nameKey;
+
+    const handleSliceClick = (data: any) => {
+        if (!onFilterClick || !data) return;
+        const val = data[nameKey] || data.name || data.x;
+        if (val) onFilterClick(filterCol, String(val));
+    };
+
+    const renderOutlierToggle = () => {
+        if (!chart.outliers?.count) return null;
+        return (
+            <div className="flex justify-end mb-2 relative z-10 w-full">
+                <button
+                    onClick={() => setShowOutliers(!showOutliers)}
+                    className={`text-[10px] font-medium px-2 py-1 rounded border transition-colors flex items-center gap-1 ${isDark
+                        ? (showOutliers ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700')
+                        : (showOutliers ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100')
+                        }`}
+                    title={showOutliers ? "Click to exclude extreme outliers" : "Click to include extreme outliers"}
+                >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    {chart.outliers.count} {showOutliers ? 'outliers included' : 'outliers excluded'}
+                </button>
+            </div>
+        );
+    };
+
     switch (chart.type) {
         case 'bar':
             return (
-                <ResponsiveContainer width="100%" height={192} debounce={50}>
-                    <BarChart data={chart.data} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
-                        <defs>
-                            <linearGradient id="barDark" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.9} />
-                                <stop offset="100%" stopColor="#BD00FF" stopOpacity={0.7} />
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid {...gridProps} vertical={false} />
-                        <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
-                        <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
-                        <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="url(#barDark)" maxBarSize={40} />
-                    </BarChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={192} debounce={50}>
+                        <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
+                            <defs>
+                                <linearGradient id="barDark" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#BD00FF" stopOpacity={0.7} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid {...gridProps} vertical={false} />
+                            <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
+                            <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
+                            <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="url(#barDark)" maxBarSize={40} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'hbar': {
-            const hbarHeight = chart.data.length >= 8 ? Math.min(chart.data.length * 28 + 40, 300) : 192;
+            const hbarHeight = chartData.length >= 8 ? Math.min(chartData.length * 28 + 40, 300) : 192;
             return (
-                <ResponsiveContainer width="100%" height={hbarHeight} debounce={50}>
-                    <BarChart data={chart.data} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 5 }}>
-                        <defs>
-                            <linearGradient id="hbarDark" x1="0" y1="0" x2="1" y2="0">
-                                <stop offset="0%" stopColor="#818CF8" />
-                                <stop offset="100%" stopColor="#34D399" />
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid {...gridProps} horizontal={false} />
-                        <XAxis type="number" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
-                        <YAxis dataKey={nameKey} type="category" {...axisProps} stroke={chartColors.axis} width={110} tick={{ ...textStyle, fontSize: 11 }} />
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(129,140,248,0.05)' : 'rgba(0,0,0,0.05)' }} />
-                        <Bar dataKey="value" radius={[0, 4, 4, 0]} fill="url(#hbarDark)" maxBarSize={22} />
-                    </BarChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={hbarHeight} debounce={50}>
+                        <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 5 }}>
+                            <defs>
+                                <linearGradient id="hbarDark" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stopColor="#818CF8" />
+                                    <stop offset="100%" stopColor="#34D399" />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid {...gridProps} horizontal={false} />
+                            <XAxis type="number" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <YAxis dataKey={nameKey} type="category" {...axisProps} stroke={chartColors.axis} width={110} tick={{ ...textStyle, fontSize: 11 }} />
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(129,140,248,0.05)' : 'rgba(0,0,0,0.05)' }} />
+                            <Bar dataKey="value" radius={[0, 4, 4, 0]} fill="url(#hbarDark)" maxBarSize={22} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             );
         }
 
         case 'stacked_bar':
             return (
-                <ResponsiveContainer width="100%" height={192} debounce={50}>
-                    <BarChart data={chart.data} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
-                        <defs>
-                            <linearGradient id="stackedPos" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#F472B6" stopOpacity={0.9} />
-                                <stop offset="100%" stopColor="#F472B6" stopOpacity={0.6} />
-                            </linearGradient>
-                            <linearGradient id="stackedNeg" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#34D399" stopOpacity={0.9} />
-                                <stop offset="100%" stopColor="#34D399" stopOpacity={0.6} />
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid {...gridProps} vertical={false} />
-                        <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
-                        <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
-                        <Legend iconType="circle" iconSize={8}
-                            formatter={(v: string) => <span className="text-xs text-gray-400">{v === 'positive' ? 'Churned' : 'Retained'}</span>} />
-                        <Bar dataKey="positive" stackId="a" fill="url(#stackedPos)" maxBarSize={40} name="positive" />
-                        <Bar dataKey="negative" stackId="a" fill="url(#stackedNeg)" maxBarSize={40} name="negative" />
-                    </BarChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={192} debounce={50}>
+                        <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
+                            <defs>
+                                <linearGradient id="stackedPos" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#F472B6" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#F472B6" stopOpacity={0.6} />
+                                </linearGradient>
+                                <linearGradient id="stackedNeg" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#34D399" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#34D399" stopOpacity={0.6} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid {...gridProps} vertical={false} />
+                            <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
+                            <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
+                            <Legend iconType="circle" iconSize={8}
+                                formatter={(v: string) => <span className="text-xs text-gray-400">{v === 'positive' ? 'Churned' : 'Retained'}</span>} />
+                            <Bar dataKey="positive" stackId="a" fill="url(#stackedPos)" maxBarSize={40} name="positive" />
+                            <Bar dataKey="negative" stackId="a" fill="url(#stackedNeg)" maxBarSize={40} name="negative" />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'pie':
             return (
-                <ResponsiveContainer width="100%" height={210} debounce={50}>
-                    <PieChart>
-                        <defs>
-                            {chart.data.map((_: any, i: number) => (
-                                <linearGradient key={`pg${i}`} id={`pieGrad${i}`} x1="0" y1="0" x2="1" y2="1">
-                                    <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={1} />
-                                    <stop offset="100%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.7} />
-                                </linearGradient>
-                            ))}
-                        </defs>
-                        <Pie data={chart.data} cx="38%" cy="50%" outerRadius={80} innerRadius={0}
-                            paddingAngle={2} dataKey="value" stroke={isDark ? '#1a1d24' : '#ffffff'}
-                            strokeWidth={2} animationBegin={0} animationDuration={800}>
-                            {chart.data.map((_: any, i: number) => (
-                                <Cell key={i} fill={`url(#pieGrad${i})`}
-                                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))', cursor: 'pointer' }} />
-                            ))}
-                        </Pie>
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                        <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" iconSize={8}
-                            formatter={(v: string) => {
-                                const item = chart.data.find((d: any) => d.name === v);
-                                const total = chart.data.reduce((s: number, d: any) => s + (d.value || 0), 0);
-                                const pct = total > 0 && item ? ((item.value / total) * 100).toFixed(0) : '0';
-                                return <span className="text-xs text-gray-400">{v.length > 12 ? v.slice(0, 12) + '…' : v} <span className="opacity-50">{pct}%</span></span>;
-                            }} />
-                    </PieChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={210} debounce={50}>
+                        <PieChart>
+                            <defs>
+                                {chartData.map((_: any, i: number) => (
+                                    <linearGradient key={`pg${i}`} id={`pieGrad${i}`} x1="0" y1="0" x2="1" y2="1">
+                                        <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={1} />
+                                        <stop offset="100%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.7} />
+                                    </linearGradient>
+                                ))}
+                            </defs>
+                            <Pie data={chartData} cx="38%" cy="50%" outerRadius={80} innerRadius={0}
+                                paddingAngle={2} dataKey="value" stroke={isDark ? '#1a1d24' : '#ffffff'}
+                                strokeWidth={2} animationBegin={0} animationDuration={800}>
+                                {chartData.map((entry: any, i: number) => (
+                                    <Cell key={i} fill={`url(#pieGrad${i})`}
+                                        onClick={() => handleSliceClick(entry)}
+                                        style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))', cursor: onFilterClick ? 'pointer' : 'default' }} />
+                                ))}
+                            </Pie>
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
+                            <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" iconSize={8}
+                                formatter={(v: string) => {
+                                    const item = chartData.find((d: any) => d.name === v);
+                                    const total = chartData.reduce((s: number, d: any) => s + (d.value || 0), 0);
+                                    const pct = total > 0 && item ? ((item.value / total) * 100).toFixed(0) : '0';
+                                    return <span className="text-xs text-gray-400">{v.length > 12 ? v.slice(0, 12) + '…' : v} <span className="opacity-50">{pct}%</span></span>;
+                                }} />
+                        </PieChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'donut':
             return (
-                <ResponsiveContainer width="100%" height={210} debounce={50}>
-                    <PieChart>
-                        <defs>
-                            {chart.data.map((_: any, i: number) => (
-                                <linearGradient key={`dg${i}`} id={`donutGrad${i}`} x1="0" y1="0" x2="1" y2="1">
-                                    <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={1} />
-                                    <stop offset="100%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.7} />
-                                </linearGradient>
-                            ))}
-                        </defs>
-                        <Pie data={chart.data} cx="38%" cy="50%" innerRadius={52} outerRadius={80}
-                            paddingAngle={3} dataKey="value" stroke={isDark ? '#1a1d24' : '#ffffff'}
-                            strokeWidth={2} animationBegin={0} animationDuration={800}>
-                            {chart.data.map((_: any, i: number) => (
-                                <Cell key={i} fill={`url(#donutGrad${i})`}
-                                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))', cursor: 'pointer' }} />
-                            ))}
-                        </Pie>
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                        <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" iconSize={8}
-                            formatter={(v: string) => {
-                                const item = chart.data.find((d: any) => d.name === v);
-                                const total = chart.data.reduce((s: number, d: any) => s + (d.value || 0), 0);
-                                const pct = total > 0 && item ? ((item.value / total) * 100).toFixed(0) : '0';
-                                return <span className="text-xs text-gray-400">{v.length > 12 ? v.slice(0, 12) + '…' : v} <span className="opacity-50">{pct}%</span></span>;
-                            }} />
-                    </PieChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={210} debounce={50}>
+                        <PieChart>
+                            <defs>
+                                {chartData.map((_: any, i: number) => (
+                                    <linearGradient key={`dg${i}`} id={`donutGrad${i}`} x1="0" y1="0" x2="1" y2="1">
+                                        <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={1} />
+                                        <stop offset="100%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.7} />
+                                    </linearGradient>
+                                ))}
+                            </defs>
+                            <Pie data={chartData} cx="38%" cy="50%" innerRadius={52} outerRadius={80}
+                                paddingAngle={3} dataKey="value" stroke={isDark ? '#1a1d24' : '#ffffff'}
+                                strokeWidth={2} animationBegin={0} animationDuration={800}>
+                                {chartData.map((entry: any, i: number) => (
+                                    <Cell key={i} fill={`url(#donutGrad${i})`}
+                                        onClick={() => handleSliceClick(entry)}
+                                        style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))', cursor: onFilterClick ? 'pointer' : 'default' }} />
+                                ))}
+                            </Pie>
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
+                            <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" iconSize={8}
+                                formatter={(v: string) => {
+                                    const item = chartData.find((d: any) => d.name === v);
+                                    const total = chartData.reduce((s: number, d: any) => s + (d.value || 0), 0);
+                                    const pct = total > 0 && item ? ((item.value / total) * 100).toFixed(0) : '0';
+                                    return <span className="text-xs text-gray-400">{v.length > 12 ? v.slice(0, 12) + '…' : v} <span className="opacity-50">{pct}%</span></span>;
+                                }} />
+                        </PieChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'line':
         case 'area':
             return (
-                <ResponsiveContainer width="100%" height={192} debounce={50}>
-                    <AreaChart data={chart.data} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
-                        <defs>
-                            <linearGradient id="areaDark" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#34D399" stopOpacity={0.35} />
-                                <stop offset="100%" stopColor="#34D399" stopOpacity={0.02} />
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid {...gridProps} vertical={false} />
-                        <XAxis dataKey={dateKey} {...axisProps} stroke={chartColors.axis}
-                            tickFormatter={v => String(v).length > 7 ? String(v).slice(-5) : v} tick={{ ...textStyle }} />
-                        <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                        <Area type="monotone" dataKey="value" stroke="#34D399" strokeWidth={2.5}
-                            fill="url(#areaDark)" dot={false} activeDot={{ r: 5, fill: '#34D399', stroke: '#0d0d0d' }} />
-                    </AreaChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={192} debounce={50}>
+                        <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
+                            <defs>
+                                <linearGradient id="areaDark" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#34D399" stopOpacity={0.35} />
+                                    <stop offset="100%" stopColor="#34D399" stopOpacity={0.02} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid {...gridProps} vertical={false} />
+                            <XAxis dataKey={dateKey} {...axisProps} stroke={chartColors.axis}
+                                tickFormatter={v => String(v).length > 7 ? String(v).slice(-5) : v} tick={{ ...textStyle }} />
+                            <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
+                            <Area type="monotone" dataKey="value" stroke="#34D399" strokeWidth={2.5}
+                                fill="url(#areaDark)" dot={false} activeDot={{ r: 5, fill: '#34D399', stroke: '#0d0d0d' }} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'stacked':
             return (
-                <ResponsiveContainer width="100%" height={192} debounce={50}>
-                    <AreaChart data={chart.data} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
-                        <defs>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={192} debounce={50}>
+                        <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
+                            <defs>
+                                {(chart.categories || []).map((cat: string, i: number) => (
+                                    <linearGradient key={cat} id={`stackGrad${i}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.4} />
+                                        <stop offset="100%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.05} />
+                                    </linearGradient>
+                                ))}
+                            </defs>
+                            <CartesianGrid {...gridProps} vertical={false} />
+                            <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
+                            <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
+                            <Legend iconType="circle" iconSize={8}
+                                formatter={v => <span className="text-xs text-gray-400">{v}</span>} />
                             {(chart.categories || []).map((cat: string, i: number) => (
-                                <linearGradient key={cat} id={`stackGrad${i}`} x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.4} />
-                                    <stop offset="100%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.05} />
-                                </linearGradient>
+                                <Area key={cat} type="monotone" dataKey={cat} stackId="a"
+                                    stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                                    fill={`url(#stackGrad${i})`} strokeWidth={1.5} />
                             ))}
-                        </defs>
-                        <CartesianGrid {...gridProps} vertical={false} />
-                        <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
-                        <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                        <Legend iconType="circle" iconSize={8}
-                            formatter={v => <span className="text-xs text-gray-400">{v}</span>} />
-                        {(chart.categories || []).map((cat: string, i: number) => (
-                            <Area key={cat} type="monotone" dataKey={cat} stackId="a"
-                                stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                                fill={`url(#stackGrad${i})`} strokeWidth={1.5} />
-                        ))}
-                    </AreaChart>
-                </ResponsiveContainer>
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'scatter':
             return (
-                <ResponsiveContainer width="100%" height={192} debounce={50}>
-                    <ScatterChart margin={{ top: 10, right: 15, bottom: 10, left: 0 }}>
-                        <CartesianGrid {...gridProps} />
-                        <XAxis type="number" dataKey="x" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
-                        <YAxis type="number" dataKey="y" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ strokeDasharray: '3 3', stroke: chartColors.axis }} />
-                        <Scatter data={chart.data}>
-                            {chart.data.map((_: any, i: number) => (
-                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={0.8} />
-                            ))}
-                        </Scatter>
-                    </ScatterChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={192} debounce={50}>
+                        <ScatterChart margin={{ top: 10, right: 15, bottom: 10, left: 0 }}>
+                            <CartesianGrid {...gridProps} />
+                            <XAxis type="number" dataKey="x" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <YAxis type="number" dataKey="y" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ strokeDasharray: '3 3', stroke: chartColors.axis }} />
+                            <Scatter data={chartData}>
+                                {chartData.map((_: any, i: number) => (
+                                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={0.8} />
+                                ))}
+                            </Scatter>
+                        </ScatterChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'treemap': {
@@ -591,7 +658,9 @@ const ChartRenderer = ({ chart, chartColors, isDark }: { chart: any; chartColors
                 const col = CHART_COLORS[Math.abs(String(name).charCodeAt(0)) % CHART_COLORS.length];
                 const hov = hoveredIdx === idx;
                 return (
-                    <g onMouseEnter={() => setHoveredIdx(idx)} onMouseLeave={() => setHoveredIdx(null)}>
+                    <g onMouseEnter={() => setHoveredIdx(idx)} onMouseLeave={() => setHoveredIdx(null)}
+                        onClick={() => handleSliceClick({ name })}
+                        style={{ cursor: onFilterClick ? 'pointer' : 'default' }}>
                         <rect x={x} y={y} width={width} height={height} rx={4}
                             fill={col} stroke={isDark ? "#0d0d0d" : "#ffffff"} strokeWidth={2}
                             style={{ filter: hov ? 'brightness(1.2)' : 'none', transition: 'filter 0.2s' }} />
@@ -605,29 +674,40 @@ const ChartRenderer = ({ chart, chartColors, isDark }: { chart: any; chartColors
                 );
             };
             return (
-                <ResponsiveContainer width="100%" height={192} debounce={50}>
-                    <Treemap data={chart.data} dataKey="value" stroke={isDark ? "#0d0d0d" : "#ffffff"} content={<TreeCell />}>
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
-                    </Treemap>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={192} debounce={50}>
+                        <Treemap data={chartData} dataKey="value" stroke={isDark ? "#0d0d0d" : "#ffffff"} content={<TreeCell />}>
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
+                        </Treemap>
+                    </ResponsiveContainer>
+                </div>
             );
         }
 
         case 'radar':
             return (
-                <ResponsiveContainer width="100%" height={192} debounce={50}>
-                    <RadarChart data={chart.data.slice(0, 8)}>
-                        <PolarGrid stroke={chartColors.grid} />
-                        <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: chartColors.text }} />
-                        <PolarRadiusAxis tick={{ fontSize: 9, fill: chartColors.axis }} />
-                        <Radar dataKey="value" stroke="#818CF8" fill="#818CF8" fillOpacity={0.35} />
-                        <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
-                    </RadarChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <ResponsiveContainer width="100%" height={192} debounce={50}>
+                        <RadarChart data={chartData.slice(0, 8)}>
+                            <PolarGrid stroke={chartColors.grid} />
+                            <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: chartColors.text }} />
+                            <PolarRadiusAxis tick={{ fontSize: 9, fill: chartColors.axis }} />
+                            <Radar dataKey="value" stroke="#818CF8" fill="#818CF8" fillOpacity={0.35} />
+                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
+                        </RadarChart>
+                    </ResponsiveContainer>
+                </div>
             );
 
         case 'geo_map':
-            return <GeoMapCard data={chart.data} mapType={chart.geo_meta?.map_type ?? 'world'} chartTitle={chart.title} formatType={chart.format_type} />;
+            return (
+                <div className="flex flex-col h-full w-full">
+                    {renderOutlierToggle()}
+                    <GeoMapCard data={chartData} mapType={chart.geo_meta?.map_type ?? 'world'} chartTitle={chart.title} formatType={chart.format_type} />
+                </div>
+            );
 
         default:
             return <div className="h-48 flex items-center justify-center text-gray-500 text-sm">Unsupported chart type</div>;
@@ -1148,12 +1228,29 @@ function getDashboardTitle(domain: string | undefined): string {
 
 export default function UserDashboard() {
     const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // Only for full data loads (Dataset/Domain/Classification)
+    const [isKPILoading, setIsKPILoading] = useState(false); // Only for background KPI refreshes (Filters)
     const [error, setError] = useState<string | null>(null);
     const [selectedDatasetId, setSelectedDatasetId] = useState('');
     const [datasets, setDatasets] = useState<any[]>([]);
-    const [filterValue, setFilterValue] = useState('all');
-    const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
+
+    // Zustand Store for Filters
+    const {
+        active_filters,
+        clearFilters,
+        setFilterValues,
+        toggleFilter,
+        chart_overrides,
+        setChartOverride,
+        classification_overrides,
+        selected_domain,
+        setDomain,
+        chartData,
+        setDashboardData,
+        target_value,
+        setTargetValue
+    } = useFilterStore();
+
     // filterSlots: 4 slots, each holds the column name assigned by the user (null = unassigned)
     const [filterSlots, setFilterSlots] = useState<(string | null)[]>([null, null, null, null]);
     const { theme } = useTheme();
@@ -1179,27 +1276,69 @@ export default function UserDashboard() {
     // Reset slots + filters when dataset changes
     useEffect(() => {
         setFilterSlots([null, null, null, null]);
-        setActiveFilters({});
+        clearFilters();
     }, [selectedDatasetId]);
 
     // Auto-seed slots on first analytics load for this dataset
     useEffect(() => {
-        if (!analytics?.geo_filters) return;
+        if (!analytics?.geo_filters || !analytics?.columns?.dimensions) return;
         const alreadySeeded = filterSlots.some(s => s !== null);
         if (alreadySeeded) return;
-        const PRIORITY = ['contract', 'segment', 'category', 'region', 'type', 'status', 'gender'];
-        const cols = Object.keys(analytics.geo_filters);
-        const sorted = [
-            ...cols.filter(c => PRIORITY.some(p => c.toLowerCase().includes(p))),
-            ...cols.filter(c => !PRIORITY.some(p => c.toLowerCase().includes(p))),
-        ];
-        // Seed up to 4 slots with top columns
-        setFilterSlots(prev => prev.map((_, i) => sorted[i] ?? null));
-    }, [analytics?.geo_filters]);
 
+        // Correct priority for filter slot seeding:
+        // 1. Domain-priority dimensions (contract_type, region, segment)
+        // 2. Low-to-medium cardinality dimensions (2-20 unique values)
+        // 3. EXCLUDE identifiers or high-cardinality (>20 unique values)
+        const DOMAIN_PRIORITY = ['contract', 'segment', 'category', 'region', 'type', 'status', 'gender'];
+
+        const dimMetadata = Object.keys(analytics.geo_filters).map(col => ({
+            col,
+            isPriority: DOMAIN_PRIORITY.some(p => col.toLowerCase().includes(p)),
+            cardinality: analytics.geo_filters![col].length
+        }));
+
+        const filtered = dimMetadata.filter(d =>
+            d.cardinality >= 2 && d.cardinality <= 20 // Guard against high cardinality
+        );
+
+        const sorted = [
+            ...filtered.filter(d => d.isPriority).sort((a, b) => a.cardinality - b.cardinality),
+            ...filtered.filter(d => !d.isPriority).sort((a, b) => a.cardinality - b.cardinality),
+        ];
+
+        const finalCols = sorted.map(s => s.col);
+
+        // Seed up to 4 slots with top columns
+        setFilterSlots(prev => prev.map((_, i) => finalCols[i] ?? null));
+    }, [analytics]);
+
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Debounce the analytics load
     useEffect(() => {
-        if (selectedDatasetId) loadAnalytics();
-    }, [selectedDatasetId, filterValue, activeFilters]);
+        if (!selectedDatasetId) return;
+
+        // 1. Instantly recompute correlation matrix in background if dataset changed
+        // (Moved from separate useEffect for cleaner logic)
+
+        // 2. Decide if this is a "Full Reload" or just a "KPI Refresh"
+        const isFullReload = abortControllerRef.current === null; // Simple heuristic: first load is full
+
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        const timer = setTimeout(() => {
+            loadAnalytics(controller.signal);
+        }, 400);
+
+        return () => {
+            clearTimeout(timer);
+        };
+    }, [selectedDatasetId, target_value, classification_overrides, selected_domain, active_filters]);
 
     const loadDatasets = async () => {
         try {
@@ -1214,20 +1353,43 @@ export default function UserDashboard() {
         }
     };
 
-    const loadAnalytics = async () => {
+    const loadAnalytics = async (signal?: AbortSignal) => {
         try {
-            setIsLoading(true);
+            // If we have rawData already, this is a background KPI refresh
+            const isKPIOnly = !!useFilterStore.getState().rawData;
+
+            if (isKPIOnly) setIsKPILoading(true);
+            else setIsLoading(true);
+
             setError(null);
             const data = await analyticsService.getDashboardAnalytics(
                 selectedDatasetId,
-                filterValue,
-                activeFilters
+                target_value,
+                active_filters,
+                chart_overrides,
+                classification_overrides,
+                selected_domain,
+                signal
             );
             setAnalytics(data);
+            if (data.raw_data && data.chart_configs) {
+                console.log(`[Hybrid Engine] Received ${data.raw_data.length} rows for local recomputation. Target: ${data.target_column}`);
+                const initial: Record<string, any> = {};
+                if (data.charts) {
+                    Object.entries(data.charts).forEach(([key, chart]: [string, any]) => {
+                        initial[key] = chart.data;
+                    });
+                }
+                setDashboardData(data.raw_data, data.chart_configs, initial, data.target_column);
+            } else {
+                console.warn('[Hybrid Engine] Missing raw_data or chart_configs. Local filtering disabled.');
+            }
         } catch (err: any) {
+            if (err.name === 'AbortError') return;
             setError(err.response?.data?.detail || 'Failed to load analytics');
         } finally {
             setIsLoading(false);
+            setIsKPILoading(false);
         }
     };
 
@@ -1250,13 +1412,67 @@ export default function UserDashboard() {
     };
 
     const kpiEntries = analytics?.kpis ? Object.entries(analytics.kpis) : [];
-    const chartArrayRaw = analytics?.charts ? Object.values(analytics.charts) : [];
+    const chartArrayRaw = analytics?.charts ? Object.entries(analytics.charts).map(([id, val]) => ({
+        id,
+        ...(val as any),
+        data: chartData?.[id] || (val as any).data,
+        data_without_outliers: chartData?.[id] || (val as any).data_without_outliers
+    })) : [];
+
     // Sort: regular charts first, tall hbar charts last so they don't break grid row alignment
     const chartArray = [...chartArrayRaw].sort((a: any, b: any) => {
-        const aIsHbar = a.type === 'hbar' && a.data?.length >= 8 ? 1 : 0;
-        const bIsHbar = b.type === 'hbar' && b.data?.length >= 8 ? 1 : 0;
+        const typeA = chart_overrides[a.id]?.type || a.type;
+        const typeB = chart_overrides[b.id]?.type || b.type;
+        const aIsHbar = typeA === 'hbar' && a.data?.length >= 8 ? 1 : 0;
+        const bIsHbar = typeB === 'hbar' && b.data?.length >= 8 ? 1 : 0;
         return aIsHbar - bIsHbar;
     });
+
+    const renderChartActions = (chart: any) => {
+        const currentType = chart_overrides[chart.id]?.type || chart.type;
+        const currentAgg = chart_overrides[chart.id]?.aggregation || chart.aggregation || 'sum';
+
+        const isNumericMetric = chart.value_label?.toLowerCase()?.includes('count') === false &&
+            currentAgg?.toLowerCase() !== 'count';
+
+        return (
+            <div className="flex items-center gap-1.5">
+                {isNumericMetric && (
+                    <select
+                        value={currentAgg}
+                        onChange={(e) => setChartOverride(chart.id, { aggregation: e.target.value })}
+                        className={`text-[10px] px-1 py-0.5 rounded border outline-none transition-colors ${isDark
+                            ? 'bg-gray-800/80 border-gray-700 text-gray-400 hover:border-gray-600 focus:border-indigo-500'
+                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 focus:border-indigo-400'
+                            }`}
+                        title="Aggregation Method"
+                    >
+                        <option value="sum">Sum</option>
+                        <option value="mean">Average</option>
+                    </select>
+                )}
+                <select
+                    value={currentType}
+                    onChange={(e) => setChartOverride(chart.id, { type: e.target.value })}
+                    className={`text-[10px] px-1 py-0.5 rounded border outline-none transition-colors ${isDark
+                        ? 'bg-gray-800/80 border-gray-700 text-gray-300 hover:border-gray-600 focus:border-blue-500'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 focus:border-blue-400'
+                        }`}
+                    title="Chart Type"
+                >
+                    <option value="bar">Bar</option>
+                    <option value="hbar">H-Bar</option>
+                    <option value="line">Line</option>
+                    <option value="area">Area</option>
+                    <option value="pie">Pie</option>
+                    <option value="donut">Donut</option>
+                    <option value="scatter">Scatter</option>
+                    <option value="treemap">Treemap</option>
+                    <option value="radar">Radar</option>
+                </select>
+            </div>
+        );
+    };
 
     return (
         <div id="dashboard-root" className="h-full">
@@ -1278,7 +1494,7 @@ export default function UserDashboard() {
 
                         {/* Refresh */}
                         <button
-                            onClick={loadAnalytics}
+                            onClick={() => loadAnalytics()}
                             disabled={isLoading}
                             className="p-2.5 rounded-lg bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all shadow-sm disabled:opacity-50"
                             title="Refresh data"
@@ -1310,8 +1526,27 @@ export default function UserDashboard() {
                             <span className="text-gray-300 dark:text-gray-600">•</span>
                             <span>{analytics.total_rows.toLocaleString()} rows</span>
                             <span className="text-gray-300 dark:text-gray-600">•</span>
-                            <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium capitalize">
-                                {analytics.domain}
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
+                                <span className="opacity-70">Domain:</span>
+                                <select
+                                    value={selected_domain || 'auto'}
+                                    onChange={(e) => setDomain(e.target.value === 'auto' ? null : e.target.value)}
+                                    className="bg-transparent border-none outline-none text-blue-800 dark:text-blue-300 font-bold cursor-pointer capitalize"
+                                >
+                                    <option value="auto">Auto ({analytics.domain})</option>
+                                    <option value="sales">Sales</option>
+                                    <option value="churn">Churn</option>
+                                    <option value="marketing">Marketing</option>
+                                    <option value="finance">Finance</option>
+                                    <option value="healthcare">Healthcare</option>
+                                    <option value="generic">Generic</option>
+                                </select>
+                            </div>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${analytics.domain_confidence === 'HIGH' ? 'bg-green-500/10 text-green-500' :
+                                analytics.domain_confidence === 'MEDIUM' ? 'bg-yellow-500/10 text-yellow-500' :
+                                    'bg-red-500/10 text-red-500'
+                                }`}>
+                                {analytics.domain_confidence} Confidence
                             </span>
                         </div>
                     )}
@@ -1320,8 +1555,8 @@ export default function UserDashboard() {
                     {analytics?.target_values && analytics.target_values.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 mb-6">
                             <button
-                                onClick={() => setFilterValue('all')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filterValue === 'all'
+                                onClick={() => setTargetValue('all')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${target_value === 'all'
                                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
                                     : 'bg-white dark:bg-[#16181D] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500'}`}
                             >
@@ -1330,8 +1565,8 @@ export default function UserDashboard() {
                             {analytics.target_values.map(val => (
                                 <button
                                     key={val}
-                                    onClick={() => setFilterValue(val)}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filterValue === val
+                                    onClick={() => setTargetValue(val)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${target_value === val
                                         ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
                                         : 'bg-white dark:bg-[#16181D] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500'}`}
                                 >
@@ -1346,16 +1581,12 @@ export default function UserDashboard() {
                         <MultiFilterPanel
                             geoFilters={analytics.geo_filters}
                             filterSlots={filterSlots}
-                            activeFilters={activeFilters}
+                            activeFilters={active_filters}
                             onSlotChange={(slotIdx, col) =>
                                 setFilterSlots(prev => prev.map((s, i) => i === slotIdx ? col : s))
                             }
-                            onFilterChange={(col, values) =>
-                                setActiveFilters(prev => ({ ...prev, [col]: values }))
-                            }
-                            onClearAll={() => {
-                                setActiveFilters({});
-                            }}
+                            onFilterChange={(col, values) => setFilterValues(col, values)}
+                            onClearAll={() => clearFilters()}
                         />
                     )}
 
@@ -1419,18 +1650,23 @@ export default function UserDashboard() {
                     {/* ── Main Content ── */}
                     {!isLoading && !error && analytics && (
                         <>
+                            {/* Column Classification Override UI */}
+                            {analytics.columns && (
+                                <ColumnClassificationPanel columns={analytics.columns} isDark={isDark} />
+                            )}
+
                             {/* KPI Grid — Dynamic Columns */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] xl:grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-5 mb-7">
                                 {kpiEntries.map(([key, kpi], i) => (
                                     <KPICard
                                         key={key}
                                         title={kpi.title}
-                                        value={formatValue(kpi.value, kpi.format)}
+                                        value={isKPILoading ? "..." : formatValue(kpi.value, kpi.format)}
                                         icon={kpi.icon || 'default'}
                                         index={i}
                                         trend={kpi.trend}
                                         trend_label={kpi.trend_label}
-                                        subtitle={kpi.subtitle}
+                                        subtitle={(Object.values(active_filters).some(f => f.length > 0) || target_value !== 'all') ? "Filtered View" : kpi.subtitle}
                                     />
                                 ))}
                             </div>
@@ -1438,12 +1674,13 @@ export default function UserDashboard() {
                             {/* Chart Row 1 — 3 columns */}
                             {chartArray.length > 0 && (
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-                                    {chartArray.slice(0, 3).map((chart, i) => (
-                                        <ChartCard key={i} title={chart.title || `Chart ${i + 1}`}>
+                                    {chartArray.slice(0, 3).map((chart) => (
+                                        <ChartCard key={chart.id} title={chart.title || `Insight ${chart.id}`} actions={renderChartActions(chart)}>
                                             <ChartRenderer
-                                                chart={chart}
+                                                chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
                                                 chartColors={chartColors}
                                                 isDark={isDark}
+                                                onFilterClick={(col, val) => toggleFilter(col, val)}
                                             />
                                         </ChartCard>
                                     ))}
@@ -1456,12 +1693,13 @@ export default function UserDashboard() {
                                 <CorrelationHeatmapCard corr={corrMatrix} loading={corrLoading} isDark={isDark} />
 
                                 {/* Remaining charts */}
-                                {chartArray.slice(3).map((chart, i) => (
-                                    <ChartCard key={i} title={chart.title || `Chart ${i + 4}`}>
+                                {chartArray.slice(3).map((chart) => (
+                                    <ChartCard key={chart.id} title={chart.title || `Insight ${chart.id}`} actions={renderChartActions(chart)}>
                                         <ChartRenderer
-                                            chart={chart}
+                                            chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
                                             chartColors={chartColors}
                                             isDark={isDark}
+                                            onFilterClick={(col, val) => toggleFilter(col, val)}
                                         />
                                     </ChartCard>
                                 ))}
