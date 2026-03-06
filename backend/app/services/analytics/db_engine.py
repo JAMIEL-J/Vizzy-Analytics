@@ -39,14 +39,25 @@ class DBEngine:
             self._read_con = duckdb.connect(database=self._db_path, read_only=True)
         
         try:
-            # Apply security locks
+            # Apply security locks in correct order (lock_configuration must be LAST)
             self._read_con.execute("SET enable_external_access = false")
-            self._read_con.execute("SET lock_configuration = true")
             self._read_con.execute("SET autoinstall_known_extensions = false")
             self._read_con.execute("SET autoload_known_extensions = false")
-            logger.info("DuckDB connection locked down for security.")
+            
+            # Now lock the configuration
+            try:
+                self._read_con.execute("SET lock_configuration = true")
+                logger.info("DuckDB connection locked down for security.")
+            except duckdb.Error as e:
+                if "configuration has been locked" in str(e):
+                    logger.debug("DuckDB configuration already locked.")
+                else:
+                    raise e
         except Exception as e:
-            logger.error(f"Failed to lock down DuckDB: {e}")
+            if "configuration has been locked" in str(e):
+                 logger.debug("DuckDB is already in a locked state.")
+            else:
+                logger.error(f"Failed to lock down DuckDB: {e}")
 
     def load_dataframe(self, table_name: str, df: pd.DataFrame):
         """Register a Pandas dataframe as a queryable DuckDB table and run coercion."""

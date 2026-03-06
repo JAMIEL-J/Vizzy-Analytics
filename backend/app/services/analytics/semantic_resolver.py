@@ -191,6 +191,28 @@ def find_column_with_score(
     return None, 0.0
 
 
+def find_ambiguous_columns(
+    keyword: str,
+    columns: List[str],
+    threshold: float = 0.6,
+) -> List[Tuple[str, float]]:
+    """
+    Find ALL columns that match a keyword above threshold.
+
+    Returns list of (column, score) sorted by score descending.
+    If ≥2 results, the keyword is ambiguous.
+    """
+    matches = []
+    for col in columns:
+        score = semantic_similarity(keyword, col)
+        if score >= threshold:
+            matches.append((col, round(score, 3)))
+
+    matches.sort(key=lambda x: x[1], reverse=True)
+    return matches
+
+
+
 def match_columns_to_keywords(
     keyword_groups: Dict[str, List[str]],
     columns: List[str],

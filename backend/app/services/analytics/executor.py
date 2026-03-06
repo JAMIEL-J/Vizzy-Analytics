@@ -1,4 +1,5 @@
 import json
+import time
 import logging
 from .db_engine import DBEngine
 from ..llm.sql_validator import SQLValidator
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class Executor:
-    """NL2SQL self-healing execution engine."""
+    """NL2SQL self-healing execution engine with timing instrumentation."""
 
     MAX_RETRIES = 3
 
@@ -25,50 +26,81 @@ class Executor:
         3. Send to LLM Router (Groq → Gemini fallback)
         4. Validate + execute SQL
         5. On error, feed error back to LLM and retry (up to 3×)
+
+        Returns timing breakdown in result['timing'].
         """
+        t_total_start = time.perf_counter()
+
         schema = db.extract_schema(table_name)
         if "error" in schema:
             return {"success": False, "error": f"Schema extraction failed: {schema['error']}"}
 
         current_error = None
+        last_sql = None
         column_metadata = schema.get('column_metadata', {})
+        available_cols = list(schema.get('columns', {}).keys())
+
+        # Pre-resolve semantic hints once (doesn't change across retries)
+        from .semantic_resolver import find_column, find_ambiguous_columns
+        words = user_query.lower().split()
+        hints = []
+        keywords = [w.strip("?,.!") for w in words if len(w) > 3]
+        for kw in keywords:
+            match = find_column([kw], available_cols, threshold=0.7)
+            if match and match not in [h['column'] for h in hints]:
+                col_meta = column_metadata.get(match, {})
+                hints.append({
+                    "keyword": kw,
+                    "column": match,
+                    "type": col_meta.get("type", "").upper(),
+                    "was_coerced": col_meta.get("coerced", False)
+                })
+
+        # ── Ambiguity Detection ──
+        # If a keyword matches ≥2 columns strongly, ask user to clarify
+        for kw in keywords:
+            candidates = find_ambiguous_columns(kw, available_cols, threshold=0.6)
+            # Only flag ambiguity if ≥2 matches and
+            # the top score isn't overwhelmingly higher (< 0.95)
+            if len(candidates) >= 2 and candidates[0][1] < 0.95:
+                # Check gap between top 2 — if gap > 0.2, the winner is clear
+                if (candidates[0][1] - candidates[1][1]) < 0.2:
+                    total_time_ms = round((time.perf_counter() - t_total_start) * 1000)
+                    logger.info(f"Ambiguity detected for '{kw}': {candidates}")
+                    return {
+                        "success": False,
+                        "ambiguity": {
+                            "term": kw,
+                            "candidates": [
+                                {"column": col, "score": score}
+                                for col, score in candidates[:5]
+                            ],
+                            "question": f"Which '{kw}' column did you mean?",
+                        },
+                        "timing": {
+                            "llm_ms": 0,
+                            "validation_ms": 0,
+                            "execution_ms": 0,
+                            "total_ms": total_time_ms,
+                            "retries": 0,
+                        },
+                    }
+
+        # Track cumulative timing across retries
+        llm_time_ms = 0
+        validation_time_ms = 0
+        execution_time_ms = 0
 
         for attempt in range(self.MAX_RETRIES):
-            # ── Semantic Column Hinting ──
-            # Identify columns mentioned semantically in the query to help the LLM
-            from .semantic_resolver import find_column
-            words = user_query.lower().split()
-            hints = []
-            available_cols = list(schema.get('columns', {}).keys())
-            
-            # Simple keyword extraction (nouns/keywords)
-            keywords = [w.strip("?,.!") for w in words if len(w) > 3]
-            for kw in keywords:
-                match = find_column([kw], available_cols, threshold=0.7)
-                if match and match not in [h['column'] for h in hints]:
-                    col_meta = column_metadata.get(match, {})
-                    col_type = col_meta.get("type", "").upper()
-                    
-                    # Use automated coercion metadata instead of manual scanning
-                    was_coerced = col_meta.get("coerced", False)
-                    
-                    hints.append({
-                        "keyword": kw, 
-                        "column": match, 
-                        "type": col_type,
-                        "was_coerced": was_coerced
-                    })
-            
-            # Build prompt — append prior error on retries
+            # Build prompt
             prompt_query = user_query
             if hints:
                 hint_lines = []
                 for h in hints:
                     msg = f"- '{h['keyword']}' maps to column '{h['column']}'"
                     if h['was_coerced']:
-                        msg += f" (NOTE: This column was automatically cleaned and cast to DOUBLE for numeric analysis)"
+                        msg += " (NOTE: This column was automatically cleaned and cast to DOUBLE for numeric analysis)"
                     hint_lines.append(msg)
-                
                 prompt_query = f"{prompt_query}\n\nColumn Mapping & Hinting:\n" + "\n".join(hint_lines)
 
             if current_error:
@@ -79,44 +111,99 @@ class Executor:
                 logger.warning(f"NL2SQL retry {attempt}/{self.MAX_RETRIES}: {current_error}")
 
             full_prompt = SQLGenerator.format_prompt(prompt_query, schema)
+
+            # ── LLM Generation (timed) ──
+            t_llm = time.perf_counter()
             llm_result = await self.router.generate_sql(full_prompt, schema=json.dumps(schema))
+            llm_time_ms = round((time.perf_counter() - t_llm) * 1000)
 
             raw_sql = llm_result.get("sql", "").strip()
+            last_sql = raw_sql
             chart_type = llm_result.get("chart_type", "text")
             title = llm_result.get("title", "")
 
             try:
+                # ── Validation (timed) ──
+                t_val = time.perf_counter()
                 SQLValidator.validate(raw_sql)
-                
-                # Determine optimal timeout based on query type as recommended
+                validation_time_ms = round((time.perf_counter() - t_val) * 1000)
+
+                # Determine timeout
                 raw_sql_upper = raw_sql.upper()
                 is_aggregative = any(kw in raw_sql_upper for kw in ["GROUP BY", "SUM(", "AVG(", "COUNT(", "MIN(", "MAX(", "WINDOW"])
-                timeout_sec = 20 if is_aggregative else 10 # AGGREGATIVE vs RETRIEVAL
-                
-                # execute_query is now async
-                result_df = await db.execute_query(raw_sql, timeout_seconds=timeout_sec)
+                timeout_sec = 20 if is_aggregative else 10
 
-                # Ensure result is JSON-serializable (Timestamps, etc.)
+                # ── DB Execution (timed) ──
+                t_exec = time.perf_counter()
+                result_df = await db.execute_query(raw_sql, timeout_seconds=timeout_sec)
+                execution_time_ms = round((time.perf_counter() - t_exec) * 1000)
+
                 result_json = result_df.to_json(orient="records", date_format="iso")
                 result_data = json.loads(result_json)
+
+                total_time_ms = round((time.perf_counter() - t_total_start) * 1000)
 
                 return {
                     "success": True,
                     "sql": raw_sql,
                     "data": result_data,
                     "columns": list(result_df.columns),
-                    "column_metadata": column_metadata,  # Pass metadata through
+                    "column_metadata": column_metadata,
                     "row_count": len(result_df),
                     "chart_type": chart_type,
                     "title": title,
                     "x_axis": llm_result.get("x_axis", ""),
                     "y_axis": llm_result.get("y_axis", ""),
                     "explanation": llm_result.get("explanation", ""),
+                    "timing": {
+                        "llm_ms": llm_time_ms,
+                        "validation_ms": validation_time_ms,
+                        "execution_ms": execution_time_ms,
+                        "total_ms": total_time_ms,
+                        "retries": attempt,
+                    },
                 }
 
             except Exception as e:
                 current_error = str(e)
                 continue
 
+        total_time_ms = round((time.perf_counter() - t_total_start) * 1000)
         logger.error(f"NL2SQL Engine failed after {self.MAX_RETRIES} attempts.")
-        return {"success": False, "error": f"Failed to resolve data query: {current_error}"}
+
+        # ── Structured diagnostics on failure ──
+        error_type = "unknown"
+        suggestion = None
+        err_lower = (current_error or "").lower()
+
+        if "column" in err_lower and ("not found" in err_lower or "does not exist" in err_lower):
+            error_type = "column_not_found"
+            suggestion = f"Available columns: {', '.join(available_cols[:15])}"
+        elif "syntax" in err_lower or "parser" in err_lower:
+            error_type = "syntax_error"
+            suggestion = "The generated SQL has a syntax issue. Try rephrasing your question."
+        elif "timeout" in err_lower or "cancel" in err_lower:
+            error_type = "timeout"
+            suggestion = "The query took too long. Try asking for a smaller subset or a simpler aggregation."
+        elif "empty" in err_lower or "no rows" in err_lower:
+            error_type = "empty_result"
+            suggestion = "No data matched your criteria. Try broadening your filters."
+
+        return {
+            "success": False,
+            "error": f"Failed to resolve data query: {current_error}",
+            "diagnostics": {
+                "error_type": error_type,
+                "attempted_sql": last_sql,
+                "suggestion": suggestion,
+                "available_columns": available_cols[:20],
+                "retry_count": self.MAX_RETRIES,
+            },
+            "timing": {
+                "llm_ms": llm_time_ms,
+                "validation_ms": validation_time_ms,
+                "execution_ms": execution_time_ms,
+                "total_ms": total_time_ms,
+                "retries": self.MAX_RETRIES,
+            },
+        }

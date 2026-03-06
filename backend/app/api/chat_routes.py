@@ -19,6 +19,7 @@ from app.api.deps import DBSession, AuthenticatedUser, RateLimitedUser
 from app.services import chat_service
 from app.services.analysis_orchestrator import run_analysis_orchestration
 from app.core.exceptions import ResourceNotFound, AuthorizationError, InvalidOperation
+from app.services.llm.intent_classifier import classify_intent_fast, FAST_INTENT_LABELS
 
 
 router = APIRouter()
@@ -305,16 +306,13 @@ async def send_message(
 
         # Run analysis if dataset is attached
         if chat_session.dataset_version_id:
-            # ── Intent Detection ──
-            query_lower = request.content.lower()
-            dashboard_keywords = ["dashboard", "overview", "summary dashboard", "report", "all metrics"]
-            is_dashboard = any(kw in query_lower for kw in dashboard_keywords)
+            # ── Intent Detection (6-type heuristic) ──
+            detected_intent, intent_confidence, intent_label = classify_intent_fast(request.content)
+            is_dashboard = detected_intent == 'dashboard'
 
             if is_dashboard:
                 # ══════════════════════════════════════════════════
                 # DASHBOARD → Legacy Orchestrator (multi-widget)
-                # NL2SQL generates ONE SQL query — dashboards need
-                # multiple widgets from different column analyses.
                 # ══════════════════════════════════════════════════
                 result = await run_analysis_orchestration(
                     session=session,
@@ -328,6 +326,8 @@ async def send_message(
                 metadata = result.get("metadata", {})
                 intent_type = metadata.get("intent_type", "dashboard")
                 output_data = result.get("dashboard") or result.get("chart") or result.get("data")
+                if output_data and isinstance(output_data, dict):
+                    output_data["detected_intent"] = intent_label
 
             else:
                 # ══════════════════════════════════════════════════
@@ -352,16 +352,14 @@ async def send_message(
                         # Initialize DuckDB engine
                         db_engine = DBEngine()
                         
-                        # Try to load CSV directly (More efficient for 200MB+ files)
                         try:
                             db_engine.load_csv("data", data_path)
                         except Exception as csv_err:
-                            # Fallback to Pandas if DuckDB's direct read fails
                             logging.getLogger(__name__).warning(f"Direct CSV load failed, falling back to Pandas: {csv_err}")
                             df = pd.read_csv(data_path)
                             db_engine.load_dataframe("data", df)
 
-                        # Apply memory management to conversation context
+                        # Apply memory management
                         context_messages = chat_service.get_recent_context(
                             session=session,
                             session_id=session_id,
@@ -371,7 +369,6 @@ async def send_message(
                         if memory.should_summarize(context_messages):
                             context_messages = await memory.summarize(context_messages)
 
-                        # Build contextual query with conversation history
                         context_prefix = ""
                         if context_messages:
                             history = "\n".join(
@@ -401,6 +398,7 @@ async def send_message(
                 if nl2sql_result and nl2sql_result.get("success"):
                     logger.info(f"NL2SQL Engine Success: Generated SQL '{nl2sql_result.get('sql')}'")
                     chart_type = nl2sql_result.get("chart_type", "table")
+                    timing = nl2sql_result.get("timing", {})
 
                     # Build proper chart spec from raw NL2SQL data
                     chart_output = build_chart_from_nl2sql(nl2sql_result)
@@ -408,13 +406,9 @@ async def send_message(
                     explanation = chart_output.get("explanation", {})
                     followups = chart_output.get("followup_suggestions", [])
 
-                    # Format response based on chart type
                     if chart_type == "kpi":
-                        # KPI / text response
                         kpi_value = chart_spec.get("data", {}).get("value", "")
                         kpi_label = chart_spec.get("data", {}).get("label", "Result")
-                        
-                        # Format value: whole if int, 2 decimal if float
                         formatted_val = f"{kpi_value:,}" if isinstance(kpi_value, int) else (f"{kpi_value:,.2f}".rstrip('0').rstrip('.') if isinstance(kpi_value, float) else str(kpi_value))
                         
                         assistant_content = (
@@ -428,10 +422,11 @@ async def send_message(
                             "chart": chart_spec,
                             "data": chart_spec.get("data"),
                             "sql": nl2sql_result.get("sql", ""),
+                            "timing": timing,
+                            "detected_intent": intent_label,
                             "followup_suggestions": followups,
                         }
                     else:
-                        # Chart response (bar, line, pie, table)
                         assistant_content = explanation.get("summary", "Here is your analysis.")
                         key_insight = explanation.get("key_insight", "")
                         if key_insight:
@@ -444,12 +439,39 @@ async def send_message(
                             "chart": chart_spec,
                             "explanation": explanation,
                             "sql": nl2sql_result.get("sql", ""),
+                            "timing": timing,
+                            "detected_intent": intent_label,
                             "followup_suggestions": followups,
                         }
+
+                elif nl2sql_result and nl2sql_result.get("ambiguity"):
+                    # ── Ambiguity Clarification ──
+                    ambiguity = nl2sql_result["ambiguity"]
+                    term = ambiguity.get("term", "")
+                    candidates = ambiguity.get("candidates", [])
+                    question = ambiguity.get("question", f"Which '{term}' column did you mean?")
+
+                    assistant_content = f"Your query mentions **\"{term}\"** which could refer to multiple columns. Please select the one you meant:"
+                    intent_type = "clarification"
+                    output_data = {
+                        "type": "clarification",
+                        "ambiguity": {
+                            "term": term,
+                            "candidates": candidates,
+                            "question": question,
+                            "original_query": request.content,
+                        },
+                        "timing": nl2sql_result.get("timing", {}),
+                        "detected_intent": intent_label,
+                    }
+
                 else:
+                    # ── NL2SQL failed — surface diagnostics then fallback ──
+                    diagnostics = nl2sql_result.get("diagnostics") if nl2sql_result else None
+                    failed_timing = nl2sql_result.get("timing") if nl2sql_result else None
                     reason = nl2sql_result.get("error") if nl2sql_result else "Unknown crash"
-                    logger.warning(f"NL2SQL Engine failed to produce result ({reason}). Falling back to Legacy Orchestrator.")
-                    # ── Fallback to legacy orchestrator ──
+                    logger.warning(f"NL2SQL Engine failed ({reason}). Falling back to Legacy Orchestrator.")
+
                     result = await run_analysis_orchestration(
                         session=session,
                         dataset_version_id=chat_session.dataset_version_id,
@@ -462,6 +484,14 @@ async def send_message(
                     metadata = result.get("metadata", {})
                     intent_type = metadata.get("intent_type")
                     output_data = result.get("chart") or result.get("dashboard") or result.get("data")
+
+                    # Attach diagnostics for the frontend to optionally display
+                    if output_data and isinstance(output_data, dict) and diagnostics:
+                        output_data["nl2sql_diagnostics"] = diagnostics
+                        output_data["nl2sql_timing"] = failed_timing
+                        output_data["detected_intent"] = intent_label
+
+
         else:
             # No dataset - just acknowledge
             assistant_content = "Please attach a dataset to this conversation to analyze data."

@@ -13,8 +13,8 @@ export default function ChatInterface() {
     const [datasets, setDatasets] = useState<Dataset[]>([]);
     const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-    const [expandedSqlMsgId, setExpandedSqlMsgId] = useState<string | null>(null);
     const [chartModes, setChartModes] = useState<Record<string, 'chart' | 'table'>>({});
+    const [copiedSqlMsgId, setCopiedSqlMsgId] = useState<string | null>(null);
 
     // Session History State
     const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -74,7 +74,6 @@ export default function ChatInterface() {
             }
 
             const msgs = await chatService.getMessages(sessionId);
-            // Function to map API messages if needed, or just use as is if they match
             setMessages(msgs);
 
             // Mobile: close sidebar on selection
@@ -106,7 +105,6 @@ export default function ChatInterface() {
     const handleNewChat = () => {
         setCurrentSessionId(null);
         setMessages([]);
-        // Keep selected dataset
         if (window.innerWidth < 768) {
             setIsSidebarOpen(false);
         }
@@ -133,7 +131,6 @@ export default function ChatInterface() {
         const container = document.getElementById(`msg-${messageId}`);
         if (!container) return;
 
-        // Target the chart renderer container specifically
         const chartWrapper = container.querySelector('.vizzy-chart-container');
         if (!chartWrapper) return;
 
@@ -161,16 +158,12 @@ export default function ChatInterface() {
 
         let sessionId = currentSessionId;
 
-        // If no session exists, create one first
         if (!sessionId) {
             try {
-                // Generate a title from the first message
                 const title = text.length > 30 ? text.substring(0, 30) + '...' : text;
                 const newSession = await chatService.createSession(selectedDatasetId || undefined, undefined, title);
                 sessionId = newSession.id;
                 setCurrentSessionId(sessionId);
-
-                // Refresh list to show new session
                 loadSessions();
             } catch (error) {
                 console.error('Failed to create new session:', error);
@@ -178,7 +171,6 @@ export default function ChatInterface() {
             }
         }
 
-        // Optimistic update
         const tempId = Date.now().toString();
         const userMsg: ChatMessage = {
             id: tempId,
@@ -193,15 +185,12 @@ export default function ChatInterface() {
 
         try {
             const response = await chatService.sendMessage(sessionId, text);
-
-            // Replace optimistic msg with real one and add AI response
             setMessages(prev => {
                 const filtered = prev.filter(m => m.id !== tempId);
                 return [...filtered, response.user_message, response.assistant_message];
             });
         } catch (error) {
             console.error('Failed to send message:', error);
-            // TODO: Show error in UI
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: 'assistant',
@@ -338,7 +327,7 @@ export default function ChatInterface() {
                                         )}
                                         <div className={`px-5 py-4 shadow-sm ${msg.role === 'user' ? 'bg-primary-blue text-white rounded-2xl rounded-tr-sm' : 'bg-white dark:bg-[#1C1F26] border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 rounded-2xl rounded-tl-sm'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
                                             <div className="text-sm leading-relaxed">
-                                                {['analysis', 'visualization', 'dashboard', 'text_query'].includes(msg.intent_type || '') ? (
+                                                {['analysis', 'visualization', 'dashboard', 'text_query', 'clarification'].includes(msg.intent_type || '') ? (
                                                     <div className="space-y-4 w-full">
                                                         <div className="markdown-content text-gray-800 dark:text-gray-200">
                                                             <ReactMarkdown
@@ -359,8 +348,48 @@ export default function ChatInterface() {
                                                             </ReactMarkdown>
                                                         </div>
 
-                                                        {msg.output_data && (() => {
-                                                            // Unwrap NL2SQL data if present for proper rendering and downloads
+                                                        {/* ── Ambiguity Clarification Cards ── */}
+                                                        {msg.output_data?.type === 'clarification' && msg.output_data?.ambiguity && (
+                                                            <div className="mt-4">
+                                                                <div className="flex items-center gap-2 mb-3">
+                                                                    <span className="text-sm font-bold text-gray-600 dark:text-gray-300">
+                                                                        🔀 {msg.output_data.ambiguity.question}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                    {msg.output_data.ambiguity.candidates.map((candidate: any, idx: number) => {
+                                                                        const originalQuery = msg.output_data.ambiguity.original_query || '';
+                                                                        const term = msg.output_data.ambiguity.term || '';
+                                                                        const newQuery = originalQuery.replace(
+                                                                            new RegExp(term, 'i'),
+                                                                            candidate.column
+                                                                        );
+                                                                        const confidence = Math.round(candidate.score * 100);
+                                                                        return (
+                                                                            <button
+                                                                                key={idx}
+                                                                                onClick={() => handleSendMessage(newQuery)}
+                                                                                className="flex items-center justify-between px-4 py-3 bg-white dark:bg-[#16181D] border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-primary-blue dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all duration-200 group text-left"
+                                                                            >
+                                                                                <div>
+                                                                                    <span className="font-mono text-sm font-bold text-gray-800 dark:text-gray-200 group-hover:text-primary-blue dark:group-hover:text-blue-400 transition-colors">
+                                                                                        {candidate.column}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${confidence >= 85 ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                                                                                        : confidence >= 70 ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
+                                                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                                                                                    }`}>
+                                                                                    {confidence}% match
+                                                                                </span>
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {msg.output_data && msg.output_data.type !== 'clarification' && (() => {
                                                             const targetData = msg.output_data.type === 'nl2sql' && msg.output_data.chart
                                                                 ? { ...msg.output_data.chart, sql: msg.output_data.sql }
                                                                 : msg.output_data;
@@ -382,7 +411,6 @@ export default function ChatInterface() {
                                                                     <div className="mt-4 flex flex-col border-t border-gray-100 dark:border-gray-800 pt-3">
                                                                         <div className="flex items-center justify-between">
                                                                             <div className="flex items-center space-x-4">
-                                                                                {/* Visual/Data Toggle */}
                                                                                 {targetData.type !== 'kpi' && msg.output_data.response_type !== 'text' && (
                                                                                     <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg shadow-inner">
                                                                                         <button
@@ -398,16 +426,6 @@ export default function ChatInterface() {
                                                                                             Data
                                                                                         </button>
                                                                                     </div>
-                                                                                )}
-
-                                                                                {sqlQuery && (
-                                                                                    <button
-                                                                                        onClick={() => setExpandedSqlMsgId(expandedSqlMsgId === msg.id ? null : msg.id)}
-                                                                                        className={`text-[10px] uppercase tracking-wider font-bold transition-colors flex items-center space-x-1.5 ${expandedSqlMsgId === msg.id ? 'text-primary-blue' : 'text-gray-400 hover:text-primary-blue'}`}
-                                                                                    >
-                                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
-                                                                                        <span>{expandedSqlMsgId === msg.id ? 'Hide Query' : 'View SQL'}</span>
-                                                                                    </button>
                                                                                 )}
                                                                             </div>
 
@@ -434,9 +452,82 @@ export default function ChatInterface() {
                                                                             </div>
                                                                         </div>
 
-                                                                        {expandedSqlMsgId === msg.id && sqlQuery && (
-                                                                            <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-[11px] font-mono text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap border border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                                                {sqlQuery}
+                                                                        {/* ── SQL Panel (always visible) ── */}
+                                                                        {sqlQuery && (
+                                                                            <div className="mt-3">
+                                                                                <div className="flex items-center justify-between mb-1.5">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                                                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                                                                                            Generated SQL
+                                                                                        </span>
+                                                                                        {msg.output_data?.detected_intent && (
+                                                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
+                                                                                                {msg.output_data.detected_intent}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            navigator.clipboard.writeText(sqlQuery);
+                                                                                            setCopiedSqlMsgId(msg.id);
+                                                                                            setTimeout(() => setCopiedSqlMsgId(null), 2000);
+                                                                                        }}
+                                                                                        className="text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-green-500 dark:text-gray-500 dark:hover:text-green-400 transition-colors flex items-center gap-1"
+                                                                                    >
+                                                                                        {copiedSqlMsgId === msg.id ? (
+                                                                                            <><svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg> Copied!</>
+                                                                                        ) : (
+                                                                                            <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Copy</>
+                                                                                        )}
+                                                                                    </button>
+                                                                                </div>
+                                                                                <pre className="p-3 bg-gray-900 dark:bg-black/60 rounded-lg text-[11px] font-mono text-green-300 dark:text-green-400 overflow-x-auto whitespace-pre-wrap border border-gray-800 dark:border-gray-700/50 leading-relaxed">
+                                                                                    <code>{sqlQuery}</code>
+                                                                                </pre>
+
+                                                                                {/* Timing Strip */}
+                                                                                {msg.output_data?.timing && (
+                                                                                    <div className="mt-2 flex items-center gap-2 text-[10px] font-mono text-gray-400 dark:text-gray-500 flex-wrap">
+                                                                                        {(() => {
+                                                                                            const t = msg.output_data.timing;
+                                                                                            const colorFor = (ms: number) => ms > 3000 ? 'text-red-400' : ms > 1000 ? 'text-yellow-400' : 'text-green-400';
+                                                                                            return (
+                                                                                                <>
+                                                                                                    <span className={colorFor(t.llm_ms)}>🧠 LLM: {(t.llm_ms / 1000).toFixed(2)}s</span>
+                                                                                                    <span className="text-gray-600">→</span>
+                                                                                                    <span className={colorFor(t.validation_ms)}>✅ Validation: {t.validation_ms}ms</span>
+                                                                                                    <span className="text-gray-600">→</span>
+                                                                                                    <span className={colorFor(t.execution_ms)}>⚡ DB: {t.execution_ms}ms</span>
+                                                                                                    <span className="text-gray-600">→</span>
+                                                                                                    <span className="font-bold text-gray-300 dark:text-gray-400">Total: {(t.total_ms / 1000).toFixed(2)}s</span>
+                                                                                                    {t.retries > 0 && <span className="text-yellow-500 ml-1">(⟳ {t.retries} retries)</span>}
+                                                                                                </>
+                                                                                            );
+                                                                                        })()}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* NL2SQL Diagnostics Card */}
+                                                                        {msg.output_data?.nl2sql_diagnostics && (
+                                                                            <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-lg text-xs">
+                                                                                <div className="flex items-center gap-2 mb-2">
+                                                                                    <span className="text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider text-[10px]">⚠ Query Diagnostic</span>
+                                                                                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-mono text-[10px]">
+                                                                                        {msg.output_data.nl2sql_diagnostics.error_type}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {msg.output_data.nl2sql_diagnostics.suggestion && (
+                                                                                    <p className="text-amber-700 dark:text-amber-300 mb-2">{msg.output_data.nl2sql_diagnostics.suggestion}</p>
+                                                                                )}
+                                                                                {msg.output_data.nl2sql_diagnostics.attempted_sql && (
+                                                                                    <details className="mt-1">
+                                                                                        <summary className="text-[10px] text-amber-600 dark:text-amber-400 cursor-pointer font-medium">View failed SQL</summary>
+                                                                                        <pre className="mt-1 p-2 bg-gray-900 rounded text-[10px] font-mono text-red-300 overflow-x-auto whitespace-pre-wrap">{msg.output_data.nl2sql_diagnostics.attempted_sql}</pre>
+                                                                                    </details>
+                                                                                )}
                                                                             </div>
                                                                         )}
                                                                     </div>

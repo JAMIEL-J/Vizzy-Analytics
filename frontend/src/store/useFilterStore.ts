@@ -85,12 +85,30 @@ const aggregateValues = (values: any[], method: string) => {
     return nums.reduce((a, b) => a + b, 0); // SUM default
 };
 
-const recomputeCharts = (rawData: any[], chartConfigs: Record<string, any>, filters: Record<string, string[]>, overrides: Record<string, ChartOverride>, targetCol: string | null, targetVal: string) => {
-    if (!rawData || !chartConfigs) return null;
+const recomputeCharts = (
+    rawData: any[],
+    chartConfigs: Record<string, any>,
+    filters: Record<string, string[]>,
+    overrides: Record<string, ChartOverride>,
+    targetCol: string | null,
+    targetVal: string,
+    existingCharts: Record<string, any> | null = null,
+    targetChartId?: string
+) => {
+    if (!rawData || !chartConfigs) return existingCharts;
     const filtered = applyFilters(rawData, filters, targetCol, targetVal);
-    const charts: Record<string, any> = {};
 
-    for (const [slotId, config] of Object.entries(chartConfigs)) {
+    // If existingCharts is provided, we merge into it (targeted update).
+    // Otherwise we start fresh (full update).
+    const charts: Record<string, any> = existingCharts ? { ...existingCharts } : {};
+
+    const configsToProcess = targetChartId
+        ? (chartConfigs[targetChartId] ? { [targetChartId]: chartConfigs[targetChartId] } : null)
+        : chartConfigs;
+
+    if (!configsToProcess) return charts;
+
+    for (const [slotId, config] of Object.entries(configsToProcess)) {
         const override = overrides[slotId] || {};
         const aggregation = (override.aggregation || config.aggregation || 'SUM').toUpperCase();
         const dimension = config.dimension;
@@ -108,20 +126,29 @@ const recomputeCharts = (rawData: any[], chartConfigs: Record<string, any>, filt
                 return acc;
             }, {} as Record<string, any[]>);
 
-            const chartData = Object.entries(grouped).map(([name, values]) => ({
+            let chartData = Object.entries(grouped).map(([name, values]) => ({
                 name,
                 value: aggregateValues(values as any[], aggregation)
             }));
 
-            // Sort by value desc (standard analytical presentation)
-            chartData.sort((a, b) => b.value - a.value);
+            const type = (override.type || config.type || '').toLowerCase();
+            const isFullData = ['line', 'area', 'scatter'].includes(type);
 
-            // Cap at top 10 to maintain readability and match backend behavior
-            const cappedData = chartData.slice(0, 10);
-
-            charts[slotId] = cappedData;
-        } else {
-            // Un-recomputable charts (e.g. unsupported types missing metadata) will not be added to chartData, falling back to original backend data in the component.
+            if (isFullData) {
+                // Filter out "Unknown" for cleaner trend lines if needed, 
+                // but at minimum ensure they don't cause sorting spikes
+                if (type !== 'scatter') {
+                    chartData = chartData.filter(d => d.name !== 'Unknown');
+                    // Sort chronologically for trend charts
+                    chartData.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
+                }
+                charts[slotId] = chartData; // No capping for trends/scatter
+            } else {
+                // Sort by value desc (standard analytical presentation)
+                chartData.sort((a, b) => b.value - a.value);
+                // Cap at top 10 to maintain readability and match backend behavior
+                charts[slotId] = chartData.slice(0, 10);
+            }
         }
     }
     return charts;
@@ -161,7 +188,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const state = get();
         set({
             target_value: value,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, state.active_filters, state.chart_overrides, state.target_column, value) || state.chartData
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, state.active_filters, state.chart_overrides, state.target_column, value, state.chartData)
         });
     },
 
@@ -170,7 +197,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const newFilters = { ...state.active_filters, [column]: [value] };
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value) || state.chartData
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
         });
     },
 
@@ -181,7 +208,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         else delete newFilters[column];
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value) || state.chartData
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
         });
     },
 
@@ -196,7 +223,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         else delete newFilters[column];
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value) || state.chartData
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
         });
     },
 
@@ -209,7 +236,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         else delete newFilters[column];
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value) || state.chartData
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
         });
     },
 
@@ -217,7 +244,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const state = get();
         set({
             active_filters: {},
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, {}, state.chart_overrides, state.target_column, state.target_value) || state.chartData
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, {}, state.chart_overrides, state.target_column, state.target_value, state.chartData)
         });
     },
 
@@ -226,7 +253,16 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const newOverrides = { ...state.chart_overrides, [chartId]: { ...state.chart_overrides[chartId], ...override } };
         set({
             chart_overrides: newOverrides,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, state.active_filters, newOverrides, state.target_column, state.target_value) || state.chartData
+            chartData: recomputeCharts(
+                state.rawData || [],
+                state.chartConfigs || {},
+                state.active_filters,
+                newOverrides,
+                state.target_column,
+                state.target_value,
+                state.chartData, // Existing charts
+                chartId          // ONLY recompute this one
+            )
         });
     },
 

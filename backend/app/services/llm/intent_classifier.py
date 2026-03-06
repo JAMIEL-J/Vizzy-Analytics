@@ -192,3 +192,91 @@ async def classify_intent(
 
     return intent
 
+
+# =============================================================================
+# Fast Heuristic Classifier (No LLM cost)
+# =============================================================================
+
+_FAST_DASHBOARD = [
+    r'\bdashboard\b', r'\boverview\b', r'\bsummary\s+dashboard\b',
+    r'\breport\b', r'\ball\s+metrics\b', r'\bfull\s+analysis\b',
+]
+_FAST_KPI = [
+    r'\btotal\b', r'\bhow\s+many\b', r'\bhow\s+much\b',
+    r'\bcount\b', r'\baverage\b', r'\bmean\b', r'\bmedian\b',
+    r'\bmax(?:imum)?\b', r'\bmin(?:imum)?\b', r'\bsum\b',
+    r'\bwhat\s+is\s+the\b', r'\bwhat\'s\s+the\b',
+]
+_FAST_TREND = [
+    r'\btrend\b', r'\bover\s+time\b', r'\bmonthly\b', r'\bdaily\b',
+    r'\bweekly\b', r'\byearly\b', r'\bannual\b', r'\bquarterly\b',
+    r'\bgrowth\b', r'\bchange\s+over\b', r'\bhistor(?:y|ical)\b',
+    r'\btime\s+series\b',
+]
+_FAST_COMPARISON = [
+    r'\bcompare\b', r'\bvs\.?\b', r'\bversus\b', r'\bby\s+\w+\b',
+    r'\bacross\b', r'\bper\s+\w+\b', r'\bgroup(?:ed)?\s+by\b',
+    r'\bbetween\b', r'\btop\s+\d+\b', r'\bbottom\s+\d+\b',
+    r'\bhighest\b', r'\blowest\b', r'\branking\b', r'\bbest\b', r'\bworst\b',
+]
+_FAST_DISTRIBUTION = [
+    r'\bdistribution\b', r'\bproportion\b', r'\bshare\b',
+    r'\bpercentage\b', r'\bcomposition\b', r'\bratio\b',
+    r'\bsplit\b', r'\bmix\b', r'\bsegment\b', r'\bbreakdown\b',
+]
+_FAST_EXPLORATION = [
+    r'\bshow\s+me\b', r'\blist\b', r'\bdetails?\b',
+    r'\brecords?\b', r'\brows?\b', r'\bexplore\b',
+    r'\blook\s+at\b', r'\bfind\b', r'\bwhere\b', r'\bfilter\b',
+]
+
+FAST_INTENT_LABELS = {
+    'kpi': '🎯 KPI',
+    'comparison': '📊 Comparison',
+    'trend': '📈 Trend',
+    'distribution': '🍩 Distribution',
+    'exploration': '🔍 Exploration',
+    'dashboard': '📋 Dashboard',
+}
+
+
+def _fast_score(query: str, patterns: list) -> float:
+    return sum(1 for p in patterns if re.search(p, query))
+
+
+def classify_intent_fast(query: str) -> tuple:
+    """
+    Zero-cost heuristic intent classifier. Returns (intent, confidence, label).
+
+    Used in chat_routes.py to avoid an LLM call for intent detection.
+    """
+    q = query.lower().strip()
+
+    scores = {
+        'dashboard': _fast_score(q, _FAST_DASHBOARD),
+        'kpi': _fast_score(q, _FAST_KPI),
+        'trend': _fast_score(q, _FAST_TREND),
+        'comparison': _fast_score(q, _FAST_COMPARISON),
+        'distribution': _fast_score(q, _FAST_DISTRIBUTION),
+        'exploration': _fast_score(q, _FAST_EXPLORATION),
+    }
+
+    # Boost short KPI queries
+    if len(q.split()) <= 8 and scores['kpi'] > 0:
+        scores['kpi'] *= 1.5
+    # Boost "by X" → comparison
+    if re.search(r'\bby\s+\w+', q):
+        scores['comparison'] *= 1.3
+    # Boost time words → trend
+    if re.search(r'\b(month|year|week|day|quarter|date)\b', q):
+        scores['trend'] *= 1.4
+
+    best = max(scores, key=scores.get)
+    best_score = scores[best]
+
+    if best_score == 0:
+        return ('exploration', 0.3, FAST_INTENT_LABELS['exploration'])
+
+    confidence = min(best_score / 3.0, 1.0)
+    return (best, round(confidence, 2), FAST_INTENT_LABELS[best])
+

@@ -593,7 +593,11 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
                             <XAxis dataKey={dateKey} {...axisProps} stroke={chartColors.axis}
-                                tickFormatter={v => String(v).length > 7 ? String(v).slice(-5) : v} tick={{ ...textStyle }} />
+                                tickFormatter={v => {
+                                    const s = String(v);
+                                    if (s.length > 15) return s.slice(0, 12) + '...';
+                                    return s;
+                                }} tick={{ ...textStyle }} />
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
                             <Area type="monotone" dataKey="value" stroke="#34D399" strokeWidth={2.5}

@@ -234,32 +234,43 @@ def _create_smart_title(metric_col: Optional[str], dimension_col: str, chart_pur
 
 def _deduplicate_charts(charts: List['ChartRecommendation']) -> List['ChartRecommendation']:
     """Remove duplicate/similar charts to avoid repetition."""
-    seen_dims: Set[str] = set()
+    seen_combos: Set[str] = set()
     seen_titles: Set[str] = set()
     unique_charts = []
     
     for chart in charts:
-        # Extract dimension from title (last part after "by")
         title_lower = chart.title.lower()
-        
-        # Check for exact title duplicates
         if title_lower in seen_titles:
             continue
+            
+        # Dimension + Metric + Aggregation is the fingerprint of the chart's intelligence
+        # We allow the same data to be shown in different types (e.g. Bar vs Donut) 
+        # ONLY if the user explicitly overrides it, but the recommender should pick just one.
+        # Fingerprint: dim + metric + agg
+        dim = chart.dimension or ""
+        met = chart.metric or ""
+        agg = chart.aggregation or "sum"
         
-        # Extract dimension key for deduplication
-        dim_key = None
-        if ' by ' in title_lower:
-            dim_key = title_lower.split(' by ')[-1].strip()
-        elif 'distribution' in title_lower:
-            dim_key = title_lower.replace(' distribution', '').strip()
-
-        # Allow max 2 charts per dimension (e.g., Revenue & Profit by Category)
-        if dim_key:
-            dim_count = sum(1 for seen in seen_dims if dim_key in seen)
-            if dim_count >= 3: # ← was 2, should be 3 for rate+value+volume
-                continue
-            seen_dims.add(f"{dim_key}_{len(unique_charts)}")
+        # If both dim and metric are missing, we fall back to title-based deduplication
+        if not dim and not met:
+            seen_titles.add(title_lower)
+            unique_charts.append(chart)
+            continue
+            
+        data_fingerprint = f"{dim}|{met}|{agg}"
         
+        # If we already have a chart for this data, skip it
+        # UNLESS it's a completely different category of chart (e.g. a time trend vs a categorical bar)
+        type_ = chart.chart_type
+        is_trend = type_ in ('line', 'area')
+        
+        # Unique key: data + whether it's a trend
+        key = f"{data_fingerprint}|{is_trend}"
+        
+        if key in seen_combos:
+            continue
+            
+        seen_combos.add(key)
         seen_titles.add(title_lower)
         unique_charts.append(chart)
     
@@ -1156,7 +1167,8 @@ def _generate_churn_charts(df, classification):
                 title=f'{label} Rate by {_beautify_column_name(lifecycle_col)} Cohort (%)',
                 chart_type='bar', data=data, confidence='HIGH',
                 reason=f'Tier 1: When in the lifecycle do they leave?',
-                format_type='percentage'
+                format_type='percentage',
+                dimension=lifecycle_col, metric=target_col, aggregation='mean'
             ))
     elif secondary_dim and secondary_dim != primary_dim:
         data = _get_churn_rate_by_segment(df, target_col, secondary_dim)
@@ -1165,7 +1177,8 @@ def _generate_churn_charts(df, classification):
                 slot='', title=f'{label} Rate by {_beautify_column_name(secondary_dim)} (%)',
                 chart_type='bar', data=data, confidence='HIGH',
                 reason=f'Tier 1: {label} rate by secondary dimension',
-                format_type='percentage'
+                format_type='percentage',
+                dimension=secondary_dim, metric=target_col, aggregation='mean'
             ))
 
     # ── TIER 2: FINANCIAL IMPACT ─────────────────────────────────────
@@ -1180,7 +1193,8 @@ def _generate_churn_charts(df, classification):
                 title=f'{_beautify_column_name(impact_metric)} at Risk by {_beautify_column_name(primary_dim)}',
                 chart_type='bar', data=data, confidence='HIGH',
                 reason=f'Tier 2: Financial impact of {label.lower()} by segment',
-                format_type='currency'
+                format_type='currency',
+                dimension=primary_dim, metric=impact_metric, aggregation='sum'
             ))
 
     # 5. Metric Distribution — Treemap
@@ -1192,7 +1206,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=_create_smart_title(primary_value_metric, dim_for_treemap),
                 chart_type='treemap', data=data, confidence='HIGH',
-                reason='Tier 2: Revenue/value share by segment'
+                reason='Tier 2: Revenue/value share by segment',
+                dimension=dim_for_treemap, metric=primary_value_metric, aggregation='sum'
             ))
 
     # 6. Avg Lifecycle/Value by Primary Dimension
@@ -1204,7 +1219,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=_create_smart_title(avg_metric, primary_dim),
                 chart_type='hbar', data=data, confidence='HIGH',
-                reason='Tier 2: Metric variance by segment'
+                reason='Tier 2: Metric variance by segment',
+                dimension=primary_dim, metric=avg_metric, aggregation='mean' if _should_average_metric(avg_metric) else 'sum'
             ))
 
     # ── TIER 3: PRODUCT/SERVICE ANALYSIS ─────────────────────────────
@@ -1218,7 +1234,8 @@ def _generate_churn_charts(df, classification):
                 slot='', title=f'{label} Rate by {_beautify_column_name(svc_dim)} (%)',
                 chart_type='bar', data=data, confidence='HIGH',
                 reason=f'Tier 3: Which {_beautify_column_name(svc_dim)} segments have highest {label.lower()}?',
-                format_type='percentage'
+                format_type='percentage',
+                dimension=svc_dim, metric=target_col, aggregation='mean'
             ))
 
     # 8. Value at Risk by second multi-value dimension (STRICTLY FINANCIAL)
@@ -1399,7 +1416,8 @@ def _generate_churn_charts(df, classification):
                 add_chart(ChartRecommendation(
                     slot='', title=candidate_title,
                     chart_type='hbar', data=data, confidence='MEDIUM',
-                    reason='Tier 5: Extended metric coverage'
+                    reason='Tier 5: Extended metric coverage',
+                    dimension=d15, metric=m15, aggregation='sum' if m15 in financial_metrics else 'mean'
                 ))
                 added_15 = True
                 break
@@ -1485,7 +1503,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'{label} Rate by {_beautify_column_name(secondary_metric)} Range (%)',
                 chart_type='bar', data=data, confidence='MEDIUM',
-                reason='Tier 6: Secondary metric cohort analysis'
+                reason='Tier 6: Secondary metric cohort analysis',
+                dimension=secondary_metric, metric=target_col, aggregation='mean'
             ))
 
     # 22. Bonus: Distribution of a new unused dimension (donut)
@@ -1631,7 +1650,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=f"Year-over-Year {_beautify_column_name(revenue_col)}",
                 chart_type="bar", data=yoy_data, confidence="HIGH",
                 reason="Macro Growth: Annual performance trajectory",
-                format_type="currency"
+                format_type="currency",
+                dimension=date_col, metric=revenue_col, aggregation="sum"
             ))
         
         ytd_data = _get_ytd_comparison(df, date_col, revenue_col)
@@ -1640,7 +1660,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=f"Year-to-Date {_beautify_column_name(revenue_col)} Benchmark",
                 chart_type="bar", data=ytd_data, confidence="HIGH",
                 reason="Strategic Target: Current year performance vs same period last year",
-                format_type="currency"
+                format_type="currency",
+                dimension=date_col, metric=revenue_col, aggregation="sum"
             ))
 
     # 5. Categorical Mix (Donut)
@@ -1668,7 +1689,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                     slot='', title=_create_smart_title(profit_col, p_dim),
                     chart_type="bar", data=data, confidence="HIGH",
                     reason="Bottom-line analysis per segment",
-                    format_type="currency"
+                    format_type="currency",
+                    dimension=p_dim, metric=profit_col, aggregation="sum"
                 ))
 
     # 7. Unit Economics (Margins & Discounts)
@@ -1698,7 +1720,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                     slot='', title=f"{_beautify_column_name(discount_col)} Value by {_beautify_column_name(d_dim)}",
                     chart_type="bar", data=data, confidence="HIGH",
                     reason="Revenue Leakage: Where are we losing margin?",
-                    format_type="currency"
+                    format_type="currency",
+                    dimension=d_dim, metric=discount_col, aggregation="sum"
                 ))
 
     # 7. Discount vs Profit Scatter
@@ -1745,7 +1768,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                     slot='', title=_create_smart_title(revenue_col, customer_col),
                     chart_type="hbar", data=data, confidence="HIGH",
                     reason="Client Concentration: High-value VIP customers",
-                    format_type="currency"
+                    format_type="currency",
+                    dimension=customer_col, metric=revenue_col, aggregation="sum"
                 ))
 
         # 10. Avg Order Value (AOV)
@@ -2026,7 +2050,8 @@ def _generate_generic_charts(df: pd.DataFrame, classification: ColumnClassificat
             charts.append(ChartRecommendation(
                 slot="slot_4", title=_create_smart_title(m1, "") + " vs " + _beautify_column_name(m2),
                 chart_type="scatter", data=data, confidence="MEDIUM",
-                reason="Metric correlation"
+                reason="Metric correlation",
+                dimension=None, metric=m1, aggregation="sum"
             ))
     
     # 5+. Distributions
@@ -2070,19 +2095,19 @@ def _generate_marketing_charts(df: pd.DataFrame, classification: ColumnClassific
     
     if primary_dim and spend_col:
         data = _safe_groupby_sum(df, primary_dim, spend_col)
-        add_chart(ChartRecommendation('', f'Ad Spend by {_beautify_column_name(primary_dim)}', 'hbar', data, 'HIGH', 'Spend allocation', format_type='currency'))
+        add_chart(ChartRecommendation('', f'Ad Spend by {_beautify_column_name(primary_dim)}', 'hbar', data, 'HIGH', 'Spend allocation', format_type='currency', dimension=primary_dim, metric=spend_col, aggregation='sum'))
         
     if primary_dim and conv_col:
         data = _safe_groupby_sum(df, primary_dim, conv_col)
-        add_chart(ChartRecommendation('', f'Conversions by {_beautify_column_name(primary_dim)}', 'donut', data, 'HIGH', 'Top performing sources', format_type='number'))
+        add_chart(ChartRecommendation('', f'Conversions by {_beautify_column_name(primary_dim)}', 'donut', data, 'HIGH', 'Top performing sources', format_type='number', dimension=primary_dim, metric=conv_col, aggregation='sum'))
 
     if spend_col and conv_col:
         data = _get_scatter_data(df, spend_col, conv_col, label_col=primary_dim)
-        add_chart(ChartRecommendation('', 'Spend vs Conversions', 'scatter', data, 'HIGH', 'Cost acquisition efficiency', format_type='number'))
+        add_chart(ChartRecommendation('', 'Spend vs Conversions', 'scatter', data, 'HIGH', 'Cost acquisition efficiency', format_type='number', metric=spend_col, dimension=None, aggregation='sum'))
 
     if dates and click_col:
         data = _get_time_trend(df, dates[0], click_col)
-        add_chart(ChartRecommendation('', 'Daily Traffic (Clicks)', 'line', data, 'HIGH', 'Traffic volume over time', format_type='number'))
+        add_chart(ChartRecommendation('', 'Daily Traffic (Clicks)', 'line', data, 'HIGH', 'Traffic volume over time', format_type='number', dimension=dates[0], metric=click_col, aggregation='sum'))
 
     charts.extend(_generate_generic_charts(df, classification))
     return charts
@@ -2107,15 +2132,15 @@ def _generate_finance_charts(df: pd.DataFrame, classification: ColumnClassificat
 
     if primary_dim and income_col:
         data = _safe_groupby_sum(df, primary_dim, income_col)
-        add_chart(ChartRecommendation('', f'Income by {_beautify_column_name(primary_dim)}', 'bar', data, 'HIGH', 'Revenue sources', format_type='currency'))
+        add_chart(ChartRecommendation('', f'Income by {_beautify_column_name(primary_dim)}', 'bar', data, 'HIGH', 'Revenue sources', format_type='currency', dimension=primary_dim, metric=income_col, aggregation='sum'))
 
     if primary_dim and expense_col:
         data = _safe_groupby_sum(df, primary_dim, expense_col)
-        add_chart(ChartRecommendation('', f'Expenses by {_beautify_column_name(primary_dim)}', 'donut', data, 'HIGH', 'Cost centers', format_type='currency'))
+        add_chart(ChartRecommendation('', f'Expenses by {_beautify_column_name(primary_dim)}', 'donut', data, 'HIGH', 'Cost centers', format_type='currency', dimension=primary_dim, metric=expense_col, aggregation='sum'))
 
     if dates and income_col:
         data = _get_time_trend(df, dates[0], income_col)
-        add_chart(ChartRecommendation('', 'Cash Flow Trend', 'line', data, 'HIGH', 'Historical cashflow', format_type='currency'))
+        add_chart(ChartRecommendation('', 'Cash Flow Trend', 'line', data, 'HIGH', 'Historical cashflow', format_type='currency', dimension=dates[0], metric=income_col, aggregation='sum'))
         
     charts.extend(_generate_generic_charts(df, classification))
     return charts
@@ -2171,7 +2196,8 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
             add_chart(ChartRecommendation(
                 '', 'Avg Patient Age by Condition', 'bar', data, 'HIGH',
                 'Correlates age groups with illnesses to predict patient surges',
-                format_type='number', value_label='Years'
+                format_type='number', value_label='Years',
+                dimension=condition_col, metric=age_col, aggregation='mean'
             ))
 
     # ── 3. Insurance Provider Breakdown (Donut) ──────────────────────────────
@@ -2181,7 +2207,8 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
             add_chart(ChartRecommendation(
                 '', 'Revenue by Insurance Provider', 'donut', data, 'HIGH',
                 'Payer mix — which insurers dominate your revenue stream',
-                format_type='currency', value_label='Revenue'
+                format_type='currency', value_label='Revenue',
+                dimension=insurance_col, metric=cost_col, aggregation='sum'
             ))
         else:
             add_chart(_distribution_chart(
@@ -2197,7 +2224,8 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
             add_chart(ChartRecommendation(
                 '', 'Total Billing by Condition', 'hbar', data, 'HIGH',
                 'Highest cost conditions driving facility expenses',
-                format_type='currency', value_label='Billing Amount'
+                format_type='currency', value_label='Billing Amount',
+                dimension=condition_col, metric=cost_col, aggregation='sum'
             ))
 
     # ── 5. Admission Types (Pie) ─────────────────────────────────────────────
@@ -2216,7 +2244,8 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
             add_chart(ChartRecommendation(
                 '', 'Hospital Billing Trend', 'line', data, 'HIGH',
                 'Revenue timeline to track financial health',
-                format_type='currency', value_label='Billing'
+                format_type='currency', value_label='Billing',
+                dimension=dates[0], metric=cost_col, aggregation='sum'
             ))
 
     # ── 7. Patient Admissions Over Time (Line) ───────────────────────────────
@@ -2236,7 +2265,8 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
                 add_chart(ChartRecommendation(
                     '', 'Patient Admissions Over Time', 'area', data, 'HIGH',
                     'Patient volume trend over time',
-                    format_type='number', value_label='Admissions'
+                    format_type='number', value_label='Admissions',
+                    dimension=date_col, metric=None, aggregation='count'
                 ))
         except Exception:
             pass
@@ -2258,7 +2288,8 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
             add_chart(ChartRecommendation(
                 '', f'Avg Length of Stay by {_beautify_column_name(primary_dim)}', 'hbar',
                 data, 'HIGH', 'Resource utilization efficiency',
-                format_type='number', value_label='Days'
+                format_type='number', value_label='Days',
+                dimension=primary_dim, metric=los_col, aggregation='mean'
             ))
 
     # ── 10. Billing by Admission Type (Bar) ──────────────────────────────────
@@ -2268,7 +2299,8 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
             add_chart(ChartRecommendation(
                 '', 'Billing by Admission Type', 'bar', data, 'HIGH',
                 'Cost comparison across intake methods',
-                format_type='currency', value_label='Billing Amount'
+                format_type='currency', value_label='Billing Amount',
+                dimension=admission_type_col, metric=cost_col, aggregation='sum'
             ))
 
     # Assign slot numbers
