@@ -147,11 +147,10 @@ const recomputeCharts = (
 
             // STABILITY FIX: If we are only overriding TYPE (Bar -> H-Bar) and have NO other reason to recompute
             // (e.g. no active filters and same aggregation), reuse existing chart data to avoid naive local recalc.
-            const flt = filters || {};
-            const hasActiveFilters = Object.keys(flt).length > 0 || (targetVal && targetVal !== 'all');
+            const hasActiveFilters = Object.keys(filters).length > 0 || (targetVal && targetVal !== 'all');
 
             if (!hasActiveFilters && existingCharts?.[slotId]) {
-                if (sameAgg) {
+                if (sameAgg && sameTrend) {
                     charts[slotId] = existingCharts[slotId];
                     continue;
                 }
