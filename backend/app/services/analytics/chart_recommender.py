@@ -1376,12 +1376,14 @@ def _generate_churn_charts(df, classification):
         date_col = classification.dates[0]
         data = _get_time_trend(df, date_col, primary_value_metric)
         if data:
+            # Dynamically determine aggregation metadata to match _get_time_trend logic
+            trend_agg = 'mean' if _should_average_metric(primary_value_metric) else 'sum'
             add_chart(ChartRecommendation(
                 slot='',
                 title=f'{_beautify_column_name(primary_value_metric)} Trend Over Time',
                 chart_type='area', data=data, confidence='HIGH',
                 reason='Tier 5: Trend analysis for seasonality',
-                dimension=date_col, metric=primary_value_metric, aggregation='sum'
+                dimension=date_col, metric=primary_value_metric, aggregation=trend_agg
             ))
     elif secondary_metric and secondary_dim:
         data = _get_value_at_risk(df, target_col, secondary_dim, secondary_metric)

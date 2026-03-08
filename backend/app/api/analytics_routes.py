@@ -312,7 +312,10 @@ def get_dashboard_analytics(
                         # 2. Financial / Time / Numeric Handling
                         elif ctype in ('line', 'area', 'area_bounds'):
                             if dim in classification.dates:
-                                manual_data = _get_time_trend(df_filtered, dim, met or classification.metrics[0])
+                                # Guard against empty metrics list
+                                fallback_metric = classification.metrics[0] if classification.metrics else None
+                                if met or fallback_metric:
+                                    manual_data = _get_time_trend(df_filtered, dim, met or fallback_metric)
                             elif met:
                                 manual_data = _safe_groupby_mean(df_filtered, dim, met)
                         
@@ -337,7 +340,8 @@ def get_dashboard_analytics(
                         try:
                             fallback_counts = _safe_value_counts(df_filtered, dim, limit=15)
                             charts[slot] = {**full_chart, "data": fallback_counts}
-                        except:
+                        except Exception as e:
+                            print(f"Final resort failed for {title}: {e}")
                             charts[slot] = {**full_chart, "data": []}
                 else:
                     charts[slot] = {**full_chart, "data": []}

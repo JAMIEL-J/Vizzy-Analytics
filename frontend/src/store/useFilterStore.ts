@@ -134,14 +134,25 @@ const recomputeCharts = (
             const originalType = (config.type || '').toLowerCase();
             const isTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(chartType) && config.is_date;
             const originalWasTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(originalType) && config.is_date;
-
             // PERFORMANCE OPTIMIZATION: Reuse high-fidelity backend data if no filters are active and analytics logic hasn't changed
-            if (hasNoFilters && initialChartData?.[slotId]) {
-                const sameAgg = !override.aggregation || override.aggregation.toLowerCase() === (config.aggregation || 'sum').toLowerCase();
-                const sameTrend = isTrend === originalWasTrend;
+            const sameAgg = !override.aggregation || override.aggregation.toLowerCase() === (config.aggregation || 'sum').toLowerCase();
+            const sameTrend = isTrend === originalWasTrend;
 
+            if (hasNoFilters && initialChartData?.[slotId]) {
                 if (sameAgg && sameTrend) {
                     charts[slotId] = initialChartData[slotId];
+                    continue;
+                }
+            }
+
+            // STABILITY FIX: If we are only overriding TYPE (Bar -> H-Bar) and have NO other reason to recompute
+            // (e.g. no active filters and same aggregation), reuse existing chart data to avoid naive local recalc.
+            const flt = filters || {};
+            const hasActiveFilters = Object.keys(flt).length > 0 || (targetVal && targetVal !== 'all');
+
+            if (!hasActiveFilters && existingCharts?.[slotId]) {
+                if (sameAgg) {
+                    charts[slotId] = existingCharts[slotId];
                     continue;
                 }
             }

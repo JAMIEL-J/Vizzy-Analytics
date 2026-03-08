@@ -1325,9 +1325,6 @@ export default function UserDashboard() {
         // 1. Instantly recompute correlation matrix in background if dataset changed
         // (Moved from separate useEffect for cleaner logic)
 
-        // 2. Decide if this is a "Full Reload" or just a "KPI Refresh"
-        const isFullReload = abortControllerRef.current === null; // Simple heuristic: first load is full
-
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
@@ -1342,7 +1339,7 @@ export default function UserDashboard() {
         return () => {
             clearTimeout(timer);
         };
-    }, [selectedDatasetId, target_value, classification_overrides, selected_domain, active_filters]);
+    }, [selectedDatasetId, target_value, classification_overrides, selected_domain, active_filters, chart_overrides]);
 
     const loadDatasets = async () => {
         try {
