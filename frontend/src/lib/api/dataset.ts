@@ -36,6 +36,22 @@ export const datasetService = {
     // Delete dataset
     deleteDataset: async (datasetId: string) => {
         await apiClient.delete(`/datasets/${datasetId}`);
+    },
+
+    // Download raw dataset
+    downloadRaw: async (datasetId: string) => {
+        const response = await apiClient.get(`/datasets/${datasetId}/download/raw`, {
+            responseType: 'blob'
+        });
+        return response.data;
+    },
+
+    // Download cleaned dataset
+    downloadCleaned: async (datasetId: string) => {
+        const response = await apiClient.get(`/datasets/${datasetId}/download/cleaned`, {
+            responseType: 'blob'
+        });
+        return response.data;
     }
 };
 

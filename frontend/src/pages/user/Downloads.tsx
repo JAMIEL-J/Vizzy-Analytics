@@ -17,13 +17,26 @@ export default function Downloads() {
         }
     };
 
-    const getDownloadUrl = (datasetId: string, versionId: string = 'latest', type: 'raw' | 'cleaned') => {
-        // Construct URL directly for now, or use a helper that gets signed URL
-        // Assuming simple static route proxy
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-        // Note: version logic is simplified here. In real app, we iterate versions.
-        // If we don't have version ID, we might need an endpoint "latest"
-        return `${baseUrl}/datasets/${datasetId}/versions/${versionId}/download/${type}`;
+    const handleDownload = async (datasetId: string, type: 'raw' | 'cleaned', filename: string) => {
+        try {
+            const blob = type === 'raw'
+                ? await datasetService.downloadRaw(datasetId)
+                : await datasetService.downloadCleaned(datasetId);
+
+            // Create blob link to download
+            const url = window.URL.createObjectURL(new Blob([blob]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error: any) {
+            console.error(`Failed to download ${type} dataset:`, error);
+            const errorMessage = error.response?.data?.detail || `Failed to download ${type} dataset. It may not exist yet.`;
+            alert(errorMessage);
+        }
     };
 
     return (
@@ -53,23 +66,19 @@ export default function Downloads() {
                                     <td className="px-6 py-4 whitespace-nowrap font-medium text-navy dark:text-white">{ds.name}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-400">{new Date(ds.created_at || '').toLocaleDateString()}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right space-x-3">
-                                        <a
-                                            href={getDownloadUrl(ds.id, 'latest', 'raw')}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-primary-blue hover:text-blue-800 text-sm font-medium"
+                                        <button
+                                            onClick={() => handleDownload(ds.id, 'raw', `${ds.name}_raw.csv`)}
+                                            className="text-primary-blue hover:text-blue-800 text-sm font-medium cursor-pointer"
                                         >
                                             Download Raw
-                                        </a>
+                                        </button>
                                         <span className="text-gray-300 dark:text-gray-600">|</span>
-                                        <a
-                                            href={getDownloadUrl(ds.id, 'latest', 'cleaned')}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-green-600 hover:text-green-800 text-sm font-medium"
+                                        <button
+                                            onClick={() => handleDownload(ds.id, 'cleaned', `${ds.name}_cleaned.csv`)}
+                                            className="text-green-600 hover:text-green-800 text-sm font-medium cursor-pointer"
                                         >
                                             Download Cleaned
-                                        </a>
+                                        </button>
                                     </td>
                                 </tr>
                             ))
