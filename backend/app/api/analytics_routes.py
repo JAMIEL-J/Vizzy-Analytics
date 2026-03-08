@@ -335,12 +335,15 @@ def get_dashboard_analytics(
         # Prepare chart configs (extract structural info from charts_full)
         chart_configs = {}
         for slot, chart in charts_full.items():
+            dim = chart.get("dimension")
             chart_configs[slot] = {
                 "title": chart["title"],
                 "type": chart["type"],
-                "dimension": chart.get("dimension"),
+                "dimension": dim,
                 "metric": chart.get("metric"),
-                "aggregation": chart.get("aggregation")
+                "aggregation": chart.get("aggregation"),
+                "granularity": chart.get("granularity"),
+                "is_date": dim in classification.dates if dim else False
             }
 
         return DashboardAnalyticsResponse(

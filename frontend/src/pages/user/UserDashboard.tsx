@@ -1384,7 +1384,7 @@ export default function UserDashboard() {
                         initial[key] = chart.data;
                     });
                 }
-                setDashboardData(data.raw_data, data.chart_configs, initial, data.target_column);
+                setDashboardData(data.raw_data, data.chart_configs, initial, data.total_rows, data.target_column);
             } else {
                 console.warn('[Hybrid Engine] Missing raw_data or chart_configs. Local filtering disabled.');
             }
@@ -1434,16 +1434,16 @@ export default function UserDashboard() {
 
     const renderChartActions = (chart: any) => {
         const currentType = chart_overrides[chart.id]?.type || chart.type;
-        const currentAgg = chart_overrides[chart.id]?.aggregation || chart.aggregation || 'sum';
+        const currentAgg = (chart_overrides[chart.id]?.aggregation || chart.aggregation || 'sum').toLowerCase();
 
         const isNumericMetric = chart.value_label?.toLowerCase()?.includes('count') === false &&
-            currentAgg?.toLowerCase() !== 'count';
+            currentAgg !== 'count';
 
         return (
             <div className="flex items-center gap-1.5">
                 {isNumericMetric && (
                     <select
-                        value={currentAgg}
+                        value={currentAgg === 'avg' ? 'mean' : currentAgg}
                         onChange={(e) => setChartOverride(chart.id, { aggregation: e.target.value })}
                         className={`text-[10px] px-1 py-0.5 rounded border outline-none transition-colors ${isDark
                             ? 'bg-gray-800/80 border-gray-700 text-gray-400 hover:border-gray-600 focus:border-indigo-500'

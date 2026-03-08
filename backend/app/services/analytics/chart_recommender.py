@@ -450,6 +450,7 @@ class ChartRecommendation:
     dimension: Optional[str] = None
     metric: Optional[str] = None
     aggregation: Optional[str] = None  # 'sum', 'mean', 'count'
+    granularity: Optional[str] = None  # 'year', 'ytd', 'month', 'week', 'day'
 
     def __post_init__(self):
         if hasattr(self.data, "outliers") and self.data.outliers:
@@ -1651,7 +1652,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 chart_type="bar", data=yoy_data, confidence="HIGH",
                 reason="Macro Growth: Annual performance trajectory",
                 format_type="currency",
-                dimension=date_col, metric=revenue_col, aggregation="sum"
+                dimension=date_col, metric=revenue_col, aggregation="sum",
+                granularity="year"
             ))
         
         ytd_data = _get_ytd_comparison(df, date_col, revenue_col)
@@ -1661,7 +1663,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 chart_type="bar", data=ytd_data, confidence="HIGH",
                 reason="Strategic Target: Current year performance vs same period last year",
                 format_type="currency",
-                dimension=date_col, metric=revenue_col, aggregation="sum"
+                dimension=date_col, metric=revenue_col, aggregation="sum",
+                granularity="ytd"
             ))
 
     # 5. Categorical Mix (Donut)
@@ -2586,6 +2589,8 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
             result[slot]["data_without_outliers"] = chart.data_without_outliers
         if chart.aggregation:
             result[slot]["aggregation"] = chart.aggregation
+        if chart.granularity:
+            result[slot]["granularity"] = chart.granularity
     
     return result
 

@@ -68,6 +68,10 @@ export interface DashboardAnalytics {
         geo_meta?: { map_type: 'world' | 'us_states'; geo_col: string; metric_col: string };
         format_type?: string;
         value_label?: string;
+        dimension?: string;
+        metric?: string;
+        aggregation?: string;
+        granularity?: string;
     }>;
     columns: {
         dimensions: string[];

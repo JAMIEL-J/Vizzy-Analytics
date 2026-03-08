@@ -10,6 +10,7 @@ export type ClassificationRole = "Dimension" | "Metric" | "Target" | "Date" | "E
 export interface DashboardState {
     rawData: any[] | null;
     chartConfigs: Record<string, any> | null;
+    initialChartData: Record<string, any> | null;
     chartData: Record<string, any> | null;
     active_filters: Record<string, string[]>;
     chart_overrides: Record<string, ChartOverride>;
@@ -17,8 +18,9 @@ export interface DashboardState {
     selected_domain: string | null;
     target_column: string | null;
     target_value: string;
+    total_records: number;
 
-    setDashboardData: (rawData: any[], chartConfigs: Record<string, any>, initialChartData: Record<string, any>, targetCol?: string | null) => void;
+    setDashboardData: (rawData: any[], chartConfigs: Record<string, any>, initialChartData: Record<string, any>, totalRows: number, targetCol?: string | null) => void;
     setTargetValue: (value: string) => void;
     setFilter: (column: string, value: string) => void;
     setFilterValues: (column: string, values: string[]) => void;
@@ -71,18 +73,22 @@ const applyFilters = (data: any[], filters: Record<string, string[]>, targetCol:
     });
 };
 
-const aggregateValues = (values: any[], method: string) => {
+const aggregateValues = (values: any[], method: string, scalingFactor: number = 1) => {
     const methodUpper = (method || 'SUM').toUpperCase();
-    if (methodUpper === 'COUNT') return values.length;
+    if (methodUpper === 'COUNT') return Math.round(values.length * scalingFactor);
 
     // Convert to numbers and strip NaNs
     const nums = values.map(v => Number(v)).filter(v => !isNaN(v) && v !== null);
     if (!nums.length) return 0;
 
+    // Averages/Means do not need scaling as the sample is an unbiased estimator
     if (methodUpper === 'AVG' || methodUpper === 'MEAN') return nums.reduce((a, b) => a + b, 0) / nums.length;
+
     if (methodUpper === 'MIN') return Math.min(...nums);
     if (methodUpper === 'MAX') return Math.max(...nums);
-    return nums.reduce((a, b) => a + b, 0); // SUM default
+
+    // Sums must be scaled by the sampling ratio to represent the full dataset
+    return (nums.reduce((a, b) => a + b, 0)) * scalingFactor;
 };
 
 const recomputeCharts = (
@@ -93,10 +99,19 @@ const recomputeCharts = (
     targetCol: string | null,
     targetVal: string,
     existingCharts: Record<string, any> | null = null,
-    targetChartId?: string
+    targetChartId?: string,
+    totalRecords: number = 0,
+    initialChartData: Record<string, any> | null = null
 ) => {
     if (!rawData || !chartConfigs) return existingCharts;
     const filtered = applyFilters(rawData, filters, targetCol, targetVal);
+
+    const hasNoFilters = Object.keys(filters).length === 0 && targetVal === 'all';
+
+    // Calculate scaling factor to account for sampling in the raw data
+    const scalingFactor = (totalRecords > 0 && rawData.length > 0)
+        ? totalRecords / rawData.length
+        : 1;
 
     // If existingCharts is provided, we merge into it (targeted update).
     // Otherwise we start fresh (full update).
@@ -115,38 +130,124 @@ const recomputeCharts = (
         const metric = config.metric;
 
         if (dimension && metric) {
-            // Group by dimension
-            const grouped = filtered.reduce((acc, row) => {
-                const val = getRowValue(row, dimension);
-                const key = val === null || val === undefined ? 'Unknown' : String(val);
-                if (!acc[key]) acc[key] = [];
+            const chartType = (override.type || config.type || '').toLowerCase();
+            const originalType = (config.type || '').toLowerCase();
+            const isTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(chartType) && config.is_date;
+            const originalWasTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(originalType) && config.is_date;
 
+            // PERFORMANCE OPTIMIZATION: Reuse high-fidelity backend data if no filters are active and analytics logic hasn't changed
+            if (hasNoFilters && initialChartData?.[slotId]) {
+                const sameAgg = !override.aggregation || override.aggregation.toLowerCase() === (config.aggregation || 'sum').toLowerCase();
+                const sameTrend = isTrend === originalWasTrend;
+
+                if (sameAgg && sameTrend) {
+                    charts[slotId] = initialChartData[slotId];
+                    continue;
+                }
+            }
+
+            // 1. Calculate Date Binning if needed
+            let freq: 'D' | 'W' | 'M' = 'D';
+            let maxMonthDay = '';
+            if (isTrend || config.granularity === 'ytd' || config.granularity === 'year') {
+                const dates = filtered.map(r => new Date(getRowValue(r, dimension))).filter(d => !isNaN(d.getTime()));
+                if (dates.length > 0) {
+                    const times = dates.map(d => d.getTime());
+                    const minDate = Math.min(...times);
+                    const maxDate = Math.max(...times);
+                    const days = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+                    if (days > 365) freq = 'M';
+                    else if (days > 60) freq = 'W';
+
+                    if (config.granularity === 'ytd') {
+                        const dMax = new Date(maxDate);
+                        maxMonthDay = (dMax.getMonth() + 1).toString().padStart(2, '0') + dMax.getDate().toString().padStart(2, '0');
+                    }
+                }
+            }
+
+            // 2. Group by dimension (with date binning & YTD filter)
+            const grouped = filtered.reduce((acc, row) => {
+                let val = getRowValue(row, dimension);
+                let key: string;
+
+                const isYearly = config.granularity === 'year';
+                const isYTD = config.granularity === 'ytd';
+
+                if ((isTrend || isYearly || isYTD) && val) {
+                    const d = new Date(val);
+                    if (isNaN(d.getTime())) {
+                        key = 'Unknown';
+                    } else if (isYearly) {
+                        key = String(d.getFullYear());
+                    } else if (isYTD) {
+                        // YTD Filter: Only include rows if month/day <= max visible month/day
+                        const currentMD = (d.getMonth() + 1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0');
+                        if (maxMonthDay && currentMD > maxMonthDay) return acc;
+                        key = `${d.getFullYear()} YTD`;
+                    } else {
+                        if (freq === 'M') {
+                            d.setDate(1); // First of month
+                        } else if (freq === 'W') {
+                            const day = d.getDay();
+                            const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+                            d.setDate(diff);
+                        }
+                        key = d.toISOString().split('T')[0];
+                    }
+                } else {
+                    key = val === null || val === undefined ? 'Unknown' : String(val);
+                }
+
+                if (!acc[key]) acc[key] = [];
                 const metricVal = getRowValue(row, metric);
                 acc[key].push(aggregation === 'COUNT' ? 1 : metricVal);
                 return acc;
             }, {} as Record<string, any[]>);
 
-            let chartData = Object.entries(grouped).map(([name, values]) => ({
-                name,
-                value: aggregateValues(values as any[], aggregation)
-            }));
+            let chartData = Object.entries(grouped).map(([name, values]) => {
+                const item: any = { value: aggregateValues(values as any[], aggregation, scalingFactor) };
+                if (isTrend) {
+                    item.date = name;
+                } else {
+                    item.name = name;
+                }
+                return item;
+            });
 
-            const type = (override.type || config.type || '').toLowerCase();
-            const isFullData = ['line', 'area', 'scatter'].includes(type);
+            const isFullData = chartType === 'scatter' || isTrend || config.granularity === 'year' || config.granularity === 'ytd';
 
             if (isFullData) {
-                // Filter out "Unknown" for cleaner trend lines if needed, 
-                // but at minimum ensure they don't cause sorting spikes
-                if (type !== 'scatter') {
-                    chartData = chartData.filter(d => d.name !== 'Unknown');
-                    // Sort chronologically for trend charts
-                    chartData.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
+                if (chartType !== 'scatter') {
+                    chartData = chartData.filter(d => (d.date || d.name) !== 'Unknown');
+                    // Sort chronologically (handling ISO dates, Year labels, and YTD labels)
+                    chartData.sort((a, b) => {
+                        const labelA = String(a.date || a.name || '');
+                        const labelB = String(b.date || b.name || '');
+
+                        const timeA = new Date(labelA).getTime();
+                        const timeB = new Date(labelB).getTime();
+
+                        // If both are valid full dates, use precise timestamp
+                        if (!isNaN(timeA) && !isNaN(timeB)) return timeA - timeB;
+
+                        // Fallback: extract year for benchmarking labels (e.g. "2016 YTD")
+                        const yearA = parseInt(labelA.slice(0, 4));
+                        const yearB = parseInt(labelB.slice(0, 4));
+                        if (!isNaN(yearA) && !isNaN(yearB)) return yearA - yearB;
+
+                        // Final fallback to alphabetical
+                        return labelA.localeCompare(labelB);
+                    });
+
+                    // Cap at 30 points to match backend .tail(30) and maintain readability
+                    if (chartData.length > 30) {
+                        chartData = chartData.slice(-30);
+                    }
                 }
-                charts[slotId] = chartData; // No capping for trends/scatter
+                charts[slotId] = chartData;
             } else {
-                // Sort by value desc (standard analytical presentation)
                 chartData.sort((a, b) => b.value - a.value);
-                // Cap at top 10 to maintain readability and match backend behavior
                 charts[slotId] = chartData.slice(0, 10);
             }
         }
@@ -163,24 +264,21 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
     classification_overrides: {},
     selected_domain: null,
     target_column: null,
+    initialChartData: null,
     target_value: 'all',
+    total_records: 0,
 
-    setDashboardData: (rawData, chartConfigs, initialChartData, targetCol) => {
+    setDashboardData: (rawData, chartConfigs, initialChartData, totalRows, targetCol) => {
         const state = get();
         const finalTargetCol = targetCol || state.target_column;
-        const hasFiltersOrOverrides = Object.keys(state.active_filters).length > 0 ||
-            Object.keys(state.chart_overrides).length > 0 ||
-            state.target_value !== 'all';
-
-        const finalChartData = hasFiltersOrOverrides
-            ? (recomputeCharts(rawData, chartConfigs, state.active_filters, state.chart_overrides, finalTargetCol, state.target_value) || initialChartData)
-            : initialChartData;
 
         set({
             rawData,
             chartConfigs,
-            chartData: finalChartData,
-            target_column: finalTargetCol
+            initialChartData,
+            chartData: initialChartData || state.chartData,
+            target_column: finalTargetCol,
+            total_records: totalRows
         });
     },
 
@@ -188,7 +286,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const state = get();
         set({
             target_value: value,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, state.active_filters, state.chart_overrides, state.target_column, value, state.chartData)
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, state.active_filters, state.chart_overrides, state.target_column, value, state.chartData, undefined, state.total_records, state.initialChartData)
         });
     },
 
@@ -197,46 +295,37 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const newFilters = { ...state.active_filters, [column]: [value] };
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
         });
     },
 
     setFilterValues: (column, values) => {
         const state = get();
-        const newFilters = { ...state.active_filters };
-        if (values.length > 0) newFilters[column] = values;
-        else delete newFilters[column];
+        const newFilters = { ...state.active_filters, [column]: values };
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
         });
     },
 
     toggleFilter: (column, value) => {
         const state = get();
-        const currentVals = state.active_filters[column] || [];
-        const valStr = String(value);
-        const isSelected = currentVals.includes(valStr);
-        const newVals = isSelected ? currentVals.filter(v => v !== valStr) : [...currentVals, valStr];
-        const newFilters = { ...state.active_filters };
-        if (newVals.length > 0) newFilters[column] = newVals;
-        else delete newFilters[column];
+        const current = state.active_filters[column] || [];
+        const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
+        const newFilters = { ...state.active_filters, [column]: next };
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
         });
     },
 
     removeFilter: (column, value) => {
         const state = get();
-        const currentVals = state.active_filters[column] || [];
-        const newVals = currentVals.filter(v => v !== value);
-        const newFilters = { ...state.active_filters };
-        if (newVals.length > 0) newFilters[column] = newVals;
-        else delete newFilters[column];
+        const next = (state.active_filters[column] || []).filter(v => v !== value);
+        const newFilters = { ...state.active_filters, [column]: next };
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData)
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
         });
     },
 
@@ -244,7 +333,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const state = get();
         set({
             active_filters: {},
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, {}, state.chart_overrides, state.target_column, state.target_value, state.chartData)
+            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, {}, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
         });
     },
 
@@ -260,8 +349,10 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
                 newOverrides,
                 state.target_column,
                 state.target_value,
-                state.chartData, // Existing charts
-                chartId          // ONLY recompute this one
+                state.chartData,
+                chartId,
+                state.total_records,
+                state.initialChartData
             )
         });
     },
