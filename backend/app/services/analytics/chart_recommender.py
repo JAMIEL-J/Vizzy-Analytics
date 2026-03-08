@@ -1250,7 +1250,8 @@ def _generate_churn_charts(df, classification):
                 title=f'{_beautify_column_name(impact_metric)} at Risk by {_beautify_column_name(svc_dim2)}',
                 chart_type='hbar', data=data, confidence='HIGH',
                 reason='Tier 3: Secondary financial risk view',
-                format_type='currency'
+                format_type='currency',
+                dimension=svc_dim2, metric=impact_metric, aggregation='sum'
             ))
     elif secondary_dim and impact_metric and secondary_dim != svc_dim:
         data = _get_value_at_risk(df, target_col, secondary_dim, impact_metric)
@@ -1260,7 +1261,8 @@ def _generate_churn_charts(df, classification):
                 title=f'{_beautify_column_name(impact_metric)} at Risk by {_beautify_column_name(secondary_dim)}',
                 chart_type='hbar', data=data, confidence='HIGH',
                 reason=f'Tier 3: Value leakage by secondary dimension',
-                format_type='currency'
+                format_type='currency',
+                dimension=secondary_dim, metric=impact_metric, aggregation='sum'
             ))
 
     # 9. Rate by tertiary dimension or another product/service dim
@@ -1271,7 +1273,8 @@ def _generate_churn_charts(df, classification):
             add_chart(ChartRecommendation(
                 slot='', title=f'{label} Rate by {_beautify_column_name(tier3_dim)} (%)',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason=f'Tier 3: {label} across {_beautify_column_name(tier3_dim)}'
+                reason=f'Tier 3: {label} across {_beautify_column_name(tier3_dim)}',
+                dimension=tier3_dim, metric=target_col, aggregation='mean'
             ))
     elif secondary_metric and primary_dim:
         data = _safe_groupby_mean(df, primary_dim, secondary_metric)
@@ -1280,7 +1283,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'Avg {_beautify_column_name(secondary_metric)} by {_beautify_column_name(primary_dim)}',
                 chart_type='hbar', data=data, confidence='MEDIUM',
-                reason='Tier 3: Secondary metric by primary dimension'
+                reason='Tier 3: Secondary metric by primary dimension',
+                dimension=primary_dim, metric=secondary_metric, aggregation='mean'
             ))
 
     # ── TIER 4: DEMOGRAPHIC PROFILE ──────────────────────────────────
@@ -1301,6 +1305,7 @@ def _generate_churn_charts(df, classification):
 
     # 11. Senior Citizen churn rate (guaranteed slot)
     #     then fall back to any other unused binary dimension
+    # 11. Senior Citizen churn rate (guaranteed slot)
     used_dims = {primary_dim, secondary_dim, svc_dim, svc_dim2, tier3_dim, profile_dim}
     if senior_col_match:
         data = _get_churn_rate_by_segment(df, target_col, senior_col_match)
@@ -1308,7 +1313,8 @@ def _generate_churn_charts(df, classification):
             add_chart(ChartRecommendation(
                 slot='', title=f'{label} Rate by {_beautify_column_name(senior_col_match)} (%)',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason='Tier 4: Senior vs Non-Senior churn split'
+                reason='Tier 4: Senior vs Non-Senior churn split',
+                dimension=senior_col_match, metric=target_col, aggregation='mean'
             ))
     else:
         bin1 = next((d for d in binary_dims if d not in used_dims), binary_dims[0] if binary_dims else None)
@@ -1318,7 +1324,8 @@ def _generate_churn_charts(df, classification):
                 add_chart(ChartRecommendation(
                     slot='', title=f'{label} Rate by {_beautify_column_name(bin1)} (%)',
                     chart_type='bar', data=data, confidence='HIGH',
-                    reason=f'Tier 4: Binary demographic split — {_beautify_column_name(bin1)}'
+                    reason=f'Tier 4: Binary demographic split — {_beautify_column_name(bin1)}',
+                    dimension=bin1, metric=target_col, aggregation='mean'
                 ))
 
     # 12. A second binary/unused dimension
@@ -1332,7 +1339,8 @@ def _generate_churn_charts(df, classification):
             add_chart(ChartRecommendation(
                 slot='', title=f'{label} Rate by {_beautify_column_name(bin2)} (%)',
                 chart_type='bar', data=data, confidence='MEDIUM',
-                reason=f'Tier 4: Demographic/behavioral split — {_beautify_column_name(bin2)}'
+                reason=f'Tier 4: Demographic/behavioral split — {_beautify_column_name(bin2)}',
+                dimension=bin2, metric=target_col, aggregation='mean'
             ))
     elif primary_dim:
         rec = _distribution_chart(
@@ -1343,6 +1351,8 @@ def _generate_churn_charts(df, classification):
             value_label='Customers'
         )
         if rec:
+            rec.dimension = primary_dim
+            rec.aggregation = 'count'
             add_chart(rec)
 
     # ── TIER 5: BEHAVIORAL DEPTH ─────────────────────────────────────
@@ -1357,7 +1367,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'{_beautify_column_name(scatter_x)} vs {_beautify_column_name(scatter_y)}',
                 chart_type='scatter', data=data, confidence='MEDIUM',
-                reason='Tier 5: Correlation between key metrics'
+                reason='Tier 5: Correlation between key metrics',
+                dimension=scatter_x, metric=scatter_y # Fallback re-aggregation logic handles this
             ))
 
     # 14. Time trend OR Value at Risk by another dimension
@@ -1369,7 +1380,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'{_beautify_column_name(primary_value_metric)} Trend Over Time',
                 chart_type='area', data=data, confidence='HIGH',
-                reason='Tier 5: Trend analysis for seasonality'
+                reason='Tier 5: Trend analysis for seasonality',
+                dimension=date_col, metric=primary_value_metric, aggregation='sum'
             ))
     elif secondary_metric and secondary_dim:
         data = _get_value_at_risk(df, target_col, secondary_dim, secondary_metric)
@@ -1378,7 +1390,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'{_beautify_column_name(secondary_metric)} at Risk by {_beautify_column_name(secondary_dim)}',
                 chart_type='hbar', data=data, confidence='MEDIUM',
-                reason='Tier 5: Secondary value at risk'
+                reason='Tier 5: Secondary value at risk',
+                dimension=secondary_dim, metric=secondary_metric, aggregation='sum'
             ))
     elif primary_value_metric and len(pd_) > 1:
         dim = pd_[1] if pd_[0] == primary_dim else pd_[0]
@@ -1388,7 +1401,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'Avg {_beautify_column_name(primary_value_metric)} by {_beautify_column_name(dim)}',
                 chart_type='hbar', data=data, confidence='MEDIUM',
-                reason='Tier 5: Metric depth fallback'
+                reason='Tier 5: Metric depth fallback',
+                dimension=dim, metric=primary_value_metric, aggregation='mean'
             ))
 
     # 15. Final coverage — exhaustive metric×dim search for any unused combo
@@ -1447,7 +1461,8 @@ def _generate_churn_charts(df, classification):
                 slot='', title=f'{label} Volume by {_beautify_column_name(primary_dim)}',
                 chart_type='stacked_bar', data=data, confidence='HIGH',
                 categories=['positive', 'negative'],
-                reason='Tier 6: Volume split — see raw count of churned vs retained per segment'
+                reason='Tier 6: Volume split — see raw count of churned vs retained per segment',
+                dimension=primary_dim, metric=target_col, aggregation='count'
             ))
 
     # 17. Churned vs Retained — Avg Primary Metric Comparison
@@ -1458,7 +1473,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'Avg {_beautify_column_name(primary_value_metric)}: Churned vs Retained',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason='Tier 6: Price sensitivity — are churned customers paying more or less?'
+                reason='Tier 6: Price sensitivity — are churned customers paying more or less?',
+                dimension=target_col, metric=primary_value_metric, aggregation='mean'
             ))
 
     # 18. Churn Count by Secondary Dimension (volume, not rate)
@@ -1470,7 +1486,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'{label} Count by {_beautify_column_name(count_dim)}',
                 chart_type='hbar', data=data, confidence='HIGH',
-                reason=f'Tier 6: Where is the volume of {label.lower()} concentrated?'
+                reason=f'Tier 6: Where is the volume of {label.lower()} concentrated?',
+                dimension=count_dim, metric=target_col, aggregation='count'
             ))
 
     # 19. Financial Cohort Analysis — churn rate by metric quartile
@@ -1482,7 +1499,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'{label} Rate by {_beautify_column_name(cohort_metric)} Range (%)',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason='Tier 6: Do high-value customers churn more or less?'
+                reason='Tier 6: Do high-value customers churn more or less?',
+                dimension=cohort_metric, metric=target_col, aggregation='mean'
             ))
 
     # 20. Churned vs Retained — Avg Lifecycle/Tenure Comparison
@@ -1493,7 +1511,8 @@ def _generate_churn_charts(df, classification):
                 slot='',
                 title=f'Avg {_beautify_column_name(lifecycle_col)}: Churned vs Retained',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason='Tier 6: Do long-tenure customers churn less?'
+                reason='Tier 6: Do long-tenure customers churn less?',
+                dimension=target_col, metric=lifecycle_col, aggregation='mean'
             ))
 
     # 21. Bonus: Secondary metric cohort analysis (if different from primary)
@@ -1520,6 +1539,8 @@ def _generate_churn_charts(df, classification):
             value_label='Customers'
         )
         if rec:
+            rec.dimension = bonus_dim
+            rec.aggregation = 'count'
             add_chart(rec)
 
     return charts

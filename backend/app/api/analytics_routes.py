@@ -267,12 +267,16 @@ def get_dashboard_analytics(
             charts_filtered = recommend_charts(df_filtered, domain, classification, overrides=state.chart_overrides)
 
             # Build a title → filtered chart lookup.
-            # Title is STABLE across runs (derived from column names, not data cardinality).
-            # Slot numbers are NOT stable — they are re-assigned after deduplication
-            # on every call, so slot_1 in the full run ≠ slot_1 in the filtered run.
             filtered_by_title: Dict[str, Any] = {
                 v["title"]: v for v in charts_filtered.values()
             }
+
+            from app.services.analytics.chart_recommender import (
+                _smart_aggregate, _safe_groupby_sum, _safe_groupby_mean, 
+                _get_time_trend, _get_churn_rate_by_segment, _get_value_at_risk,
+                _get_stacked_churn_counts, _get_lifecycle_cohorts, _distribution_chart,
+                _get_churn_count_by_segment, _get_churned_vs_retained_avg, _safe_value_counts
+            )
 
             charts: Dict[str, Any] = {}
             for slot, full_chart in charts_full.items():
@@ -281,12 +285,61 @@ def get_dashboard_analytics(
 
                 if flt and flt.get("data"):
                     # Correct match: same chart title found in filtered run.
-                    # Use full-df structure (type, title, meta) + filtered data values.
                     charts[slot] = {**full_chart, "data": flt["data"]}
+                elif full_chart.get("dimension"):
+                    # Chart dropped by recommendation engine (e.g. due to nunique < 2).
+                    # Manually re-aggregate if we have the metadata.
+                    dim = full_chart["dimension"]
+                    met = full_chart.get("metric")
+                    agg = full_chart.get("aggregation", "sum")
+                    ctype = full_chart["type"]
+                    
+                    try:
+                        manual_data = []
+                        # 1. Specialized Categorical Handling (Churn / Rates / Counts)
+                        if met == target_col or (not met and 'Churn' in title):
+                            if ctype == 'stacked_bar' or ctype == 'stacked':
+                                manual_data = _get_stacked_churn_counts(df_filtered, target_col, dim)
+                            elif agg == 'count' or 'Volume' in title or 'Count' in title:
+                                manual_data = _get_churn_count_by_segment(df_filtered, target_col, dim)
+                            else:
+                                # Default to Rate for Churn targets
+                                if pd.api.types.is_numeric_dtype(df[dim]) and df[dim].nunique() > 10:
+                                    manual_data = _get_lifecycle_cohorts(df_filtered, dim, target_col)
+                                else:
+                                    manual_data = _get_churn_rate_by_segment(df_filtered, target_col, dim)
+                        
+                        # 2. Financial / Time / Numeric Handling
+                        elif ctype in ('line', 'area', 'area_bounds'):
+                            if dim in classification.dates:
+                                manual_data = _get_time_trend(df_filtered, dim, met or classification.metrics[0])
+                            elif met:
+                                manual_data = _safe_groupby_mean(df_filtered, dim, met)
+                        
+                        elif 'at Risk' in title and met:
+                            manual_data = _get_value_at_risk(df_filtered, target_col, dim, met)
+                        
+                        # 3. Generic Fallback Re-aggregation (Numeric vs Distribution)
+                        if not manual_data:
+                            if met and pd.api.types.is_numeric_dtype(df[met]):
+                                if agg == 'mean':
+                                    manual_data = _safe_groupby_mean(df_filtered, dim, met)
+                                else:
+                                    manual_data = _safe_groupby_sum(df_filtered, dim, met)
+                            else:
+                                # Distribution charts for categorical inputs or fallback
+                                manual_data = _safe_value_counts(df_filtered, dim, limit=15)
+                        
+                        charts[slot] = {**full_chart, "data": manual_data or []}
+                    except Exception as e:
+                        print(f"Error in manual re-aggregation for {title}: {e}")
+                        # Final resort: raw value counts of the dimension
+                        try:
+                            fallback_counts = _safe_value_counts(df_filtered, dim, limit=15)
+                            charts[slot] = {**full_chart, "data": fallback_counts}
+                        except:
+                            charts[slot] = {**full_chart, "data": []}
                 else:
-                    # Chart didn't make it through filtering (e.g. only 1 category left
-                    # after filter, or all rows excluded). Keep the slot so layout stays
-                    # stable, but send empty data → frontend shows "No data for current filter".
                     charts[slot] = {**full_chart, "data": []}
         else:
             charts = charts_full
