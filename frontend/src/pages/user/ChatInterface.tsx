@@ -204,12 +204,13 @@ export default function ChatInterface() {
     };
 
     return (
-        <div className="flex h-full bg-white dark:bg-[#0D0F12] transition-colors duration-500">
+        <div className="flex h-full bg-background-dark text-white font-display antialiased relative selection:bg-primary selection:text-black">
+            <div className="grain-overlay z-0"></div>
             {/* Sidebar */}
-            <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-white dark:bg-[#16181D] border-r border-gray-200 dark:border-gray-800 transition-all duration-300 flex flex-col flex-shrink-0 overflow-hidden`}>
-                <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-700 dark:text-gray-300">Chat History</h2>
-                    <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white">
+            <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-background-dark/80 backdrop-blur-md border-r border-white/5 transition-all duration-300 flex flex-col flex-shrink-0 overflow-hidden relative z-10`}>
+                <div className="p-4 border-b border-white/5 flex items-center justify-between font-mono">
+                    <h2 className="text-xs uppercase tracking-widest text-gray-400">Chat History</h2>
+                    <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white transition-colors">
                         <XMarkIcon className="w-5 h-5" />
                     </button>
                 </div>
@@ -217,9 +218,9 @@ export default function ChatInterface() {
                 <div className="p-3">
                     <button
                         onClick={handleNewChat}
-                        className="w-full flex items-center justify-center space-x-2 bg-primary-blue text-white py-2.5 rounded-lg hover:bg-blue-700 transition"
+                        className="w-full flex items-center justify-center gap-2 obsidian-card py-2.5 rounded-sm hover:border-primary/50 transition-colors font-mono text-xs uppercase tracking-widest text-white group"
                     >
-                        <PlusIcon className="w-5 h-5" />
+                        <PlusIcon className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
                         <span>New Chat</span>
                     </button>
                 </div>
@@ -228,14 +229,14 @@ export default function ChatInterface() {
                     {sessions.map(session => (
                         <div
                             key={session.id}
-                            className={`group w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm transition cursor-pointer ${currentSessionId === session.id
-                                ? 'bg-blue-50 dark:bg-blue-900/20 text-primary-blue dark:text-blue-400 font-bold'
-                                : 'text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                            className={`group w-full flex items-center justify-between px-3 py-3 rounded-sm text-sm transition cursor-pointer font-mono ${currentSessionId === session.id
+                                ? 'bg-primary/10 border-l-2 border-primary text-primary'
+                                : 'text-gray-400 hover:bg-white/5 hover:text-white'
                                 }`}
                             onClick={() => loadSession(session.id)}
                         >
                             <div className="flex items-start space-x-3 overflow-hidden">
-                                <ChatBubbleLeftIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                <ChatBubbleLeftIcon className={`w-4 h-4 flex-shrink-0 mt-0.5 ${currentSessionId === session.id ? 'text-primary' : ''}`} />
                                 <div className="min-w-0">
                                     <p className="font-medium truncate">{session.title || 'Untitled Chat'}</p>
                                     <p className="text-xs text-gray-500 truncate mt-0.5">
@@ -262,27 +263,28 @@ export default function ChatInterface() {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+            <div className="flex-1 flex flex-col h-full overflow-hidden relative z-10">
                 {/* Header */}
-                <header className="bg-white dark:bg-[#111318] border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex-shrink-0 flex items-center justify-between transition-colors">
-                    <div className="flex items-center">
+                <header className="bg-background-dark/80 backdrop-blur-md border-b border-white/5 px-6 py-4 flex-shrink-0 flex items-center justify-between transition-colors">
+                    <div className="flex items-center gap-4">
                         <button
                             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                            className="mr-4 text-gray-500 hover:text-primary-blue focus:outline-none transition-colors"
+                            className="text-gray-400 hover:text-primary transition-colors focus:outline-none"
                         >
                             <Bars3Icon className="w-6 h-6" />
                         </button>
-                        <div>
-                            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Chat Analytics</h1>
+                        <div className="flex items-center gap-3">
+                            <span className="material-symbols-outlined text-primary text-xl">diamond</span>
+                            <h1 className="text-xl font-light tracking-widest uppercase text-white">Chat Analytics</h1>
                         </div>
                     </div>
 
-                    <div className="flex items-center space-x-3">
-                        <span className="text-sm text-gray-600 dark:text-gray-400 hidden md:inline">Dataset:</span>
+                    <div className="flex items-center space-x-3 font-mono">
+                        <span className="text-xs uppercase tracking-widest text-gray-500 hidden md:inline">Dataset:</span>
                         <select
                             value={selectedDatasetId}
                             onChange={(e) => setSelectedDatasetId(e.target.value)}
-                            className="px-3 py-2 bg-white dark:bg-[#16181D] border border-gray-300 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none max-w-[200px] transition-colors"
+                            className="px-3 py-1.5 bg-black/40 border border-white/10 rounded-sm text-xs text-white focus:border-primary outline-none min-w-[180px] transition-colors appearance-none cursor-pointer"
                         >
                             <option value="">Select a dataset...</option>
                             {datasets.map(ds => (
@@ -295,21 +297,21 @@ export default function ChatInterface() {
                 {/* Chat Area */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {messages.length === 0 ? (
-                        <div className="flex justify-center mt-10">
-                            <div className="text-center max-w-xl">
-                                <div className="w-16 h-16 bg-gradient-to-br from-primary-blue to-accent-cyan rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <div className="flex justify-center mt-10 w-full z-10">
+                            <div className="text-center max-w-xl w-full">
+                                <div className="w-16 h-16 bg-primary rounded-sm flex items-center justify-center mx-auto mb-4 font-mono text-2xl text-black border-b-4 border-[#b5461c]">
+                                    VX
                                 </div>
                                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Start asking questions!</h3>
                                 <p className="text-gray-600 dark:text-gray-400 mb-6">I'm your AI analytics assistant. Ask me anything about your data.</p>
 
                                 {selectedDatasetId && (
                                     <div className="grid grid-cols-2 gap-3 text-sm">
-                                        <button onClick={() => handleSendMessage('What is the total sales?')} className="p-3 bg-white dark:bg-[#16181D] rounded-lg border border-gray-200 dark:border-gray-800 hover:border-primary-blue hover:bg-blue-50 dark:hover:bg-blue-900/10 transition text-left">
-                                            <span className="text-gray-700 dark:text-gray-300 font-medium">💰 What is the total sales?</span>
+                                        <button onClick={() => handleSendMessage('What is the total sales?')} className="p-4 glass-panel hover:bg-white/5 transition text-left group">
+                                            <span className="text-gray-300 group-hover:text-primary font-mono text-xs uppercase tracking-widest transition-colors"><span className="text-primary mr-2">/</span> What is the total sales?</span>
                                         </button>
-                                        <button onClick={() => handleSendMessage('Show me revenue by region')} className="p-3 bg-white dark:bg-[#16181D] rounded-lg border border-gray-200 dark:border-gray-800 hover:border-primary-blue hover:bg-blue-50 dark:hover:bg-blue-900/10 transition text-left">
-                                            <span className="text-gray-700 dark:text-gray-300 font-medium">📊 Show me revenue by region</span>
+                                        <button onClick={() => handleSendMessage('Show me revenue by region')} className="p-4 glass-panel hover:bg-white/5 transition text-left group">
+                                            <span className="text-gray-300 group-hover:text-primary font-mono text-xs uppercase tracking-widest transition-colors"><span className="text-primary mr-2">/</span> Show me revenue by region</span>
                                         </button>
                                     </div>
                                 )}
@@ -321,11 +323,11 @@ export default function ChatInterface() {
                                 <div key={msg.id} id={`msg-${msg.id}`} className={`flex w-full mb-8 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'max-w-7xl w-full' : 'max-w-xl'} flex items-start space-x-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                                         {msg.role === 'assistant' && (
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-navy to-primary-blue flex items-center justify-center flex-shrink-0">
-                                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                            <div className="w-10 h-10 rounded-sm bg-primary border-b-2 border-[#b5461c] flex items-center justify-center flex-shrink-0 font-mono text-xs font-bold text-black font-display font-light shadow-[0_0_15px_rgba(255,105,51,0.3)]">
+                                                VX
                                             </div>
                                         )}
-                                        <div className={`px-5 py-4 shadow-sm ${msg.role === 'user' ? 'bg-primary-blue text-white rounded-2xl rounded-tr-sm' : 'bg-white dark:bg-[#1C1F26] border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 rounded-2xl rounded-tl-sm'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
+                                        <div className={`px-5 py-4 ${msg.role === 'user' ? 'bg-primary text-black rounded-sm border-b-2 border-[#b5461c] shadow-[0_0_15px_rgba(255,105,51,0.2)]' : 'glass-panel text-gray-200'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
                                             <div className="text-sm leading-relaxed">
                                                 {['analysis', 'visualization', 'dashboard', 'text_query', 'clarification'].includes(msg.intent_type || '') ? (
                                                     <div className="space-y-4 w-full">
@@ -377,8 +379,8 @@ export default function ChatInterface() {
                                                                                     </span>
                                                                                 </div>
                                                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${confidence >= 85 ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                                                                                        : confidence >= 70 ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
-                                                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                                                                                    : confidence >= 70 ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
+                                                                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
                                                                                     }`}>
                                                                                     {confidence}% match
                                                                                 </span>
@@ -398,7 +400,7 @@ export default function ChatInterface() {
                                                             const sqlQuery = targetData.sql || msg.output_data.sql;
 
                                                             return (
-                                                                <div className={`mt-6 w-full vizzy-chart-container bg-white dark:bg-[#1C1F26] rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm pb-3`}>
+                                                                <div className={`mt-6 w-full vizzy-chart-container obsidian-card border border-white/5 p-4 shadow-sm pb-3`}>
                                                                     <ChartRenderer
                                                                         type={isTableMode ? 'table' : (targetData.type || 'unknown')}
                                                                         data={targetData}
@@ -408,20 +410,20 @@ export default function ChatInterface() {
                                                                     />
 
                                                                     {/* Actions Bar */}
-                                                                    <div className="mt-4 flex flex-col border-t border-gray-100 dark:border-gray-800 pt-3">
+                                                                    <div className="mt-4 flex flex-col border-t border-white/5 pt-3">
                                                                         <div className="flex items-center justify-between">
                                                                             <div className="flex items-center space-x-4">
                                                                                 {targetData.type !== 'kpi' && msg.output_data.response_type !== 'text' && (
-                                                                                    <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg shadow-inner">
+                                                                                    <div className="flex glass-panel p-0.5 rounded-sm shadow-inner group transition-colors">
                                                                                         <button
                                                                                             onClick={() => setChartModes(prev => ({ ...prev, [msg.id]: 'chart' }))}
-                                                                                            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${!isTableMode ? 'bg-white dark:bg-gray-700 text-primary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                                                            className={`px-4 py-1.5 text-[10px] font-mono tracking-widest uppercase transition-all ${!isTableMode ? 'bg-primary text-black font-bold shadow-sm' : 'text-gray-400 hover:text-white'}`}
                                                                                         >
                                                                                             Visual
                                                                                         </button>
                                                                                         <button
                                                                                             onClick={() => setChartModes(prev => ({ ...prev, [msg.id]: 'table' }))}
-                                                                                            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${isTableMode ? 'bg-white dark:bg-gray-700 text-primary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                                                            className={`px-4 py-1.5 text-[10px] font-mono tracking-widest uppercase transition-all ${isTableMode ? 'bg-primary text-black font-bold shadow-sm' : 'text-gray-400 hover:text-white'}`}
                                                                                         >
                                                                                             Data
                                                                                         </button>
@@ -457,12 +459,12 @@ export default function ChatInterface() {
                                                                             <div className="mt-3">
                                                                                 <div className="flex items-center justify-between mb-1.5">
                                                                                     <div className="flex items-center gap-2">
-                                                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                                                                                        <span className="text-[10px] font-bold font-mono tracking-widest uppercase text-gray-400 flex items-center gap-1">
                                                                                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
                                                                                             Generated SQL
                                                                                         </span>
                                                                                         {msg.output_data?.detected_intent && (
-                                                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
+                                                                                            <span className="text-[10px] font-mono tracking-widest uppercase px-1.5 py-0.5 rounded-sm bg-primary/20 text-primary">
                                                                                                 {msg.output_data.detected_intent}
                                                                                             </span>
                                                                                         )}
@@ -473,16 +475,16 @@ export default function ChatInterface() {
                                                                                             setCopiedSqlMsgId(msg.id);
                                                                                             setTimeout(() => setCopiedSqlMsgId(null), 2000);
                                                                                         }}
-                                                                                        className="text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-green-500 dark:text-gray-500 dark:hover:text-green-400 transition-colors flex items-center gap-1"
+                                                                                        className="text-[10px] font-mono font-bold tracking-widest uppercase text-gray-400 hover:text-primary transition-colors flex items-center gap-1"
                                                                                     >
                                                                                         {copiedSqlMsgId === msg.id ? (
-                                                                                            <><svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg> Copied!</>
+                                                                                            <><svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg> Copied!</>
                                                                                         ) : (
                                                                                             <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Copy</>
                                                                                         )}
                                                                                     </button>
                                                                                 </div>
-                                                                                <pre className="p-3 bg-gray-900 dark:bg-black/60 rounded-lg text-[11px] font-mono text-green-300 dark:text-green-400 overflow-x-auto whitespace-pre-wrap border border-gray-800 dark:border-gray-700/50 leading-relaxed">
+                                                                                <pre className="p-4 bg-background-dark/50 border border-white/5 rounded-sm text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap leading-relaxed shadow-inner">
                                                                                     <code>{sqlQuery}</code>
                                                                                 </pre>
 
@@ -560,7 +562,7 @@ export default function ChatInterface() {
                                             </div>
                                         </div>
                                         {msg.role === 'user' && (
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-blue to-accent-cyan flex items-center justify-center text-white font-bold flex-shrink-0">
+                                            <div className="w-10 h-10 rounded-sm bg-black border border-white/20 flex items-center justify-center text-white font-mono text-xs flex-shrink-0 shadow-xl">
                                                 U
                                             </div>
                                         )}
@@ -570,14 +572,14 @@ export default function ChatInterface() {
                             {isTyping && (
                                 <div className="flex justify-start">
                                     <div className="max-w-xl flex items-start space-x-3">
-                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-800 to-primary-blue flex items-center justify-center flex-shrink-0">
-                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                        <div className="w-10 h-10 rounded-sm bg-primary border-b-2 border-[#b5461c] flex items-center justify-center flex-shrink-0 font-mono text-xs font-bold text-black font-display font-light shadow-[0_0_15px_rgba(255,105,51,0.3)]">
+                                            VX
                                         </div>
-                                        <div className="bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-800 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm transition-colors duration-300">
+                                        <div className="glass-panel px-5 py-4 transition-colors duration-300">
                                             <div className="flex space-x-1">
-                                                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce"></div>
-                                                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce delay-75"></div>
-                                                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce delay-150"></div>
+                                                <div className="w-2 h-2 bg-primary animate-pulse"></div>
+                                                <div className="w-2 h-2 bg-primary animate-pulse delay-75"></div>
+                                                <div className="w-2 h-2 bg-primary animate-pulse delay-150"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -589,7 +591,7 @@ export default function ChatInterface() {
                 </div>
 
                 {/* Input Area */}
-                <div className="bg-white dark:bg-[#111318] border-t border-gray-200 dark:border-gray-800 p-6 flex-shrink-0 transition-colors duration-500">
+                <div className="bg-background-dark/80 backdrop-blur-md border-t border-white/5 p-6 flex-shrink-0 transition-colors duration-500 z-10 w-full relative">
                     <div className="max-w-4xl mx-auto">
                         <div className="flex items-end space-x-4">
                             <div className="flex-1">
@@ -603,18 +605,17 @@ export default function ChatInterface() {
                                         }
                                     }}
                                     rows={1}
-                                    placeholder="Type your question here..."
+                                    placeholder="TYPE YOUR QUERY [ENTER]"
                                     disabled={!selectedDatasetId}
-                                    className="w-full px-4 py-3 bg-white dark:bg-[#1C1F26] border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent resize-none outline-none disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-colors"
+                                    className="w-full px-4 py-4 obsidian-card font-mono text-sm tracking-widest uppercase text-white placeholder-gray-600 focus:border-primary/50 resize-none outline-none disabled:bg-gray-900 disabled:cursor-not-allowed transition-colors"
                                 ></textarea>
                             </div>
                             <button
                                 onClick={() => handleSendMessage(inputValue)}
                                 disabled={!inputValue.trim() || isTyping || !selectedDatasetId}
-                                className="px-6 py-3 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-6 py-4 obsidian-card font-mono text-xs uppercase tracking-widest text-primary hover:bg-primary hover:text-black transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed h-[54px]"
                             >
                                 <span>Send</span>
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                             </button>
                         </div>
                         {!selectedDatasetId && <p className="text-xs text-red-500 mt-2">Please select a dataset to start chatting</p>}

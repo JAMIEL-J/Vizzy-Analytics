@@ -33,21 +33,22 @@ export default function ConnectDatabase() {
     };
 
     return (
-        <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-[#0D0F12] transition-colors duration-300">
-            <header className="mb-8">
-                <h1 className="text-2xl font-bold text-navy dark:text-white">Connect Database</h1>
-                <p className="text-gray-600 dark:text-gray-400">Import data directly from your external databases</p>
+        <div className="flex-1 overflow-y-auto p-8 text-white font-display antialiased relative selection:bg-primary selection:text-black">
+            <div className="grain-overlay z-0"></div>
+            <header className="mb-8 relative z-10">
+                <h1 className="text-2xl font-light tracking-widest uppercase text-white">Connect Database</h1>
+                <p className="text-gray-400 mt-1 font-mono text-xs tracking-wider">Import data directly from your external databases</p>
             </header>
 
-            <div className="max-w-2xl bg-white dark:bg-[#16181D] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-8 transition-colors">
+            <div className="max-w-2xl glass-panel relative z-10 p-8">
                 <div className="grid grid-cols-1 gap-6">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Database Type</label>
+                        <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Database Type</label>
                         <select
                             name="type"
                             value={config.type}
                             onChange={handleChange}
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-[#0D0F12] text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none transition-colors"
+                            className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest uppercase text-white focus:border-primary/50 outline-none transition-colors appearance-none"
                         >
                             <option value="postgresql">PostgreSQL</option>
                             <option value="mysql">MySQL</option>
@@ -58,78 +59,78 @@ export default function ConnectDatabase() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Host</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Host</label>
                             <input
                                 type="text"
                                 name="host"
                                 value={config.host}
                                 onChange={handleChange}
-                                placeholder="localhost"
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-[#0D0F12] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none transition-colors"
+                                placeholder="LOCALHOST"
+                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white placeholder-gray-600 focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Port</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Port</label>
                             <input
                                 type="number"
                                 name="port"
                                 value={config.port}
                                 onChange={handleChange}
                                 placeholder="5432"
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-[#0D0F12] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none transition-colors"
+                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white placeholder-gray-600 focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Database Name</label>
+                        <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Database Name</label>
                         <input
                             type="text"
                             name="database"
                             value={config.database}
                             onChange={handleChange}
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-[#0D0F12] text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none transition-colors"
+                            className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white focus:border-primary/50 outline-none transition-colors"
                         />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Username</label>
                             <input
                                 type="text"
                                 name="username"
                                 value={config.username}
                                 onChange={handleChange}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-[#0D0F12] text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none transition-colors"
+                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Password</label>
                             <input
                                 type="password"
                                 name="password"
                                 value={config.password}
                                 onChange={handleChange}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-[#0D0F12] text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent outline-none transition-colors"
+                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                     </div>
 
                     {testResult && (
-                        <div className={`p-4 rounded-lg ${testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                        <div className={`p-4 rounded-sm font-mono text-xs uppercase tracking-wider border ${testResult.success ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                             {testResult.message}
                         </div>
                     )}
 
-                    <div className="flex justify-end space-x-4 mt-4">
+                    <div className="flex justify-end space-x-4 mt-6">
                         <button
                             onClick={handleTestConnection}
                             disabled={isTesting}
-                            className="px-6 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+                            className="px-6 py-3 obsidian-card font-mono text-xs uppercase tracking-widest text-gray-400 hover:text-primary transition-colors hover:border-primary/50 disabled:opacity-50"
                         >
                             {isTesting ? 'Testing...' : 'Test Connection'}
                         </button>
-                        <button disabled className="px-6 py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50">
+                        <button disabled className="px-6 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:bg-gray-800 disabled:text-gray-500 leading-none">
                             Connect & Ingest
                         </button>
                     </div>

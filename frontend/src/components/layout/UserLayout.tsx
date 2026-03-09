@@ -18,28 +18,28 @@ export default function UserLayout() {
     };
 
     const linkClasses = (path: string) => `
-        flex items-center rounded-lg transition-all duration-500 ease-in-out
+        flex items-center rounded-sm transition-all duration-300 ease-in-out font-serif text-[15px] tracking-wide
         ${isCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3'}
         ${location.pathname === path
-            ? 'bg-primary-blue text-white shadow-lg shadow-blue-500/30'
-            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white'}
+            ? 'bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(255,105,51,0.1)]'
+            : 'text-gray-400 hover:bg-white/5 hover:text-white'}
     `;
 
     const spanClasses = `transition-all duration-500 ease-in-out origin-left whitespace-nowrap overflow-hidden ${isCollapsed ? 'max-w-0 opacity-0 scale-95 ml-0' : 'max-w-48 opacity-100 scale-100 ml-0'}`;
 
     return (
-        <div className="flex h-screen overflow-hidden bg-white dark:bg-[#0D0F12] transition-colors duration-500">
+        <div className="flex h-screen overflow-hidden bg-background-dark text-white font-serif selection:bg-primary selection:text-black">
             {/* Sidebar */}
             <aside
                 className={`
-                    flex flex-col h-full bg-gray-50 dark:bg-[#16181D] border-r border-gray-200 dark:border-white/5 transition-all duration-500 ease-in-out z-30 relative overflow-hidden
+                    flex flex-col h-full bg-black border-r border-white/10 transition-all duration-500 ease-in-out z-30 relative overflow-hidden
                     ${isCollapsed ? 'w-20' : 'w-72'}
                 `}
             >
                 {/* Fixed Toggle Button Position */}
                 <button
                     onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="absolute -right-3 top-1/2 -translate-y-1/2 bg-white dark:bg-[#16181D] text-gray-400 hover:text-primary-blue rounded-full p-1.5 shadow-lg border border-gray-200 dark:border-white/10 z-50 flex items-center justify-center transition-all duration-300 ease-in-out hover:scale-110"
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 bg-black text-gray-400 hover:text-primary rounded-sm p-1.5 shadow-[0_0_10px_rgba(0,0,0,0.5)] border border-white/20 z-50 flex items-center justify-center transition-all duration-300 ease-in-out hover:scale-110"
                     title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                 >
                     <svg className={`w-4 h-4 transition-transform duration-500 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -51,12 +51,12 @@ export default function UserLayout() {
                     {/* Logo Section - Static */}
                     <div className={`flex items-center mb-10 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
                         <div className="flex items-center">
-                            <div className="w-10 h-10 bg-gradient-to-tr from-primary-blue to-purple-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-10 h-10 border border-primary/20 bg-primary/5 rounded-sm flex items-center justify-center text-primary shadow-[0_0_15px_rgba(255,105,51,0.1)]">
+                                <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                                 </svg>
                             </div>
-                            <span className={`text-xl font-bold text-gray-900 dark:text-white ml-3 transition-all duration-500 ease-in-out origin-left whitespace-nowrap overflow-hidden ${isCollapsed ? 'max-w-0 opacity-0' : 'max-w-48 opacity-100'}`}>Vizzy</span>
+                            <span className={`text-[22px] font-serif tracking-widest text-white ml-4 transition-all duration-500 ease-in-out origin-left whitespace-nowrap overflow-hidden ${isCollapsed ? 'max-w-0 opacity-0' : 'max-w-48 opacity-100'}`}>Vizzy</span>
                         </div>
                     </div>
 
@@ -108,12 +108,12 @@ export default function UserLayout() {
                 </div>
 
                 {/* Logout - Static at bottom */}
-                <div className={`mt-auto shrink-0 border-t border-gray-200 dark:border-white/10 transition-all duration-500 ${isCollapsed ? 'px-3 py-6' : 'p-6'}`}>
+                <div className={`mt-auto shrink-0 border-t border-white/10 transition-all duration-500 ${isCollapsed ? 'px-3 py-6' : 'p-6'}`}>
                     <button
                         onClick={handleLogout}
                         title={isCollapsed ? "Logout" : ""}
                         className={`
-                            flex items-center rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-400 transition-all duration-500 ease-in-out w-full
+                            flex items-center rounded-sm text-gray-400 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30 border border-transparent transition-all duration-300 ease-in-out font-serif text-[15px] tracking-wide w-full
                             ${isCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3'}
                         `}
                     >
@@ -126,8 +126,8 @@ export default function UserLayout() {
             </aside>
 
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
-                <main className="flex-1 overflow-y-auto bg-gray-50/30 dark:bg-[#0a1017] transition-colors duration-300 custom-scrollbar">
+            <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
+                <main className="flex-1 flex flex-col overflow-y-auto bg-background-dark custom-scrollbar relative z-10 w-full h-full">
                     <Outlet />
                 </main>
             </div>

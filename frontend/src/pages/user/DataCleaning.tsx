@@ -172,16 +172,17 @@ export default function DataCleaning() {
     };
 
     return (
-        <div className="flex-1 overflow-y-auto p-8 bg-white dark:bg-[#0D0F12] h-full transition-colors duration-500">
-            <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+        <div className="flex-1 overflow-y-auto p-8 text-white font-display antialiased relative selection:bg-primary selection:text-black h-full">
+            <div className="grain-overlay z-0"></div>
+            <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">
                 <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1">
-                        <div className="w-10 h-10 rounded-xl bg-primary-blue/10 dark:bg-primary-blue/20 flex items-center justify-center text-primary-blue dark:text-blue-400">
+                        <div className="w-10 h-10 border border-primary/20 bg-primary/5 text-primary rounded-sm flex items-center justify-center shadow-[0_0_15px_rgba(255,105,51,0.1)]">
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.691.31a2 2 0 01-1.611 0l-.691-.31a6 6 0 00-3.86-.517l-2.387.477a2 2 0 00-1.022.547l-.34.34a2 2 0 000 2.828l1.245 1.245A2 2 0 004.547 21H19.45a2 2 0 001.042-.293l1.245-1.245a2 2 0 000-2.828l-.34-.34z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                         </div>
-                        <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Data Cleaning Studio</h1>
+                        <h1 className="text-2xl font-light uppercase tracking-widest text-white">Data Cleaning Studio</h1>
                     </div>
-                    <p className="text-gray-500 dark:text-gray-400 font-medium">Analyze dataset integrity and implement automated corrections.</p>
+                    <p className="text-gray-400 font-mono text-xs tracking-wider mt-1">Analyze dataset integrity and implement automated corrections.</p>
                 </div>
 
                 <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
@@ -189,7 +190,7 @@ export default function DataCleaning() {
                         <select
                             value={selectedDatasetId}
                             onChange={(e) => setSelectedDatasetId(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-800 rounded-xl appearance-none focus:ring-4 focus:ring-primary-blue/10 focus:border-primary-blue outline-none transition-all cursor-pointer font-bold text-gray-900 dark:text-white shadow-sm group-hover:border-primary-blue/30"
+                            className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest uppercase text-white appearance-none focus:border-primary/50 outline-none transition-all cursor-pointer shadow-sm"
                             disabled={isLoading || isProcessing}
                         >
                             <option value="">Select Target Dataset</option>
@@ -197,10 +198,10 @@ export default function DataCleaning() {
                                 <option key={ds.id} value={ds.id}>{ds.name}</option>
                             ))}
                         </select>
-                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-primary">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2 2 2 2 2h12s2 0 2-2V7s0-2-2-2H6C4 5 4 7 4 7z M4 11h16 M4 15h16"></path></svg>
                         </div>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-primary pointer-events-none">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
                     </div>
@@ -208,7 +209,7 @@ export default function DataCleaning() {
                     {selectedDatasetId && (
                         <button
                             onClick={() => loadInspection(selectedDatasetId, true)}
-                            className="w-full sm:w-auto px-5 py-2.5 bg-gray-900 dark:bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-black/20 dark:shadow-blue-500/20 hover:bg-black dark:hover:bg-blue-500 active:scale-95 transition-all text-sm"
+                            className="w-full sm:w-auto px-6 py-3 obsidian-card font-mono text-xs uppercase tracking-widest text-primary font-bold hover:bg-primary/90 hover:text-black transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,105,51,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={isLoading || isProcessing}
                         >
                             <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -219,14 +220,14 @@ export default function DataCleaning() {
             </header>
 
             {selectedDatasetId ? (
-                <>
+                <div className="relative z-10 w-full">
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center py-20 text-gray-500">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-blue mb-4"></div>
-                            <p>Analyzing dataset quality...</p>
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                            <p className="font-mono text-xs tracking-widest uppercase">Analyzing dataset quality...</p>
                         </div>
                     ) : inspection ? (
-                        <div className="animate-fade-in-up">
+                        <div className="animate-fade-in-up w-full max-w-7xl mx-auto">
                             {/* Health Dashboard */}
                             <HealthDashboard
                                 healthScore={inspection.issues_detected?.health_score || 100}
@@ -234,8 +235,8 @@ export default function DataCleaning() {
                             />
 
                             {/* Recommendations */}
-                            <div className="mb-6">
-                                <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Detected Issues & Recommendations</h2>
+                            <div className="mb-6 w-full">
+                                <h2 className="text-lg font-light tracking-widest uppercase text-white mb-4">Detected Issues & Recommendations</h2>
                                 <RecommendationList
                                     recommendations={inspection.issues_detected?.recommendations || []}
                                     onSelectionChange={(ids, strategies) => {
@@ -247,23 +248,23 @@ export default function DataCleaning() {
 
                             {/* Actions Sticky Bar */}
                             {(inspection.issues_detected?.recommendations?.length || 0) > 0 && (
-                                <div className="sticky bottom-0 left-0 right-0 p-6 bg-white/80 dark:bg-[#16181D]/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-800 flex justify-end items-center gap-4 z-20 -mx-8 -mb-8 mt-12 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] transition-colors">
+                                <div className="sticky bottom-0 left-0 right-0 p-6 glass-panel border-t border-white/10 flex justify-end items-center gap-4 z-20 -mx-8 -mb-8 mt-12 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] transition-colors">
                                     <div className="flex flex-col items-end mr-4">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Selected Actions</span>
-                                        <span className="text-gray-900 dark:text-white font-black">{selectedRecIds.length} recommendations</span>
+                                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-400">Selected Actions</span>
+                                        <span className="text-white font-mono text-xs">{selectedRecIds.length} recommendations</span>
                                     </div>
                                     <button
                                         onClick={handleExecuteCleaning}
                                         disabled={isProcessing || selectedRecIds.length === 0}
-                                        className={`px-10 py-3.5 rounded-xl shadow-xl font-black text-white transition-all transform hover:scale-[1.02] active:scale-95 flex items-center gap-3 ${isProcessing || selectedRecIds.length === 0
-                                            ? 'bg-gray-300 cursor-not-allowed shadow-none'
-                                            : 'bg-primary-blue hover:bg-blue-600 shadow-primary-blue/20'
+                                        className={`px-10 py-3.5 rounded-sm font-mono text-xs uppercase tracking-widest font-bold text-black transition-all transform hover:scale-[1.02] active:scale-95 flex items-center gap-3 ${isProcessing || selectedRecIds.length === 0
+                                            ? 'bg-gray-700 cursor-not-allowed text-gray-400'
+                                            : 'bg-primary hover:bg-primary/90 shadow-[0_0_15px_rgba(255,105,51,0.2)]'
                                             }`}
                                     >
                                         {isProcessing ? (
                                             <>
-                                                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                                <span>Executing Cleaning...</span>
+                                                <svg className="animate-spin h-5 w-5 text-current" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                                <span>Executing...</span>
                                             </>
                                         ) : (
                                             <>
@@ -276,15 +277,15 @@ export default function DataCleaning() {
                             )}
                         </div>
                     ) : (
-                        <div className="bg-red-50 p-6 rounded-xl border border-red-200 text-center text-red-700">
+                        <div className="bg-red-500/10 p-6 rounded-sm border border-red-500/20 text-center font-mono text-xs tracking-widest text-red-500">
                             Failed to load inspection results. Please try re-scanning.
                         </div>
                     )}
-                </>
+                </div>
             ) : (
-                <div className="text-center py-20 bg-white dark:bg-[#16181D] rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-800 text-gray-400 transition-colors">
-                    <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <p className="text-lg">Select a dataset to begin cleaning</p>
+                <div className="relative z-10 text-center py-20 bg-black/50 rounded-sm border border-dashed border-white/20 text-gray-400 transition-colors w-full">
+                    <svg className="w-12 h-12 mx-auto mb-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <p className="font-mono text-xs uppercase tracking-widest text-gray-400">Select a dataset to begin cleaning</p>
                 </div>
             )}
         </div>

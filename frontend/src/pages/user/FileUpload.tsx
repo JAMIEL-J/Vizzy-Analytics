@@ -85,28 +85,29 @@ export default function FileUpload() {
     };
 
     return (
-        <div className="flex-1 p-8 bg-white dark:bg-[#0D0F12] transition-colors duration-500">
+        <div className="flex-1 p-8 text-white font-display antialiased relative selection:bg-primary selection:text-black">
+            <div className="grain-overlay z-0"></div>
             {/* Header */}
-            <div className="max-w-4xl mx-auto flex items-center justify-between mb-8">
+            <div className="max-w-4xl mx-auto flex items-center justify-between mb-8 relative z-10">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Upload Data</h1>
-                    <p className="text-gray-600 dark:text-gray-400">Import your dataset to get started</p>
+                    <h1 className="text-2xl font-light tracking-widest uppercase text-white">Upload Data</h1>
+                    <p className="text-gray-400 mt-1 font-mono text-xs tracking-wider">Import your dataset to get started</p>
                 </div>
-                <Link to="/user/dashboard" className="text-primary-blue hover:text-blue-700 text-sm font-medium">← Back to Dashboard</Link>
+                <Link to="/user/dashboard" className="px-4 py-2 obsidian-card font-mono text-[10px] uppercase tracking-widest text-gray-400 hover:text-primary transition-colors hover:border-primary/50 flex items-center gap-2">← Back to Dashboard</Link>
             </div>
 
-            <div className="max-w-4xl mx-auto">
+            <div className="max-w-4xl mx-auto relative z-10">
                 {/* Drop Zone */}
                 {!file && (
                     <div
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
-                        className={`border-2 border-dashed rounded-2xl p-12 text-center transition cursor-pointer bg-white dark:bg-[#16181D] ${isDragging ? 'border-primary-blue bg-blue-50 dark:bg-blue-900/10' : 'border-gray-300 dark:border-gray-800 hover:border-primary-blue'}`}
+                        className={`border border-dashed p-12 text-center transition-colors cursor-pointer glass-panel ${isDragging ? 'border-primary bg-primary/5' : 'border-white/20 hover:border-primary/50'}`}
                     >
-                        <svg className="w-16 h-16 mx-auto text-gray-400 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Drag & Drop your file here</h3>
-                        <p className="text-gray-600 dark:text-gray-400 mb-4">or click to browse</p>
+                        <svg className="w-16 h-16 mx-auto text-primary mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <h3 className="text-xl font-light tracking-widest uppercase text-white mb-2">Drag & Drop your file here</h3>
+                        <p className="font-mono text-xs text-gray-400 mb-8 uppercase tracking-widest">or click to browse</p>
                         <input
                             type="file"
                             ref={fileInputRef}
@@ -116,42 +117,43 @@ export default function FileUpload() {
                         />
                         <button
                             onClick={() => fileInputRef.current?.click()}
-                            className="px-6 py-3 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition"
+                            className="px-8 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(255,105,51,0.2)]"
                         >
                             Choose File
                         </button>
-                        <p className="text-sm text-gray-500 mt-4">Supported formats: CSV, Excel (.xlsx) • Max size: 50MB</p>
+                        <p className="font-mono text-[10px] text-gray-500 mt-8 uppercase tracking-widest">Supported formats: CSV, Excel (.xlsx) • Max size: 50MB</p>
                     </div>
                 )}
 
+
                 {/* File Info & Progress */}
                 {file && (
-                    <div className="mt-6 bg-white dark:bg-[#16181D] rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 transition-colors">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-12 h-12 bg-primary-blue/10 rounded-lg flex items-center justify-center">
-                                    <svg className="w-6 h-6 text-primary-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <div className="mt-6 glass-panel p-8 shadow-sm transition-colors border-white/5">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center space-x-4">
+                                <div className="w-12 h-12 bg-black border border-white/10 rounded-sm flex items-center justify-center text-primary">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 </div>
                                 <div>
-                                    <p className="font-semibold text-gray-900 dark:text-white">{file?.name}</p>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">{file && formatFileSize(file.size)}</p>
+                                    <p className="font-bold tracking-widest uppercase text-white">{file?.name}</p>
+                                    <p className="font-mono text-[10px] text-gray-400 uppercase tracking-widest mt-1">{file && formatFileSize(file.size)}</p>
                                 </div>
                             </div>
                             {!isUploading && !showSchema && (
-                                <button onClick={removeFile} className="text-red-600 hover:text-red-700">
+                                <button onClick={removeFile} className="text-gray-500 hover:text-red-500 transition-colors">
                                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                 </button>
                             )}
                         </div>
 
                         <div className="mb-4">
-                            <div className="flex justify-between text-sm mb-2">
-                                <span className="text-gray-600 dark:text-gray-400">{progress < 100 ? 'Uploading & Processing...' : 'Upload Complete'}</span>
-                                <span className="text-primary-blue font-semibold">{progress}%</span>
+                            <div className="flex justify-between font-mono text-[10px] uppercase tracking-widest mb-3">
+                                <span className="text-gray-400">{progress < 100 ? 'Uploading & Processing...' : 'Upload Complete'}</span>
+                                <span className="text-primary font-bold">{progress}%</span>
                             </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2 overflow-hidden">
+                            <div className="w-full bg-black/50 border border-white/5 h-1 overflow-hidden">
                                 <div
-                                    className="bg-primary-blue h-full transition-all duration-300"
+                                    className="bg-primary h-full transition-all duration-300 shadow-[0_0_10px_rgba(255,105,51,0.5)]"
                                     style={{ width: `${progress}%` }}
                                 ></div>
                             </div>
@@ -160,19 +162,19 @@ export default function FileUpload() {
                         {/* Success Actions */}
                         {showSchema && (
                             <div className="animate-fade-in-up">
-                                <hr className="my-6 border-gray-100" />
+                                <hr className="my-8 border-white/10" />
                                 <div className="flex flex-col items-center justify-center py-6">
-                                    <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-4">
-                                        <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <div className="w-16 h-16 border border-primary/20 bg-primary/5 rounded-sm flex items-center justify-center mb-6 text-primary shadow-[0_0_15px_rgba(255,105,51,0.1)]">
+                                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
                                     </div>
-                                    <h4 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Upload Successful!</h4>
-                                    <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">Your dataset has been processed and is ready for analysis.</p>
+                                    <h4 className="font-light tracking-widest uppercase text-white mb-2 text-xl">Upload Successful!</h4>
+                                    <p className="font-mono text-xs text-gray-400 mb-10 uppercase tracking-widest text-center">Your dataset has been processed and is ready for analysis.</p>
 
-                                    <div className="flex space-x-4">
-                                        <button onClick={() => navigate('/user/datasets')} className="px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition font-medium">
+                                    <div className="flex space-x-6 w-full max-w-sm">
+                                        <button onClick={() => navigate('/user/datasets')} className="flex-1 px-4 py-3 obsidian-card font-mono text-[10px] uppercase tracking-widest text-gray-400 hover:text-primary transition-colors hover:border-primary/50 text-center">
                                             View Datasets
                                         </button>
-                                        <button onClick={() => navigate('/user/chat')} className="px-6 py-3 bg-primary-blue text-white rounded-lg hover:bg-blue-700 transition font-medium">
+                                        <button onClick={() => navigate('/user/chat')} className="flex-1 px-4 py-3 bg-primary text-black font-mono text-[10px] uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(255,105,51,0.2)] text-center">
                                             Start Chatting →
                                         </button>
                                     </div>
@@ -185,26 +187,26 @@ export default function FileUpload() {
                 {/* Upload Tips */}
                 {!file && (
                     <div className="mt-8 grid md:grid-cols-3 gap-6">
-                        <div className="bg-white dark:bg-[#16181D] rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 transition-colors">
-                            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                                <svg className="w-6 h-6 text-primary-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <div className="glass-panel p-6 transition-colors group hover:border-primary/30">
+                            <div className="w-12 h-12 bg-black border border-white/10 rounded-sm flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                             </div>
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Instant Processing</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Automatic schema detection and type inference</p>
+                            <h4 className="font-bold tracking-widest uppercase text-white mb-2 text-sm">Instant Processing</h4>
+                            <p className="font-mono text-xs text-gray-400 tracking-wider">Automatic schema detection and type inference</p>
                         </div>
-                        <div className="bg-white dark:bg-[#16181D] rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 transition-colors">
-                            <div className="w-12 h-12 bg-cyan-100 rounded-lg flex items-center justify-center mb-4">
-                                <svg className="w-6 h-6 text-accent-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                        <div className="glass-panel p-6 transition-colors group hover:border-primary/30">
+                            <div className="w-12 h-12 bg-black border border-white/10 rounded-sm flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                             </div>
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Secure Upload</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Your data is encrypted and stored securely</p>
+                            <h4 className="font-bold tracking-widest uppercase text-white mb-2 text-sm">Secure Upload</h4>
+                            <p className="font-mono text-xs text-gray-400 tracking-wider">Your data is encrypted and stored securely</p>
                         </div>
-                        <div className="bg-white dark:bg-[#16181D] rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 transition-colors">
-                            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
-                                <svg className="w-6 h-6 text-accent-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                        <div className="glass-panel p-6 transition-colors group hover:border-primary/30">
+                            <div className="w-12 h-12 bg-black border border-white/10 rounded-sm flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
                             </div>
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Version Control</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">All uploads are versioned and trackable</p>
+                            <h4 className="font-bold tracking-widest uppercase text-white mb-2 text-sm">Version Control</h4>
+                            <p className="font-mono text-xs text-gray-400 tracking-wider">All uploads are versioned and trackable</p>
                         </div>
                     </div>
                 )}

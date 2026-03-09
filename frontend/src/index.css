@@ -54,28 +54,26 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 
-    /* Theme Variables */
-    --bg-main: #f9fafb;
-    --bg-card: #ffffff;
-    --text-main: #111827;
+    /* Force Dark Brutalist Theme */
+    --bg-main: #050505;
+    --bg-card: #0a0a0a;
+    --text-main: #ffffff;
     --text-muted: #6b7280;
-    --border-main: #f3f4f6;
+    --border-main: #1a1a1a;
 }
 
 .dark {
-    --bg-main: #0a0f1c;
-    --bg-card: #111827;
-    --text-main: #f9fafb;
-    --text-muted: #9ca3af;
-    --border-main: #1f2937;
+    /* Identical to :root to prevent any light mode flashes */
+    --bg-main: #050505;
+    --bg-card: #0a0a0a;
+    --text-main: #ffffff;
+    --text-muted: #6b7280;
+    --border-main: #1a1a1a;
 }
 
 body {
     background-color: var(--bg-main);
-    /* Fix #11: Fallback gradient so no white flash before WebGL canvas loads */
-    background-image: linear-gradient(135deg, #dd5fd7 0%, #6acee2 50%, #125d7d 100%);
     color: var(--text-main);
-    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Fix #14: Smooth anchor scroll */
@@ -139,6 +137,6 @@ body {
     height: 100%;
     pointer-events: none;
     z-index: 50;
-    opacity: 0.07;
+    opacity: 0;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 }

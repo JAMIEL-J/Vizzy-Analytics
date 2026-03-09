@@ -40,51 +40,55 @@ export default function Downloads() {
     };
 
     return (
-        <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-[#0D0F12] transition-colors duration-300">
-            <header className="mb-8">
-                <h1 className="text-2xl font-bold text-navy dark:text-white">Downloads</h1>
-                <p className="text-gray-600 dark:text-gray-400">Download your raw and cleaned datasets</p>
-            </header>
+        <div className="flex-1 overflow-y-auto p-8 text-white font-display antialiased relative selection:bg-primary selection:text-black">
+            <div className="grain-overlay z-0"></div>
+            <div className="max-w-6xl mx-auto relative z-10">
+                <header className="mb-8">
+                    <h1 className="text-2xl font-light tracking-widest uppercase text-white">Downloads</h1>
+                    <p className="text-gray-400 mt-1 font-mono text-xs tracking-wider">Download your raw and cleaned datasets</p>
+                </header>
 
-            <div className="bg-white dark:bg-[#16181D] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden transition-colors">
-                <table className="w-full">
-                    <thead className="bg-gray-50 dark:bg-[#1C1F26] border-b border-gray-200 dark:border-gray-800">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Dataset Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Upload Date</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                        {datasets.length === 0 ? (
+                <div className="glass-panel overflow-hidden transition-colors border-white/5">
+                    <table className="w-full text-white font-mono">
+                        <thead className="bg-white/5 border-b border-white/5">
                             <tr>
-                                <td colSpan={3} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No datasets available.</td>
+                                <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Dataset Name</th>
+                                <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Upload Date</th>
+                                <th className="px-6 py-4 text-right text-[10px] font-bold text-gray-400 uppercase tracking-widest">Actions</th>
                             </tr>
-                        ) : (
-                            datasets.map(ds => (
-                                <tr key={ds.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                                    <td className="px-6 py-4 whitespace-nowrap font-medium text-navy dark:text-white">{ds.name}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-gray-600 dark:text-gray-400">{new Date(ds.created_at || '').toLocaleDateString()}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right space-x-3">
-                                        <button
-                                            onClick={() => handleDownload(ds.id, 'raw', `${ds.name}_raw.csv`)}
-                                            className="text-primary-blue hover:text-blue-800 text-sm font-medium cursor-pointer"
-                                        >
-                                            Download Raw
-                                        </button>
-                                        <span className="text-gray-300 dark:text-gray-600">|</span>
-                                        <button
-                                            onClick={() => handleDownload(ds.id, 'cleaned', `${ds.name}_cleaned.csv`)}
-                                            className="text-green-600 hover:text-green-800 text-sm font-medium cursor-pointer"
-                                        >
-                                            Download Cleaned
-                                        </button>
-                                    </td>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {datasets.length === 0 ? (
+                                <tr>
+                                    <td colSpan={3} className="px-6 py-8 text-center text-gray-500 text-xs tracking-widest uppercase">No datasets available.</td>
                                 </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                            ) : (
+                                datasets.map(ds => (
+                                    <tr key={ds.id} className="hover:bg-white/5 transition-colors group cursor-default">
+                                        <td className="px-6 py-5 whitespace-nowrap font-bold text-white tracking-widest text-sm">{ds.name}</td>
+                                        <td className="px-6 py-5 whitespace-nowrap font-mono text-xs text-gray-400 tracking-wider text-sm">{ds.created_at ? new Date(ds.created_at).toLocaleDateString() : '-'}</td>
+                                        <td className="px-6 py-5 whitespace-nowrap text-right">
+                                            <div className="flex items-center justify-end space-x-3 transition-opacity">
+                                                <button
+                                                    onClick={() => handleDownload(ds.id, 'raw', `${ds.name}_raw.csv`)}
+                                                    className="px-4 py-2 obsidian-card font-mono text-[10px] uppercase tracking-widest text-gray-400 hover:text-primary transition-colors hover:border-primary/50 text-center flex-1"
+                                                >
+                                                    Download Raw
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDownload(ds.id, 'cleaned', `${ds.name}_cleaned.csv`)}
+                                                    className="px-4 py-2 bg-primary text-black font-mono text-[10px] uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(255,105,51,0.2)] text-center flex-1"
+                                                >
+                                                    Download Cleaned
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );

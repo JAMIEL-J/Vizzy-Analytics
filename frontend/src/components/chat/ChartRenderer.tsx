@@ -1,5 +1,4 @@
 import React from 'react';
-import { useTheme } from '../../context/ThemeContext';
 import { KPICard } from './KPICard';
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -15,18 +14,19 @@ interface ChartRendererProps {
     variant?: 'default' | 'minimal';
 }
 
-// Professional color palette for distinct data points
+// Brutalist color palette for distinct data points (All Orange)
+// Brutalist color palette for distinct data points (All Orange)
 const CHART_COLORS = [
-    '#6366f1', // Indigo
-    '#10b981', // Emerald
-    '#f59e0b', // Amber
-    '#ec4899', // Pink
-    '#06b6d4', // Cyan
-    '#8b5cf6', // Violet
-    '#f43f5e', // Rose
-    '#84cc16', // Lime
-    '#3b82f6', // Blue
-    '#14b8a6', // Teal
+    '#ff6933', // Primary orange (Medium)
+    '#ffcfb3', // Very Light orange
+    '#8c2d04', // Very Dark orange
+    '#ff9e66', // Light orange
+    '#cc4c18', // Dark orange
+    '#ffe6d9', // Palest orange
+    '#e6550d', // Bright medium-dark orange
+    '#591a02', // Extremely dark orange
+    '#fd8d3c', // Yellow-orange
+    '#a63603', // Deep rust
 ];
 interface CustomTooltipProps {
     active?: boolean;
@@ -58,11 +58,12 @@ const CustomTooltip = ({ active, payload, label, currency, isCurrency, isPercent
         }
 
         return (
-            <div className="bg-white dark:bg-[#1C1F26] p-3 border border-gray-100 dark:border-gray-700 shadow-lg rounded-lg">
-                <p className="text-gray-500 dark:text-gray-400 text-xs font-medium mb-1">{label}</p>
-                <p className="text-gray-900 dark:text-white text-sm font-bold">
-                    {formattedValue}
-                </p>
+            <div className="rounded-sm px-4 py-3 border border-white/10 backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(255,105,51,0.1)] text-white font-mono z-[9999]">
+                {label && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-white/10 opacity-70 leading-tight">{label}</p>}
+                <div className="mb-0">
+                    <p className="text-[10px] opacity-50 uppercase tracking-widest mb-0.5">Value</p>
+                    <p className="text-sm font-bold truncate max-w-[200px] text-primary">{formattedValue}</p>
+                </div>
             </div>
         );
     }
@@ -70,11 +71,9 @@ const CustomTooltip = ({ active, payload, label, currency, isCurrency, isPercent
 };
 
 export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title, currency, variant = 'default' }) => {
-    const { theme } = useTheme();
-    const isDark = theme === 'dark';
-    const gridColor = isDark ? '#1F2937' : '#E5E7EB';
-    const axisColor = isDark ? '#9CA3AF' : '#6B7280';
-    const cursorFill = isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB';
+    const gridColor = '#ffffff10';
+    const axisColor = '#6b7280';
+    const cursorFill = 'rgba(255,255,255,0.05)';
 
     // ── Explicit Formatting Hints (from Phase 1 Coercion) ──
     const columnMetadata = data.column_metadata || data.data?.column_metadata || {};
@@ -265,10 +264,10 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                         <Line
                             type="monotone"
                             dataKey="value"
-                            stroke="#6366f1"
+                            stroke="#ff6933"
                             strokeWidth={3}
                             dot={false}
-                            activeDot={{ r: 6, strokeWidth: 0, fill: '#6366f1' }}
+                            activeDot={{ r: 6, strokeWidth: 0, fill: '#ff8f66' }}
                         />
                     </LineChart>
                 </ResponsiveContainer>
@@ -307,7 +306,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             dataKey="value"
                         >
                             {chartData.map((_: any, index: number) => (
-                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} strokeWidth={2} stroke={isDark ? "#1C1F26" : "#fff"} />
+                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} strokeWidth={2} stroke="#111111" />
                             ))}
                         </Pie>
                         <Tooltip content={<CustomTooltip currency={effectiveCurrency} isCurrency={isCurrencyChart} isPercentage={isPercentage} />} />
@@ -315,7 +314,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             layout="horizontal"
                             verticalAlign="bottom"
                             align="center"
-                            wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }}
+                            wrapperStyle={{ paddingTop: '20px', fontSize: '12px', color: '#9ca3af', fontFamily: 'monospace', textTransform: 'uppercase' }}
                             iconType="circle"
                         />
                     </PieChart>
@@ -331,18 +330,18 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
         const headers = data.data?.columns || Object.keys(rows[0]);
 
         return (
-            <div className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm mt-4">
-                <table className="min-w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-[#1C1F26] border-b border-gray-100 dark:border-gray-800">
+            <div className="overflow-x-auto rounded-sm border border-white/10 shadow-[0_0_15px_rgba(255,105,51,0.05)] mt-4 glass-panel scrollbar-hide">
+                <table className="min-w-full text-sm text-left text-gray-400 font-mono">
+                    <thead className="text-[10px] tracking-widest text-[#ff6933] uppercase bg-black/50 border-b border-white/10">
                         <tr>
-                            {headers.map((h: string) => <th key={h} className="px-4 py-3 font-semibold">{h.replace('_', ' ')}</th>)}
+                            {headers.map((h: string) => <th key={h} className="px-4 py-3 font-bold">{h.replace('_', ' ')}</th>)}
                         </tr>
                     </thead>
                     <tbody>
                         {rows.slice(0, 10).map((row: any, i: number) => (
-                            <tr key={i} className="bg-white dark:bg-[#111318] border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-[#1C1F26] transition-colors">
+                            <tr key={i} className="bg-transparent border-b border-white/5 hover:bg-white/5 transition-colors">
                                 {headers.map((h: string) => (
-                                    <td key={h} className="px-4 py-3 text-gray-900 dark:text-gray-200">
+                                    <td key={h} className="px-4 py-3 text-white text-xs">
                                         {typeof row[h] === 'number' && !h.toLowerCase().includes('id') ?
                                             formatYAxisValue(row[h]) :
                                             String(row[h] || '-')
@@ -354,7 +353,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                     </tbody>
                 </table>
                 {rows.length > 10 && (
-                    <div className="px-4 py-2 bg-gray-50 dark:bg-[#1C1F26] text-xs text-center text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800 font-medium">
+                    <div className="px-4 py-2 bg-black/50 text-[10px] tracking-widest uppercase text-center text-gray-500 border-t border-white/10 font-bold">
                         Showing top 10 of {rows.length} results
                     </div>
                 )}
@@ -374,8 +373,8 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                     const colSpan = widget.type === 'kpi' ? 'col-span-1' : 'col-span-1 md:col-span-2';
 
                     return (
-                        <div key={index} className={`${colSpan} bg-white dark:bg-[#1C1F26] p-4 rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow`}>
-                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 border-b border-gray-50 dark:border-gray-800 pb-2">{widget.title}</h4>
+                        <div key={index} className={`${colSpan} obsidian-card p-4 rounded-sm border border-white/10 shadow-[0_0_15px_rgba(255,105,51,0.05)] hover:border-white/20 transition-all duration-300`}>
+                            <h4 className="text-[10px] tracking-widest uppercase font-bold text-gray-400 mb-3 border-b border-white/10 pb-2">{widget.title}</h4>
                             <ChartRenderer
                                 type={widget.type}
                                 data={{ data: widget.data }}

@@ -17,45 +17,46 @@ import { ColumnClassificationPanel } from '../../components/dashboard/ColumnClas
 
 const KPI_COLORS = [
     {
-        border: 'dark:border-blue-500/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(59,130,246,0.15)]',
-        iconGrad: 'from-cyan-400 to-blue-500',
-        iconShadow: 'shadow-blue-500/30',
-        arc: 'bg-blue-500/5 dark:bg-blue-500/10',
+        border: 'dark:border-[#ff6933]/30',
+        shadow: 'dark:shadow-[0_0_15px_rgba(255,105,51,0.2)]',
+        iconGrad: 'from-[#ff6b35] to-[#ff6933]',
+        iconShadow: 'shadow-[#ff6933]/30',
+        arc: 'bg-[#ff6933]/5 dark:bg-[#ff6933]/10',
     },
     {
-        border: 'dark:border-purple-500/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(168,85,247,0.15)]',
-        iconGrad: 'from-purple-400 to-fuchsia-500',
-        iconShadow: 'shadow-purple-500/30',
-        arc: 'bg-purple-500/5 dark:bg-purple-500/10',
+        border: 'dark:border-[#ff8f66]/30',
+        shadow: 'dark:shadow-[0_0_15px_rgba(255,143,102,0.2)]',
+        iconGrad: 'from-[#ff9f7a] to-[#ff8f66]',
+        iconShadow: 'shadow-[#ff8f66]/30',
+        arc: 'bg-[#ff8f66]/5 dark:bg-[#ff8f66]/10',
     },
     {
-        border: 'dark:border-orange-500/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(249,115,22,0.15)]',
-        iconGrad: 'from-orange-400 to-red-500',
-        iconShadow: 'shadow-orange-500/30',
-        arc: 'bg-orange-500/5 dark:bg-orange-500/10',
+        border: 'dark:border-[#cc5429]/30',
+        shadow: 'dark:shadow-[0_0_15px_rgba(204,84,41,0.2)]',
+        iconGrad: 'from-[#e06536] to-[#cc5429]',
+        iconShadow: 'shadow-[#cc5429]/30',
+        arc: 'bg-[#cc5429]/5 dark:bg-[#cc5429]/10',
     },
     {
-        border: 'dark:border-cyan-500/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(6,182,212,0.15)]',
-        iconGrad: 'from-teal-400 to-cyan-500',
-        iconShadow: 'shadow-cyan-500/30',
-        arc: 'bg-cyan-500/5 dark:bg-cyan-500/10',
-    },
-    {
-        border: 'dark:border-pink-500/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(236,72,153,0.15)]',
-        iconGrad: 'from-pink-400 to-rose-500',
-        iconShadow: 'shadow-pink-500/30',
-        arc: 'bg-pink-500/5 dark:bg-pink-500/10',
+        border: 'dark:border-[#ffa885]/30',
+        shadow: 'dark:shadow-[0_0_15px_rgba(255,168,133,0.2)]',
+        iconGrad: 'from-[#ffb899] to-[#ffa885]',
+        iconShadow: 'shadow-[#ffa885]/30',
+        arc: 'bg-[#ffa885]/5 dark:bg-[#ffa885]/10',
     },
 ];
 
 const CHART_COLORS = [
-    '#818CF8', '#F472B6', '#34D399', '#FBBF24', '#60A5FA', '#F87171',
-    '#A78BFA', '#2DD4BF', '#FB923C', '#E879F9', '#38BDF8', '#4ADE80'
+    '#ff6933', // Primary orange (Medium)
+    '#ffcfb3', // Very Light orange
+    '#8c2d04', // Very Dark orange
+    '#ff9e66', // Light orange
+    '#cc4c18', // Dark orange
+    '#ffe6d9', // Palest orange
+    '#e6550d', // Bright medium-dark orange
+    '#591a02', // Extremely dark orange
+    '#fd8d3c', // Yellow-orange
+    '#a63603', // Deep rust
 ];
 
 // (static heatmap grid removed - now driven by real data)
@@ -150,24 +151,17 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartColors, chartTi
             return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
         };
         return (
-            <div
-                className="rounded-xl px-4 py-3 shadow-2xl border backdrop-blur-md transition-colors duration-300 min-w-[160px]"
-                style={{
-                    backgroundColor: chartColors?.tooltip?.bg || 'white',
-                    borderColor: chartColors?.tooltip?.border || '#E5E7EB',
-                    color: chartColors?.tooltip?.text || '#111827'
-                }}
-            >
-                {chartTitle && <p className="text-[10px] uppercase font-bold tracking-wider mb-2 pb-2 border-b border-gray-500/20 opacity-70">{chartTitle}</p>}
-                {fp.label && <p className="text-xs opacity-60 mb-2 pb-2 border-b border-gray-700/10 font-medium">{fp.label}</p>}
+            <div className="rounded-sm px-4 py-3 border border-white/10 backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(255,105,51,0.1)] text-white font-serif tracking-wide z-[9999]">
+                {chartTitle && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-white/10 opacity-70 leading-tight">{chartTitle}</p>}
+                {fp.label && <p className="text-[10px] opacity-60 mb-2 pb-2 border-b border-white/10 font-bold uppercase tracking-widest">{fp.label}</p>}
                 <div className="space-y-1.5">
                     <p className="text-sm flex items-center justify-between gap-4">
-                        <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#818CF8] inline-block" /><span className="opacity-70 text-xs">{fp.xLabel}:</span></span>
-                        <span className="font-bold">{fmtS(fp.x, fp.xLabel)}</span>
+                        <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-sm bg-[#ff6933] inline-block" /><span className="opacity-70 text-[10px] tracking-widest uppercase">{fp.xLabel}:</span></span>
+                        <span className="font-bold text-primary">{fmtS(fp.x, fp.xLabel)}</span>
                     </p>
                     <p className="text-sm flex items-center justify-between gap-4">
-                        <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#F472B6] inline-block" /><span className="opacity-70 text-xs">{fp.yLabel}:</span></span>
-                        <span className="font-bold">{fmtS(fp.y, fp.yLabel)}</span>
+                        <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-sm bg-[#cc5429] inline-block" /><span className="opacity-70 text-[10px] tracking-widest uppercase">{fp.yLabel}:</span></span>
+                        <span className="font-bold text-primary">{fmtS(fp.y, fp.yLabel)}</span>
                     </p>
                 </div>
             </div>
@@ -219,20 +213,13 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartColors, chartTi
     }
 
     return (
-        <div
-            className="rounded-xl px-4 py-3 shadow-2xl border backdrop-blur-md transition-colors duration-300 min-w-[160px]"
-            style={{
-                backgroundColor: chartColors?.tooltip?.bg || 'white',
-                borderColor: chartColors?.tooltip?.border || '#E5E7EB',
-                color: chartColors?.tooltip?.text || '#111827'
-            }}
-        >
-            {chartTitle && <p className="text-[10px] uppercase font-bold tracking-wider mb-2 pb-2 border-b border-gray-500/20 opacity-70 leading-tight">{chartTitle}</p>}
+        <div className="rounded-sm px-4 py-3 border border-white/10 backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(255,105,51,0.1)] text-white font-mono z-[9999]">
+            {chartTitle && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-white/10 opacity-70 leading-tight">{chartTitle}</p>}
 
             {displayLabel && (
-                <div className="mb-3">
-                    <p className="text-[10px] opacity-50 uppercase tracking-wider mb-0.5">{dimensionName}</p>
-                    <p className="text-sm font-bold truncate max-w-[200px]">{displayLabel}</p>
+                <div className="mb-2">
+                    <p className="text-[10px] opacity-50 uppercase tracking-widest mb-0.5">{dimensionName}</p>
+                    <p className="text-sm font-bold truncate max-w-[200px] text-primary">{displayLabel}</p>
                 </div>
             )}
 
@@ -241,10 +228,10 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartColors, chartTi
                     return (
                         <div key={i} className="flex items-center justify-between gap-6">
                             <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full inline-block" style={{ background: p.color || p.fill || '#818CF8' }} />
-                                <span className="text-xs opacity-70 whitespace-nowrap">{p.name}:</span>
+                                <span className="w-1.5 h-1.5 rounded-sm inline-block shadow-[0_0_5px_currentColor]" style={{ background: p.color || p.fill || '#ff6933' }} />
+                                <span className="text-[10px] tracking-widest uppercase opacity-70 whitespace-nowrap">{p.name}:</span>
                             </div>
-                            <span className="text-sm font-bold tabular-nums">
+                            <span className="text-sm font-bold tabular-nums text-white group-hover:text-primary transition-colors">
                                 {formatter
                                     ? formatter(p.value)
                                     : typeof p.value === 'number'
@@ -278,7 +265,7 @@ const KPICard = ({ title, value, icon, index, trend, trend_label, subtitle }: { 
 
 
     return (
-        <div className={`bg-white dark:bg-[#16181D] p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 ${c.border} ${c.shadow} hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between`}>
+        <div className={`obsidian-card p-5 rounded-sm relative overflow-hidden group flex flex-col justify-between hover:shadow-[0_0_20px_rgba(255,105,51,0.2)] transition-shadow duration-300 ${c.border.replace('dark:', '')}`}>
             {/* Decorative arc */}
             <div className={`absolute top-0 right-0 w-16 h-16 ${c.arc} rounded-bl-full -mr-4 -mt-4 transition-all group-hover:scale-110`} />
 
@@ -287,9 +274,9 @@ const KPICard = ({ title, value, icon, index, trend, trend_label, subtitle }: { 
             </div>
 
             <div className="flex flex-col gap-1 z-10">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{title}</p>
-                <div className="flex items-baseline justify-between">
-                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{value}</h3>
+                <p className="font-serif text-xs text-gray-500 tracking-wide">{title}</p>
+                <div className="flex items-baseline justify-between mt-1">
+                    <h3 className="text-3xl font-light text-white tracking-tight">{value}</h3>
 
                     {trend !== undefined && (
                         <div className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${colorClass}`}>
@@ -326,9 +313,9 @@ const KPICard = ({ title, value, icon, index, trend, trend_label, subtitle }: { 
 // ─── Chart Card Wrapper ───────────────────────────────────────────────────────
 
 const ChartCard = ({ title, children, className, actions }: { title: string; children: React.ReactNode; className?: string; actions?: React.ReactNode }) => (
-    <div className={`bg-white dark:bg-[#111827] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 relative group transition-colors duration-300 h-full flex flex-col ${className || ''}`}>
+    <div className={`glass-panel p-6 rounded-sm relative group transition-colors duration-300 h-full flex flex-col ${className || ''}`}>
         <div className="flex justify-between items-start mb-5 flex-shrink-0">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h3>
+            <h3 className="font-serif text-[18px] tracking-wide text-primary border-l-2 border-primary pl-3">{title}</h3>
             {actions ? (
                 <div className="relative z-10">{actions}</div>
             ) : (
@@ -439,8 +426,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
                             <defs>
                                 <linearGradient id="barDark" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#BD00FF" stopOpacity={0.7} />
+                                    <stop offset="0%" stopColor="#ff8f66" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#ff6933" stopOpacity={0.7} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
@@ -462,8 +449,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 5 }}>
                             <defs>
                                 <linearGradient id="hbarDark" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor="#818CF8" />
-                                    <stop offset="100%" stopColor="#34D399" />
+                                    <stop offset="0%" stopColor="#ff8f66" />
+                                    <stop offset="100%" stopColor="#cc5429" />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} horizontal={false} />
@@ -485,12 +472,12 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
                             <defs>
                                 <linearGradient id="stackedPos" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#F472B6" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#F472B6" stopOpacity={0.6} />
+                                    <stop offset="0%" stopColor="#ff6933" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#ff6933" stopOpacity={0.6} />
                                 </linearGradient>
                                 <linearGradient id="stackedNeg" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#34D399" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#34D399" stopOpacity={0.6} />
+                                    <stop offset="0%" stopColor="#cc5429" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#cc5429" stopOpacity={0.6} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
@@ -587,8 +574,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
                             <defs>
                                 <linearGradient id="areaDark" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#34D399" stopOpacity={0.35} />
-                                    <stop offset="100%" stopColor="#34D399" stopOpacity={0.02} />
+                                    <stop offset="0%" stopColor="#ff8f66" stopOpacity={0.35} />
+                                    <stop offset="100%" stopColor="#ff8f66" stopOpacity={0.02} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
@@ -600,8 +587,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                 }} tick={{ ...textStyle }} />
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                            <Area type="monotone" dataKey="value" stroke="#34D399" strokeWidth={2.5}
-                                fill="url(#areaDark)" dot={false} activeDot={{ r: 5, fill: '#34D399', stroke: '#0d0d0d' }} />
+                            <Area type="monotone" dataKey="value" stroke="#ff8f66" strokeWidth={2.5}
+                                fill="url(#areaDark)" dot={false} activeDot={{ r: 5, fill: '#ff8f66', stroke: '#111111' }} />
                         </AreaChart>
                     </ResponsiveContainer>
                 </div>
@@ -698,7 +685,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <PolarGrid stroke={chartColors.grid} />
                             <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: chartColors.text }} />
                             <PolarRadiusAxis tick={{ fontSize: 9, fill: chartColors.axis }} />
-                            <Radar dataKey="value" stroke="#818CF8" fill="#818CF8" fillOpacity={0.35} />
+                            <Radar dataKey="value" stroke="#ff6933" fill="#ff6933" fillOpacity={0.35} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
                         </RadarChart>
                     </ResponsiveContainer>
@@ -745,7 +732,7 @@ const FilterDropdown = ({
         <div className="relative" ref={ref}>
             <button
                 onClick={() => setOpen(o => !o)}
-                className="flex items-center gap-2 bg-white dark:bg-[#16181D] rounded-lg px-4 py-2.5 border border-gray-200 dark:border-gray-700 shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex items-center gap-2 obsidian-card rounded-sm px-4 py-2.5 shadow-sm text-[15px] font-serif tracking-wide text-white hover:border-primary/50 transition-colors focus:outline-none"
             >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
@@ -757,7 +744,7 @@ const FilterDropdown = ({
             </button>
 
             {open && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="absolute right-0 top-full mt-2 w-56 obsidian-card rounded-sm shadow-2xl z-50 overflow-hidden font-serif">
                     <div className="py-1">
                         {datasets.length === 0 ? (
                             <p className="px-4 py-3 text-sm text-gray-500">No datasets available</p>
@@ -766,9 +753,9 @@ const FilterDropdown = ({
                                 <button
                                     key={ds.id}
                                     onClick={() => { onDatasetChange(ds.id); setOpen(false); }}
-                                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2 ${ds.id === selectedDatasetId
-                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
-                                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                                    className={`w-full text-left px-4 py-2.5 text-xs uppercase tracking-widest transition-colors flex items-center gap-2 ${ds.id === selectedDatasetId
+                                        ? 'bg-primary/10 text-primary font-bold'
+                                        : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
                                 >
                                     <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
@@ -844,7 +831,7 @@ const MultiFilterPanel = ({
     return (
         <div ref={panelRef} className="mb-6">
             {/* Panel card */}
-            <div className="bg-white dark:bg-[#111827] rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
+            <div className="glass-panel rounded-sm shadow-sm p-4">
 
                 {/* Header row */}
                 <div className="flex items-center justify-between mb-3">
@@ -852,9 +839,9 @@ const MultiFilterPanel = ({
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
                         </svg>
-                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filters</span>
+                        <span className="text-sm font-serif tracking-wide text-gray-400 uppercase">Filters</span>
                         {totalActive > 0 && (
-                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-sm bg-primary text-black text-[11px] font-bold">
                                 {totalActive} active
                             </span>
                         )}
@@ -893,9 +880,9 @@ const MultiFilterPanel = ({
                                             setOpenValues(null);
                                             setOpenPicker(isPickerOpen ? null : slotIdx);
                                         }}
-                                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all ${selectedCol
-                                            ? 'bg-gray-50 dark:bg-[#1a1f2e] border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200'
-                                            : 'bg-gray-50 dark:bg-[#1a1f2e] border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-blue-400'
+                                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-sm text-[15px] font-serif border transition-all ${selectedCol
+                                            ? 'bg-black/40 border-white/20 text-white'
+                                            : 'bg-black/40 border-dashed border-white/10 text-gray-500 hover:border-primary/50'
                                             }`}
                                     >
                                         <span className="truncate">
@@ -930,7 +917,7 @@ const MultiFilterPanel = ({
 
                                     {/* Column picker dropdown */}
                                     {isPickerOpen && (
-                                        <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                                        <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-black border border-white/10 rounded-sm shadow-2xl z-50 overflow-hidden">
                                             {/* Clear slot option */}
                                             {selectedCol && (
                                                 <button
@@ -939,7 +926,7 @@ const MultiFilterPanel = ({
                                                         onSlotChange(slotIdx, null);
                                                         setOpenPicker(null);
                                                     }}
-                                                    className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800"
+                                                    className="w-full text-left px-3 py-2 text-[13px] font-serif text-gray-400 hover:text-red-400 hover:bg-white/5 transition-colors border-b border-white/10"
                                                 >
                                                     — No filter (clear slot)
                                                 </button>
@@ -956,9 +943,9 @@ const MultiFilterPanel = ({
                                                             onSlotChange(slotIdx, col);
                                                             setOpenPicker(null);
                                                         }}
-                                                        className={`w-full text-left px-3 py-2 text-sm transition-colors ${col === selectedCol
-                                                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
-                                                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                                                        className={`w-full text-left px-3 py-2 text-[14px] font-serif transition-colors ${col === selectedCol
+                                                            ? 'bg-primary/10 text-primary font-medium'
+                                                            : 'text-gray-300 hover:bg-white/5'
                                                             }`}
                                                     >
                                                         {toLabel(col)}
@@ -977,9 +964,9 @@ const MultiFilterPanel = ({
                                                 setOpenPicker(null);
                                                 setOpenValues(isValuesOpen ? null : slotIdx);
                                             }}
-                                            className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm border transition-all ${slotValues.length > 0
-                                                ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-500 text-blue-700 dark:text-blue-300 font-medium'
-                                                : 'bg-white dark:bg-[#0e1117] border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-400'
+                                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-sm text-[14px] font-serif border transition-all ${slotValues.length > 0
+                                                ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                                                : 'bg-black/40 border-white/10 text-gray-500 hover:border-primary/50'
                                                 }`}
                                         >
                                             <span className="truncate text-xs">
@@ -991,7 +978,7 @@ const MultiFilterPanel = ({
                                             </span>
                                             <div className="flex items-center gap-1 flex-shrink-0">
                                                 {slotValues.length > 0 && (
-                                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold">
+                                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-black text-[9px] font-bold">
                                                         {slotValues.length}
                                                     </span>
                                                 )}
@@ -1004,30 +991,30 @@ const MultiFilterPanel = ({
 
                                         {/* Values dropdown */}
                                         {isValuesOpen && (
-                                            <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-                                                <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                                            <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-black border border-white/10 rounded-sm shadow-2xl z-50 overflow-hidden">
+                                                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
                                                     <button
                                                         onClick={() => onFilterChange(selectedCol, [...geoFilters[selectedCol]])}
-                                                        className="text-xs text-blue-500 hover:text-blue-600 font-medium transition-colors"
+                                                        className="text-[13px] font-serif text-primary hover:text-primary/80 font-medium transition-colors"
                                                     >Select all</button>
                                                     <button
                                                         onClick={() => onFilterChange(selectedCol, [])}
-                                                        className="text-xs text-gray-400 hover:text-red-400 font-medium transition-colors"
+                                                        className="text-[13px] font-serif text-gray-400 hover:text-red-400 font-medium transition-colors"
                                                     >Clear</button>
                                                 </div>
                                                 <div className="max-h-52 overflow-y-auto py-1">
                                                     {geoFilters[selectedCol].map(val => (
                                                         <label
                                                             key={val}
-                                                            className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                                                            className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/5 cursor-pointer transition-colors"
                                                         >
                                                             <input
                                                                 type="checkbox"
                                                                 checked={slotValues.includes(val)}
                                                                 onChange={() => toggleValue(selectedCol, val)}
-                                                                className="w-3.5 h-3.5 rounded accent-blue-500"
+                                                                className="w-3.5 h-3.5 rounded accent-[#ff6933]"
                                                             />
-                                                            <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{val}</span>
+                                                            <span className="text-[14px] font-serif text-gray-300 truncate">{val}</span>
                                                         </label>
                                                     ))}
                                                 </div>
@@ -1442,10 +1429,7 @@ export default function UserDashboard() {
                     <select
                         value={currentAgg === 'avg' ? 'mean' : currentAgg}
                         onChange={(e) => setChartOverride(chart.id, { aggregation: e.target.value })}
-                        className={`text-[10px] px-1 py-0.5 rounded border outline-none transition-colors ${isDark
-                            ? 'bg-gray-800/80 border-gray-700 text-gray-400 hover:border-gray-600 focus:border-indigo-500'
-                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 focus:border-indigo-400'
-                            }`}
+                        className="text-[12px] font-serif px-2 py-0.5 rounded-sm border border-white/10 outline-none transition-colors bg-black/50 text-gray-400 hover:border-primary/40 focus:border-primary"
                         title="Aggregation Method"
                     >
                         <option value="sum">Sum</option>
@@ -1455,10 +1439,7 @@ export default function UserDashboard() {
                 <select
                     value={currentType}
                     onChange={(e) => setChartOverride(chart.id, { type: e.target.value })}
-                    className={`text-[10px] px-1 py-0.5 rounded border outline-none transition-colors ${isDark
-                        ? 'bg-gray-800/80 border-gray-700 text-gray-300 hover:border-gray-600 focus:border-blue-500'
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 focus:border-blue-400'
-                        }`}
+                    className="text-[12px] font-serif px-2 py-0.5 rounded-sm border border-white/10 outline-none transition-colors bg-black/50 text-gray-300 hover:border-primary/40 focus:border-primary"
                     title="Chart Type"
                 >
                     <option value="bar">Bar</option>
@@ -1476,16 +1457,20 @@ export default function UserDashboard() {
     };
 
     return (
-        <div id="dashboard-root" className="h-full">
-            <div className="bg-gray-50 dark:bg-[#0a0f1c] text-gray-800 dark:text-gray-200 font-sans antialiased flex flex-col transition-colors duration-300">
+        <div id="dashboard-root" className="min-h-screen bg-background-dark text-white font-display antialiased selection:bg-primary selection:text-black relative">
+            <div className="grain-overlay z-0"></div>
+            <div className="flex flex-col min-h-screen relative z-10">
 
                 {/* ── Header ── */}
-                <header className="flex justify-between items-center px-6 lg:px-8 py-5 sticky top-0 z-20 bg-white/90 dark:bg-[#0a0f1c]/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 transition-colors duration-300">
-                    <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                        {getDashboardTitle(analytics?.domain)}
-                    </h1>
+                <header className="flex justify-between items-center px-6 lg:px-8 py-5 sticky top-0 z-20 bg-background-dark/80 backdrop-blur-md border-b border-white/5 transition-colors duration-300">
+                    <div className="flex items-center gap-4">
+                        <span className="material-symbols-outlined text-primary text-2xl">diamond</span>
+                        <h1 className="text-xl lg:text-2xl font-light tracking-widest uppercase text-white">
+                            {getDashboardTitle(analytics?.domain)}
+                        </h1>
+                    </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 font-mono">
                         {/* Dataset Filter Dropdown */}
                         <FilterDropdown
                             datasets={datasets}
@@ -1497,7 +1482,7 @@ export default function UserDashboard() {
                         <button
                             onClick={() => loadAnalytics()}
                             disabled={isLoading}
-                            className="p-2.5 rounded-lg bg-white dark:bg-[#16181D] border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all shadow-sm disabled:opacity-50"
+                            className="p-2.5 rounded-sm bg-transparent border border-white/20 text-gray-400 hover:text-primary hover:border-primary/50 transition-all shadow-sm disabled:opacity-50"
                             title="Refresh data"
                         >
                             <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1509,8 +1494,8 @@ export default function UserDashboard() {
                         <SettingsDropdown />
 
                         {/* Avatar */}
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-r from-pink-500 to-orange-400 flex items-center justify-center text-white text-sm font-bold shadow-md flex-shrink-0">
-                            V
+                        <div className="w-9 h-9 rounded-sm bg-primary border-b-2 border-[#b5461c] flex items-center justify-center text-black text-xs font-bold shadow-md flex-shrink-0">
+                            VX
                         </div>
                     </div>
                 </header>
@@ -1527,12 +1512,12 @@ export default function UserDashboard() {
                             <span className="text-gray-300 dark:text-gray-600">•</span>
                             <span>{analytics.total_rows.toLocaleString()} rows</span>
                             <span className="text-gray-300 dark:text-gray-600">•</span>
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-primary/10 border border-primary/20 text-primary font-medium">
                                 <span className="opacity-70">Domain:</span>
                                 <select
                                     value={selected_domain || 'auto'}
                                     onChange={(e) => setDomain(e.target.value === 'auto' ? null : e.target.value)}
-                                    className="bg-transparent border-none outline-none text-blue-800 dark:text-blue-300 font-bold cursor-pointer capitalize"
+                                    className="bg-transparent border-none outline-none text-primary font-bold cursor-pointer capitalize"
                                 >
                                     <option value="auto">Auto ({analytics.domain})</option>
                                     <option value="sales">Sales</option>

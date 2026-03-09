@@ -56,7 +56,7 @@ export default function AdminLayout() {
     };
 
     return (
-        <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[#0a0f1c] text-gray-900 dark:text-gray-100 transition-colors duration-300">
+        <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[#0a0f1c] text-gray-900 dark:text-gray-100 font-serif transition-colors duration-300">
             {/* Sidebar */}
             <aside
                 className={`
