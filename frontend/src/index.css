@@ -9,6 +9,13 @@
 
 /* Vizzy Custom Theme - Tailwind v4 */
 @theme {
+  --color-bg-hover: var(--bg-hover);
+  --color-themed-main: var(--text-main);
+  --color-themed-muted: var(--text-muted);
+  --color-bg-main: var(--bg-main);
+  --color-bg-card: var(--bg-card);
+  --color-border-main: var(--border-main);
+
     --color-navy: #14213d;
     --color-primary-blue: #2962ff;
     --color-accent-cyan: #00c2ff;
@@ -46,6 +53,10 @@
     font-family: 'Groote', Inter, system-ui, sans-serif;
 }
 
+/* ============================================================
+   THEME SYSTEM - Light & Dark CSS Variables
+   ============================================================ */
+
 :root {
     font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
     font-weight: 400;
@@ -54,29 +65,84 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 
-    /* Force Dark Brutalist Theme */
-    --bg-main: #050505;
-    --bg-card: #0a0a0a;
-    --text-main: #ffffff;
+    /* ── Light Theme (Default) ── */
+    --bg-main: #f4f4f5;
+    --bg-card: #ffffff;
+    --bg-sidebar: #ffffff;
+    --bg-sidebar-hover: rgba(255, 105, 51, 0.06);
+    --bg-header: #ffffff;
+    --bg-input: #f9fafb;
+    --bg-input-dark: #f9fafb;
+    --bg-badge: rgba(255, 105, 51, 0.08);
+
+    --text-main: #111111;
     --text-muted: #6b7280;
-    --border-main: #1a1a1a;
+    --text-sidebar: #374151;
+    --text-link: #111111;
+
+    --border-main: #e5e7eb;
+    --border-sidebar: #e5e7eb;
+    --border-subtle: rgba(0, 0, 0, 0.08);
+
+    /* Landing-specific */
+    --landing-bg: #f4f4f5;
+    --landing-card-bg: #ffffff;
+    --landing-nav-bg: rgba(255, 255, 255, 0.85);
+    --landing-nav-border: rgba(0, 0, 0, 0.08);
+    --landing-hero-blend: #111111;
+    --landing-hero-sub: #6b7280;
+    --landing-stat-bg: #ffffff;
+    --landing-stat-border: #e5e7eb;
+    --landing-feature-img: #f3f4f6;
+    --landing-footer-bg: #111111;
+    --landing-footer-text: #9ca3af;
+    --landing-cta-bg: #f4f4f5;
+    --landing-how-bg: #fafafa;
 }
 
 .dark {
-    /* Identical to :root to prevent any light mode flashes */
+    /* ── Dark Theme ── */
     --bg-main: #050505;
     --bg-card: #0a0a0a;
+    --bg-sidebar: #000000;
+    --bg-sidebar-hover: rgba(255, 255, 255, 0.05);
+    --bg-header: #0a0a0a;
+    --bg-input: #000000;
+    --bg-input-dark: #000000;
+    --bg-badge: rgba(255, 105, 51, 0.15);
+
     --text-main: #ffffff;
     --text-muted: #6b7280;
+    --text-sidebar: #9ca3af;
+    --text-link: #ffffff;
+
     --border-main: #1a1a1a;
+    --border-sidebar: rgba(255, 255, 255, 0.08);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+
+    /* Landing-specific */
+    --landing-bg: #050505;
+    --landing-card-bg: #0a0a0a;
+    --landing-nav-bg: rgba(0, 0, 0, 0.7);
+    --landing-nav-border: rgba(255, 255, 255, 0.06);
+    --landing-hero-blend: #ffffff;
+    --landing-hero-sub: #6b7280;
+    --landing-stat-bg: #111111;
+    --landing-stat-border: #1a1a1a;
+    --landing-feature-img: #151515;
+    --landing-footer-bg: #050505;
+    --landing-footer-text: #4b5563;
+    --landing-cta-bg: #050505;
+    --landing-how-bg: #050505;
 }
 
+/* ── Global Base ── */
 body {
     background-color: var(--bg-main);
     color: var(--text-main);
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Fix #14: Smooth anchor scroll */
 html {
     scroll-behavior: smooth;
 }
@@ -104,18 +170,28 @@ body {
     min-height: 100vh;
 }
 
-/* Custom Utilities for Brutalist Vibe */
+/* ============================================================
+   GLASS PANEL - Themed
+   ============================================================ */
 .glass-panel {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    background: var(--landing-nav-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--landing-nav-border);
+    box-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.15);
 }
 
+/* ============================================================
+   OBSIDIAN CARD - Themed (stat/feature cards)
+   ============================================================ */
 .obsidian-card {
-    background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.8);
+    background: var(--landing-stat-bg);
+    border: 1px solid var(--landing-stat-border);
+    transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.obsidian-card:hover {
+    box-shadow: 0 4px 24px rgba(255, 105, 51, 0.06);
 }
 
 .laser-text {
@@ -139,4 +215,92 @@ body {
     z-index: 50;
     opacity: 0;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* ============================================================
+   THEME TOGGLE BUTTON
+   ============================================================ */
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border-main);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.theme-toggle-btn:hover {
+    border-color: #ff6933;
+    color: #ff6933;
+    background: rgba(255, 105, 51, 0.06);
+}
+
+/* ============================================================
+   USER SIDEBAR - Themed
+   ============================================================ */
+.sidebar-themed {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-sidebar);
+    transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.sidebar-toggle-btn {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border: 1px solid var(--border-main);
+    transition: all 0.3s ease;
+}
+
+.sidebar-toggle-btn:hover {
+    color: #ff6933;
+    border-color: rgba(255, 105, 51, 0.4);
+}
+
+.sidebar-link-text {
+    color: var(--text-sidebar);
+}
+
+.sidebar-main {
+    background: var(--bg-main);
+    transition: background 0.3s ease;
+}
+
+/* ============================================================
+   FORM INPUTS - Themed
+   ============================================================ */
+.form-input-themed {
+    background: var(--bg-input);
+    border: 1px solid var(--border-main);
+    color: var(--text-main);
+    transition: background 0.3s ease, border-color 0.25s ease, color 0.3s ease;
+}
+
+.form-input-themed:focus {
+    border-color: #ff6933;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 105, 51, 0.15);
+}
+
+.form-input-themed::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+/* ============================================================
+   AUTH CARD - Themed (Login / Register)
+   ============================================================ */
+.auth-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+    transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.dark .auth-card {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }

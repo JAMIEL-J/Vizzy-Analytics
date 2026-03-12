@@ -33,22 +33,22 @@ export default function ConnectDatabase() {
     };
 
     return (
-        <div className="flex-1 overflow-y-auto p-8 text-white font-display antialiased relative selection:bg-primary selection:text-black">
+        <div className="flex-1 overflow-y-auto p-8 text-themed-main font-display antialiased relative selection:bg-primary selection:text-black">
             <div className="grain-overlay z-0"></div>
             <header className="mb-8 relative z-10">
-                <h1 className="text-2xl font-light tracking-widest uppercase text-white">Connect Database</h1>
-                <p className="text-gray-400 mt-1 font-mono text-xs tracking-wider">Import data directly from your external databases</p>
+                <h1 className="text-2xl font-light tracking-widest uppercase text-themed-main">Connect Database</h1>
+                <p className="text-themed-muted mt-1 font-mono text-xs tracking-wider">Import data directly from your external databases</p>
             </header>
 
             <div className="max-w-2xl glass-panel relative z-10 p-8">
                 <div className="grid grid-cols-1 gap-6">
                     <div>
-                        <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Database Type</label>
+                        <label className="block font-mono text-[10px] tracking-widest uppercase text-themed-muted mb-2">Database Type</label>
                         <select
                             name="type"
                             value={config.type}
                             onChange={handleChange}
-                            className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest uppercase text-white focus:border-primary/50 outline-none transition-colors appearance-none"
+                            className="w-full px-4 py-3 bg-black/50 border border-border-main rounded-sm font-mono text-sm tracking-widest uppercase text-themed-main focus:border-primary/50 outline-none transition-colors appearance-none"
                         >
                             <option value="postgresql">PostgreSQL</option>
                             <option value="mysql">MySQL</option>
@@ -59,59 +59,59 @@ export default function ConnectDatabase() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Host</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-themed-muted mb-2">Host</label>
                             <input
                                 type="text"
                                 name="host"
                                 value={config.host}
                                 onChange={handleChange}
                                 placeholder="LOCALHOST"
-                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white placeholder-gray-600 focus:border-primary/50 outline-none transition-colors"
+                                className="w-full px-4 py-3 bg-black/50 border border-border-main rounded-sm font-mono text-sm tracking-widest text-themed-main placeholder-gray-600 focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                         <div>
-                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Port</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-themed-muted mb-2">Port</label>
                             <input
                                 type="number"
                                 name="port"
                                 value={config.port}
                                 onChange={handleChange}
                                 placeholder="5432"
-                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white placeholder-gray-600 focus:border-primary/50 outline-none transition-colors"
+                                className="w-full px-4 py-3 bg-black/50 border border-border-main rounded-sm font-mono text-sm tracking-widest text-themed-main placeholder-gray-600 focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Database Name</label>
+                        <label className="block font-mono text-[10px] tracking-widest uppercase text-themed-muted mb-2">Database Name</label>
                         <input
                             type="text"
                             name="database"
                             value={config.database}
                             onChange={handleChange}
-                            className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white focus:border-primary/50 outline-none transition-colors"
+                            className="w-full px-4 py-3 bg-black/50 border border-border-main rounded-sm font-mono text-sm tracking-widest text-themed-main focus:border-primary/50 outline-none transition-colors"
                         />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Username</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-themed-muted mb-2">Username</label>
                             <input
                                 type="text"
                                 name="username"
                                 value={config.username}
                                 onChange={handleChange}
-                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white focus:border-primary/50 outline-none transition-colors"
+                                className="w-full px-4 py-3 bg-black/50 border border-border-main rounded-sm font-mono text-sm tracking-widest text-themed-main focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                         <div>
-                            <label className="block font-mono text-[10px] tracking-widest uppercase text-gray-400 mb-2">Password</label>
+                            <label className="block font-mono text-[10px] tracking-widest uppercase text-themed-muted mb-2">Password</label>
                             <input
                                 type="password"
                                 name="password"
                                 value={config.password}
                                 onChange={handleChange}
-                                className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-sm font-mono text-sm tracking-widest text-white focus:border-primary/50 outline-none transition-colors"
+                                className="w-full px-4 py-3 bg-black/50 border border-border-main rounded-sm font-mono text-sm tracking-widest text-themed-main focus:border-primary/50 outline-none transition-colors"
                             />
                         </div>
                     </div>
@@ -126,11 +126,11 @@ export default function ConnectDatabase() {
                         <button
                             onClick={handleTestConnection}
                             disabled={isTesting}
-                            className="px-6 py-3 obsidian-card font-mono text-xs uppercase tracking-widest text-gray-400 hover:text-primary transition-colors hover:border-primary/50 disabled:opacity-50"
+                            className="px-6 py-3 obsidian-card font-mono text-xs uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 disabled:opacity-50"
                         >
                             {isTesting ? 'Testing...' : 'Test Connection'}
                         </button>
-                        <button disabled className="px-6 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:bg-gray-800 disabled:text-gray-500 leading-none">
+                        <button disabled className="px-6 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:bg-gray-800 disabled:text-themed-muted leading-none">
                             Connect & Ingest
                         </button>
                     </div>

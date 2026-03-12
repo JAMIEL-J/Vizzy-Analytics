@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
+import ThemeToggle from '../ui/ThemeToggle';
 
 const navItems = [
     { path: '/admin', label: 'Dashboard', icon: 'dashboard' },
@@ -56,7 +57,7 @@ export default function AdminLayout() {
     };
 
     return (
-        <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[#0a0f1c] text-gray-900 dark:text-gray-100 font-serif transition-colors duration-300">
+        <div className="flex h-screen overflow-hidden font-serif transition-colors duration-300" style={{ background: 'var(--bg-main)', color: 'var(--text-main)' }}>
             {/* Sidebar */}
             <aside
                 className={`
@@ -144,30 +145,32 @@ export default function AdminLayout() {
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
                 {/* Header */}
-                <header className="bg-white dark:bg-[#111827] border-b border-gray-100 dark:border-gray-800 px-8 py-5 z-40 shadow-sm transition-colors duration-300 flex-shrink-0">
+                <header className="px-8 py-5 z-40 shadow-sm transition-colors duration-300 flex-shrink-0" style={{ background: 'var(--bg-header)', borderBottom: '1px solid var(--border-main)' }}>
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-2xl font-bold text-navy dark:text-blue-400 tracking-tight">Admin Dashboard</h1>
                             <p className="text-gray-400 dark:text-gray-500 text-xs font-medium uppercase tracking-wider mt-0.5">Platform Intel</p>
                         </div>
-                        <div className="flex items-center space-x-8">
-                            <select className="px-4 py-2 bg-gray-50 dark:bg-gray-800 border-none rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-admin-purple outline-none cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        <div className="flex items-center space-x-4">
+                            <select className="px-4 py-2 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-admin-purple outline-none cursor-pointer transition-colors" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)', border: '1px solid var(--border-main)' }}>
                                 <option>Last 7 days</option>
                                 <option>Last 30 days</option>
                                 <option>Last 90 days</option>
                                 <option>This Year</option>
                             </select>
-                            <div className="flex items-center space-x-3 border-l-2 pl-8 border-gray-50 dark:border-gray-800">
+                            <ThemeToggle size="sm" />
+                            <div className="flex items-center space-x-3 pl-4" style={{ borderLeft: '1px solid var(--border-main)' }}>
                                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-admin-purple to-primary-blue flex items-center justify-center text-white font-bold shadow-md transform hover:rotate-6 transition-transform">
                                     A
                                 </div>
                                 <div className="hidden lg:block text-right">
-                                    <p className="text-sm font-bold text-navy dark:text-white">Admin User</p>
+                                    <p className="text-sm font-bold" style={{ color: 'var(--text-main)' }}>Admin User</p>
                                     <p className="text-[10px] font-bold text-admin-purple uppercase tracking-tighter">Super Admin</p>
                                 </div>
                                 <button
                                     onClick={handleLogout}
-                                    className="ml-6 px-4 py-2 text-sm font-bold text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                    className="ml-4 px-4 py-2 text-sm font-bold hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                    style={{ color: 'var(--text-muted)' }}
                                 >
                                     Log out
                                 </button>
@@ -177,7 +180,7 @@ export default function AdminLayout() {
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-y-auto p-10 bg-gray-50/30 dark:bg-[#0a0f1c] transition-colors duration-300 custom-scrollbar">
+                <main className="flex-1 overflow-y-auto p-10 transition-colors duration-300 custom-scrollbar" style={{ background: 'var(--bg-main)' }}>
                     <div className="max-w-7xl mx-auto">
                         <Outlet />
                     </div>
