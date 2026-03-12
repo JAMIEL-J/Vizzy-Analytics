@@ -1439,13 +1439,23 @@ export default function UserDashboard() {
     const exportChartCSV = (chart: any) => {
         const rows = chart.data;
         if (!Array.isArray(rows) || rows.length === 0) return;
-        const headers = Object.keys(rows[0]).join(',');
-        const csvRows = rows.map((row: any) => Object.values(row).map(v => `"${v}"`).join(','));
-        const blob = new Blob([headers + '\n' + csvRows.join('\n')], { type: 'text/csv' });
+
+        const escapeCell = (v: any) => {
+            let s = v === null || v === undefined ? '' : String(v);
+            s = s.replace(/"/g, '""');
+            if (/^[=+\-@]/.test(s)) s = "'" + s;
+            return `"${s}"`;
+        };
+
+        const keys = Object.keys(rows[0]);
+        const headers = keys.map(escapeCell).join(',');
+        const body = rows.map((row: any) => keys.map(k => escapeCell(row[k])).join(',')).join('\n');
+
+        const blob = new Blob([headers + '\n' + body], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${(chart.title || 'chart').replace(/\s+/g, '_')}.csv`;
+        link.download = `${(chart.title || 'insight').replace(/\s+/g, '_')}.csv`;
         link.click();
         URL.revokeObjectURL(url);
     };
@@ -1751,7 +1761,7 @@ export default function UserDashboard() {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `${(chart.title || 'insight').replace(/\\s+/g, '_')}_interactive.html`;
+            link.download = `${(chart.title || 'insight').replace(/\s+/g, '_')}_interactive.html`;
             link.click();
             URL.revokeObjectURL(url);
         } catch (error) {
