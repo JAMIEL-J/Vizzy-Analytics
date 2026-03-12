@@ -91,6 +91,7 @@ export interface DashboardAnalytics {
         metric?: string;
         aggregation?: string;
     }>;
+    data_quality?: { column: string; null_pct: number; null_count: number; dtype: string; action: string }[];
 }
 
 export const analyticsService = {
@@ -147,5 +148,22 @@ export const correlationService = {
             params: { dataset_id: datasetId, max_cols: maxCols }
         });
         return response.data;
+    }
+};
+
+export const narrativeService = {
+    generate: async (
+        datasetId: string,
+        kpis: Record<string, any>,
+        domain: string,
+        datasetName: string,
+    ): Promise<string> => {
+        const response = await apiClient.post<{ narrative: string }>('/analytics/narrative', {
+            dataset_id: datasetId,
+            kpis,
+            domain,
+            dataset_name: datasetName,
+        });
+        return response.data.narrative;
     }
 };

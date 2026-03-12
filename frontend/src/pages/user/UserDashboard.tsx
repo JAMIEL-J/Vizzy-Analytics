@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { datasetService } from '../../lib/api/dataset';
-import { analyticsService, correlationService, type DashboardAnalytics, type CorrelationMatrix } from '../../lib/api/dashboard';
+import { analyticsService, correlationService, narrativeService, type DashboardAnalytics, type CorrelationMatrix } from '../../lib/api/dashboard';
 import GeoMapCard from './GeoMapCard';
 import SettingsDropdown from '../../components/common/SettingsDropdown';
 import { useFilterStore } from '../../store/useFilterStore';
@@ -1262,6 +1262,11 @@ export default function UserDashboard() {
     const [corrMatrix, setCorrMatrix] = useState<CorrelationMatrix | null>(null);
     const [corrLoading, setCorrLoading] = useState(false);
 
+    // Narrative insight state
+    const [narrative, setNarrative] = useState<string | null>(null);
+    const [narrativeLoading, setNarrativeLoading] = useState(false);
+    const [dataQualityOpen, setDataQualityOpen] = useState(false);
+
     useEffect(() => { loadDatasets(); }, []);
 
     // Reset slots + filters when dataset changes
@@ -1392,6 +1397,21 @@ export default function UserDashboard() {
             .finally(() => setCorrLoading(false));
     }, [selectedDatasetId]);
 
+    // Fetch narrative when KPIs are loaded
+    useEffect(() => {
+        if (!analytics?.kpis || !selectedDatasetId) return;
+        setNarrativeLoading(true);
+        narrativeService.generate(
+            selectedDatasetId,
+            analytics.kpis,
+            analytics.domain,
+            analytics.dataset_name,
+        )
+            .then(text => setNarrative(text))
+            .catch(() => setNarrative(null))
+            .finally(() => setNarrativeLoading(false));
+    }, [analytics?.kpis, selectedDatasetId]);
+
     const formatValue = (value: any, format = 'number') => {
         if (format === 'text') return String(value);
         if (format === 'percent' || format === 'percentage') return `${value}%`;
@@ -1415,6 +1435,329 @@ export default function UserDashboard() {
         const bIsHbar = typeB === 'hbar' && b.data?.length >= 8 ? 1 : 0;
         return aIsHbar - bIsHbar;
     });
+
+    const exportChartCSV = (chart: any) => {
+        const rows = chart.data;
+        if (!Array.isArray(rows) || rows.length === 0) return;
+        const headers = Object.keys(rows[0]).join(',');
+        const csvRows = rows.map((row: any) => Object.values(row).map(v => `"${v}"`).join(','));
+        const blob = new Blob([headers + '\n' + csvRows.join('\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${(chart.title || 'chart').replace(/\s+/g, '_')}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const exportChartHTML = (chart: any) => {
+        try {
+            const data = chart.data;
+            if (!Array.isArray(data) || data.length === 0) return;
+
+            const currentType = String(chart_overrides[chart.id]?.type || chart.type || 'bar').toLowerCase();
+            const isHorizontal = currentType === 'hbar';
+            const mapType = chart.geo_meta?.map_type || 'world';
+
+            const firstRow = data[0] || {};
+            const labelKey = 'name' in firstRow ? 'name' : Object.keys(firstRow).find(k => typeof firstRow[k] === 'string') || 'name';
+            const valueKey = chart.value_label || Object.keys(firstRow).find(k => typeof firstRow[k] === 'number') || 'value';
+
+            let htmlContent = '';
+            const safeTitle = (chart.title || 'Vizzy Export').replace(/</g, '&lt;');
+            const reportDate = new Date().toLocaleDateString();
+
+            const safeJSON = (obj: any) => JSON.stringify(obj).replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
+            if (currentType === 'geo_map' || currentType === 'map') {
+                const mapData = [['Region', valueKey]];
+                data.forEach((d: any) => {
+                    const val = Number(d[valueKey]) || 0;
+                    mapData.push([String(d[labelKey] || 'Unknown'), val]);
+                });
+
+                htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${safeTitle}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+        body { background-color: #0e1015; color: #f3f4f6; font-family: 'Inter', sans-serif; margin: 0; }
+        .glass-panel { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .accent-bar { width: 3px; height: 24px; background-color: #FF6933; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+    <div class="w-full max-w-4xl glass-panel p-8 rounded-xl shadow-2xl">
+        <div class="flex items-center gap-3 mb-8">
+            <div class="accent-bar"></div>
+            <h1 class="text-2xl font-light tracking-tight uppercase text-[#FF6933] font-['Outfit']">${safeTitle}</h1>
+        </div>
+        
+        <div id="vizzyChart" style="width: 100%; height: 500px;" class="rounded-lg overflow-hidden border border-white/5"></div>
+
+        <div class="mt-8 pt-6 border-t border-white/5 flex justify-between items-center text-xs text-white/20 uppercase tracking-widest font-mono">
+            <span>Generated by Vizzy Analytics</span>
+            <span>${reportDate}</span>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+      google.charts.load('current', {
+        'packages':['geochart'],
+      });
+      google.charts.setOnLoadCallback(drawRegionsMap);
+
+      function drawRegionsMap() {
+        var data = google.visualization.arrayToDataTable(${safeJSON(mapData)});
+        var options = {
+            colorAxis: {colors: ['#2A2D35', '#FF6933']},
+            backgroundColor: 'transparent',
+            datalessRegionColor: '#16181D',
+            defaultColor: '#1a1d24',
+            legend: {textStyle: {color: '#f3f4f6', fontName: 'Inter'}}
+        };
+        
+        // Handle US states map specifically
+        if ('${mapType}' === 'us_states') {
+            options.region = 'US';
+            options.resolution = 'provinces';
+        }
+
+        var chart = new google.visualization.GeoChart(document.getElementById('vizzyChart'));
+        chart.draw(data, options);
+      }
+    </script>
+</body>
+</html>`;
+            } else {
+                let chartJsType = 'bar';
+                if (['line', 'area', 'stacked'].includes(currentType)) chartJsType = 'line';
+                if (['pie'].includes(currentType)) chartJsType = 'pie';
+                if (['donut', 'doughnut'].includes(currentType)) chartJsType = 'doughnut';
+                if (['radar'].includes(currentType)) chartJsType = 'radar';
+                if (['scatter'].includes(currentType)) chartJsType = 'scatter';
+                if (['treemap'].includes(currentType)) chartJsType = 'treemap';
+
+                let scriptInjects = `<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>`;
+                if (chartJsType === 'treemap') {
+                    scriptInjects += `\n    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@3.1.0/dist/chartjs-chart-treemap.min.js"></script>`;
+                }
+
+                let labels = data.map((d: any) => d[labelKey]);
+                let datasetsStr = '';
+                let optionsExtra = '';
+
+                if (currentType === 'scatter') {
+                    labels = [];
+                    datasetsStr = `[
+                        {
+                            label: ${safeJSON(chart.title || 'Scatter')},
+                            data: ${safeJSON(data.map((d: any) => ({ x: Number(d.x) || 0, y: Number(d.y) || 0 })))},
+                            backgroundColor: '#FF6933',
+                            borderColor: '#FF6933',
+                            pointRadius: 6,
+                            pointHoverRadius: 8
+                        }
+                    ]`;
+                    optionsExtra = `
+                        scales: {
+                            x: { type: 'linear', position: 'bottom', grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.3)' } },
+                            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.3)' } }
+                        }
+                    `;
+                } else if (currentType === 'treemap') {
+                    labels = [];
+                    datasetsStr = `[{
+                        label: ${safeJSON(valueKey)},
+                        tree: ${safeJSON(data)},
+                        key: 'value',
+                        groups: [${safeJSON(labelKey)}],
+                        backgroundColor: (ctx) => {
+                            const colors = ["#FF6933", "#FF8B5B", "#FFAE83", "#FFD0AB", "#FFB199", "#FF9270"];
+                            return colors[ctx.dataIndex % colors.length] || '#FF6933';
+                        },
+                        labels: { display: true, color: '#0e1015', font: { family: 'Inter', weight: 600 } },
+                        borderWidth: 1,
+                        borderColor: '#0e1015'
+                    }]`;
+                } else if (currentType === 'stacked_bar' || currentType === 'stacked') {
+                    const categories = chart.categories || ['positive', 'negative'];
+                    const colors = ['#FF6933', '#CC5429', '#E6A23C', '#F56C6C', '#67C23A'];
+                    const ds = categories.map((cat: string, i: number) => ({
+                        label: cat,
+                        data: data.map((d: any) => Number(d[cat]) || 0),
+                        backgroundColor: colors[i % colors.length],
+                        borderColor: colors[i % colors.length],
+                        borderWidth: 1,
+                        fill: currentType === 'stacked',
+                        stack: 'Stack 0'
+                    }));
+                    datasetsStr = safeJSON(ds);
+                    optionsExtra = `
+                        scales: {
+                            x: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.3)' } },
+                            y: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.3)' } }
+                        }
+                    `;
+                } else {
+                    const values = data.map((d: any) => Number(d[valueKey]) || 0);
+                    const isRadar = chartJsType === 'radar';
+                    const isPie = ['pie', 'doughnut'].includes(chartJsType);
+
+                    let bgStr = isPie
+                        ? '["#FF6933", "#FF8B5B", "#FFAE83", "#FFD0AB", "#FFF2D3", "#FFB199", "#FF9270"]'
+                        : (isRadar ? '"rgba(255, 105, 51, 0.4)"' : '"rgba(255, 105, 51, 0.8)"');
+
+                    let borderColorStr = isPie ? '"#0e1015"' : '"#FF6933"';
+                    let fillStr = (currentType === 'area' || isRadar) ? 'true' : 'false';
+
+                    datasetsStr = `[{
+                        label: ${safeJSON(valueKey)},
+                        data: ${safeJSON(values)},
+                        backgroundColor: ${bgStr},
+                        borderColor: ${borderColorStr},
+                        borderWidth: ${isPie ? '2' : '1'},
+                        fill: ${fillStr},
+                        tension: 0.4
+                    }]`;
+
+                    if (!isPie && !isRadar) {
+                        optionsExtra = `
+                            scales: {
+                                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.3)' } },
+                                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.3)' } }
+                            }
+                        `;
+                    } else if (isRadar) {
+                        optionsExtra = `
+                            scales: {
+                                r: { 
+                                    grid: { color: 'rgba(255,255,255,0.1)' }, 
+                                    angleLines: { color: 'rgba(255,255,255,0.1)' },
+                                    pointLabels: { color: 'rgba(255,255,255,0.5)' },
+                                    ticks: { display: false, backdropColor: 'transparent' }
+                                }
+                            }
+                        `;
+                    }
+                }
+
+                htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${safeTitle}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    ${scriptInjects}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #0e1015; color: #f3f4f6; font-family: 'Inter', sans-serif; margin:0; padding:0; }
+        .glass-panel { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .accent-bar { width: 3px; height: 24px; background-color: #FF6933; }
+        canvas { width: 100% !important; height: 100% !important; max-height: 500px; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+    <div class="w-full max-w-4xl glass-panel p-8 rounded-xl shadow-2xl">
+        <div class="flex items-center gap-3 mb-8">
+            <div class="accent-bar"></div>
+            <h1 class="text-2xl font-light tracking-tight uppercase text-[#FF6933] font-['Outfit']">${safeTitle}</h1>
+        </div>
+        
+        <div class="relative w-full overflow-hidden" style="height: 500px;">
+            <canvas id="vizzyChart"></canvas>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-white/5 flex justify-between items-center text-xs text-white/20 uppercase tracking-widest font-mono">
+            <span>Generated by Vizzy Analytics</span>
+            <span>${reportDate}</span>
+        </div>
+    </div>
+
+    <script>
+        function initChart() {
+            try {
+                if (typeof Chart === 'undefined') {
+                    setTimeout(initChart, 50);
+                    return;
+                }
+                const ctx = document.getElementById('vizzyChart').getContext('2d');
+                const chartType = '${chartJsType}';
+                const isRadial = ['pie', 'doughnut', 'radar', 'polarArea'].includes(chartType);
+                
+                const config = {
+                    type: chartType,
+                    data: {
+                        labels: ${safeJSON(labels)},
+                        datasets: ${datasetsStr}
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: isRadial, 
+                        aspectRatio: isRadial ? 2 : undefined,
+                        animation: { duration: 600 },
+                        plugins: {
+                            legend: { 
+                                display: ${['pie', 'donut', 'doughnut', 'radar', 'stacked_bar', 'stacked'].includes(currentType)}, 
+                                position: isRadial ? 'right' : 'top',
+                                labels: { 
+                                    color: 'rgba(255,255,255,0.7)', 
+                                    padding: 20,
+                                    font: { family: 'Inter', size: 12 } 
+                                } 
+                            },
+                            tooltip: {
+                                backgroundColor: '#16181D',
+                                titleColor: '#FF6933',
+                                bodyColor: '#fff',
+                                borderColor: 'rgba(255,255,255,0.1)',
+                                borderWidth: 1,
+                                padding: 12,
+                                displayColors: true,
+                                usePointStyle: true
+                            }
+                        },
+                        ${optionsExtra}
+                    }
+                };
+
+                if (!isRadial) {
+                    config.options.maintainAspectRatio = false;
+                    config.options.indexAxis = ${isHorizontal} ? 'y' : 'x';
+                }
+
+                new Chart(ctx, config);
+            } catch (e) {
+                console.error("Vizzy Export Error:", e);
+                document.body.innerHTML += '<div style="position:fixed;bottom:20px;left:20px;background:red;color:white;padding:10px;z-index:9999">Render Error: ' + e.message + '</div>';
+            }
+        }
+        // Small delay ensures Tailwind and Glassmorphism layout is fully settled
+        window.addEventListener('load', () => setTimeout(initChart, 150));
+    </script>
+</body>
+</html>`;
+            }
+
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${(chart.title || 'insight').replace(/\\s+/g, '_')}_interactive.html`;
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to export chart:', error);
+        }
+    };
 
     const renderChartActions = (chart: any) => {
         const currentType = chart_overrides[chart.id]?.type || chart.type;
@@ -1451,7 +1794,22 @@ export default function UserDashboard() {
                     <option className="bg-[#16181D] text-gray-300" value="scatter">Scatter</option>
                     <option className="bg-[#16181D] text-gray-300" value="treemap">Treemap</option>
                     <option className="bg-[#16181D] text-gray-300" value="radar">Radar</option>
+                    <option className="bg-[#16181D] text-gray-300" value="geo_map">Map</option>
                 </select>
+                <button
+                    onClick={() => exportChartCSV(chart)}
+                    className="p-1 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-black/50"
+                    title="Export CSV"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                </button>
+                <button
+                    onClick={() => exportChartHTML(chart)}
+                    className="p-1 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-black/50"
+                    title="Export Interactive HTML"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                </button>
             </div>
         );
     };
@@ -1636,10 +1994,79 @@ export default function UserDashboard() {
                     {/* ── Main Content ── */}
                     {!isLoading && !error && analytics && (
                         <>
-                            {/* Column Classification Override UI */}
                             {analytics.columns && (
                                 <ColumnClassificationPanel columns={analytics.columns} isDark={isDark} />
                             )}
+
+                            {/* Data Quality Report Panel */}
+                            {analytics.data_quality && analytics.data_quality.length > 0 && (
+                                <div className="mb-6">
+                                    <button
+                                        onClick={() => setDataQualityOpen(!dataQualityOpen)}
+                                        className="flex items-center gap-2 text-xs font-serif uppercase tracking-widest text-themed-muted hover:text-primary transition-colors mb-2"
+                                    >
+                                        <svg className={`w-3 h-3 transition-transform ${dataQualityOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                        Data Quality Report ({analytics.data_quality.filter(d => d.null_pct > 0).length} columns with nulls)
+                                    </button>
+                                    {dataQualityOpen && (
+                                        <div className="glass-panel rounded-sm p-4 overflow-x-auto">
+                                            <table className="w-full text-xs font-mono">
+                                                <thead>
+                                                    <tr className="text-themed-muted border-b border-border-main">
+                                                        <th className="text-left py-2 pr-4">Column</th>
+                                                        <th className="text-right py-2 pr-4">Null %</th>
+                                                        <th className="text-right py-2 pr-4">Null Count</th>
+                                                        <th className="text-left py-2 pr-4">Type</th>
+                                                        <th className="text-left py-2">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {analytics.data_quality.map((dq: any) => (
+                                                        <tr key={dq.column} className="border-b border-border-main/30 hover:bg-white/5 transition-colors">
+                                                            <td className="py-1.5 pr-4 text-themed-main">{dq.column}</td>
+                                                            <td className={`py-1.5 pr-4 text-right font-bold ${dq.null_pct > 20 ? 'text-red-400' : dq.null_pct > 5 ? 'text-yellow-400' : 'text-green-400'}`}>
+                                                                {dq.null_pct}%
+                                                            </td>
+                                                            <td className="py-1.5 pr-4 text-right text-themed-muted">{dq.null_count.toLocaleString()}</td>
+                                                            <td className="py-1.5 pr-4 text-themed-muted">{dq.dtype}</td>
+                                                            <td className="py-1.5">
+                                                                {dq.action !== 'none' ? (
+                                                                    <span className="px-1.5 py-0.5 rounded-sm bg-primary/10 text-primary text-[10px] uppercase">{dq.action}</span>
+                                                                ) : (
+                                                                    <span className="text-themed-muted">—</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Insight Narrative Card */}
+                            <div className="mb-6 glass-panel rounded-sm p-5 border-l-2 border-primary">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                    </svg>
+                                    <span className="text-xs font-serif uppercase tracking-widest text-primary font-bold">Vizzy Insight</span>
+                                </div>
+                                {narrativeLoading ? (
+                                    <div className="space-y-2">
+                                        <div className="h-3 bg-white/5 rounded-sm animate-pulse w-full" />
+                                        <div className="h-3 bg-white/5 rounded-sm animate-pulse w-5/6" />
+                                        <div className="h-3 bg-white/5 rounded-sm animate-pulse w-4/6" />
+                                    </div>
+                                ) : narrative ? (
+                                    <p className="text-sm text-gray-300 leading-relaxed font-serif">{narrative}</p>
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic font-serif">Generating insights…</p>
+                                )}
+                            </div>
 
                             {/* KPI Grid — Dynamic Columns */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] xl:grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-5 mb-7">
@@ -1662,12 +2089,14 @@ export default function UserDashboard() {
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
                                     {chartArray.slice(0, 3).map((chart) => (
                                         <ChartCard key={chart.id} title={chart.title || `Insight ${chart.id}`} actions={renderChartActions(chart)}>
-                                            <ChartRenderer
-                                                chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
-                                                chartColors={chartColors}
-                                                isDark={isDark}
-                                                onFilterClick={(col, val) => toggleFilter(col, val)}
-                                            />
+                                            <div data-chart-id={chart.id}>
+                                                <ChartRenderer
+                                                    chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
+                                                    chartColors={chartColors}
+                                                    isDark={isDark}
+                                                    onFilterClick={(col, val) => toggleFilter(col, val)}
+                                                />
+                                            </div>
                                         </ChartCard>
                                     ))}
                                 </div>
@@ -1681,12 +2110,14 @@ export default function UserDashboard() {
                                 {/* Remaining charts */}
                                 {chartArray.slice(3).map((chart) => (
                                     <ChartCard key={chart.id} title={chart.title || `Insight ${chart.id}`} actions={renderChartActions(chart)}>
-                                        <ChartRenderer
-                                            chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
-                                            chartColors={chartColors}
-                                            isDark={isDark}
-                                            onFilterClick={(col, val) => toggleFilter(col, val)}
-                                        />
+                                        <div data-chart-id={chart.id}>
+                                            <ChartRenderer
+                                                chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
+                                                chartColors={chartColors}
+                                                isDark={isDark}
+                                                onFilterClick={(col, val) => toggleFilter(col, val)}
+                                            />
+                                        </div>
                                     </ChartCard>
                                 ))}
 
