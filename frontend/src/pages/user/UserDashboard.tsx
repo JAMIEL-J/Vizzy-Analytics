@@ -1432,8 +1432,8 @@ export default function UserDashboard() {
                         className="text-[12px] font-serif px-2 py-0.5 rounded-sm border border-border-main outline-none transition-colors bg-black/50 text-themed-muted hover:border-primary/40 focus:border-primary"
                         title="Aggregation Method"
                     >
-                        <option value="sum">Sum</option>
-                        <option value="mean">Average</option>
+                        <option className="bg-[#16181D] text-gray-300" value="sum">Sum</option>
+                        <option className="bg-[#16181D] text-gray-300" value="mean">Average</option>
                     </select>
                 )}
                 <select
@@ -1442,15 +1442,15 @@ export default function UserDashboard() {
                     className="text-[12px] font-serif px-2 py-0.5 rounded-sm border border-border-main outline-none transition-colors bg-black/50 text-themed-main hover:border-primary/40 focus:border-primary"
                     title="Chart Type"
                 >
-                    <option value="bar">Bar</option>
-                    <option value="hbar">H-Bar</option>
-                    <option value="line">Line</option>
-                    <option value="area">Area</option>
-                    <option value="pie">Pie</option>
-                    <option value="donut">Donut</option>
-                    <option value="scatter">Scatter</option>
-                    <option value="treemap">Treemap</option>
-                    <option value="radar">Radar</option>
+                    <option className="bg-[#16181D] text-gray-300" value="bar">Bar</option>
+                    <option className="bg-[#16181D] text-gray-300" value="hbar">H-Bar</option>
+                    <option className="bg-[#16181D] text-gray-300" value="line">Line</option>
+                    <option className="bg-[#16181D] text-gray-300" value="area">Area</option>
+                    <option className="bg-[#16181D] text-gray-300" value="pie">Pie</option>
+                    <option className="bg-[#16181D] text-gray-300" value="donut">Donut</option>
+                    <option className="bg-[#16181D] text-gray-300" value="scatter">Scatter</option>
+                    <option className="bg-[#16181D] text-gray-300" value="treemap">Treemap</option>
+                    <option className="bg-[#16181D] text-gray-300" value="radar">Radar</option>
                 </select>
             </div>
         );
@@ -1519,13 +1519,13 @@ export default function UserDashboard() {
                                     onChange={(e) => setDomain(e.target.value === 'auto' ? null : e.target.value)}
                                     className="bg-transparent border-none outline-none text-primary font-bold cursor-pointer capitalize"
                                 >
-                                    <option value="auto">Auto ({analytics.domain})</option>
-                                    <option value="sales">Sales</option>
-                                    <option value="churn">Churn</option>
-                                    <option value="marketing">Marketing</option>
-                                    <option value="finance">Finance</option>
-                                    <option value="healthcare">Healthcare</option>
-                                    <option value="generic">Generic</option>
+                                    <option className="bg-[#16181D] text-gray-300" value="auto">Auto ({analytics.domain})</option>
+                                    <option className="bg-[#16181D] text-gray-300" value="sales">Sales</option>
+                                    <option className="bg-[#16181D] text-gray-300" value="churn">Churn</option>
+                                    <option className="bg-[#16181D] text-gray-300" value="marketing">Marketing</option>
+                                    <option className="bg-[#16181D] text-gray-300" value="finance">Finance</option>
+                                    <option className="bg-[#16181D] text-gray-300" value="healthcare">Healthcare</option>
+                                    <option className="bg-[#16181D] text-gray-300" value="generic">Generic</option>
                                 </select>
                             </div>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${analytics.domain_confidence === 'HIGH' ? 'bg-green-500/10 text-green-500' :
@@ -1542,9 +1542,9 @@ export default function UserDashboard() {
                         <div className="flex flex-wrap items-center gap-2 mb-6">
                             <button
                                 onClick={() => setTargetValue('all')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${target_value === 'all'
-                                    ? 'bg-blue-600 text-themed-main shadow-md shadow-blue-500/20'
-                                    : 'bg-white dark:bg-[#16181D] text-gray-600 dark:text-themed-main border border-gray-200 dark:border-border-main hover:border-blue-400 dark:hover:border-blue-500'}`}
+                                className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === 'all'
+                                    ? 'bg-primary text-black shadow-md shadow-primary/20'
+                                    : 'bg-black/40 text-gray-500 border border-white/10 hover:text-primary hover:border-primary/50'}`}
                             >
                                 All {analytics.target_column?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                             </button>
@@ -1552,9 +1552,9 @@ export default function UserDashboard() {
                                 <button
                                     key={val}
                                     onClick={() => setTargetValue(val)}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${target_value === val
-                                        ? 'bg-blue-600 text-themed-main shadow-md shadow-blue-500/20'
-                                        : 'bg-white dark:bg-[#16181D] text-gray-600 dark:text-themed-main border border-gray-200 dark:border-border-main hover:border-blue-400 dark:hover:border-blue-500'}`}
+                                    className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === val
+                                        ? 'bg-primary text-black shadow-md shadow-primary/20'
+                                        : 'bg-black/40 text-gray-500 border border-white/10 hover:text-primary hover:border-primary/50'}`}
                                 >
                                     {val.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                                 </button>

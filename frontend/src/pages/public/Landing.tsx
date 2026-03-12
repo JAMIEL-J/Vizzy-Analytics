@@ -47,19 +47,11 @@ export default function Landing() {
                 <div className="relative z-10 flex flex-col items-center text-center px-4 max-w-6xl w-full">
                     {/* Main Typography */}
                     <div className="relative mb-8">
-                        <h1 className="text-[14vw] leading-[0.8] font-thin tracking-tighter opacity-90 select-none" style={{ color: 'var(--text-main)' }}>
+                        <h1 className="text-[14vw] leading-[0.8] font-thin tracking-tighter mix-blend-screen opacity-90 select-none">
                             <span className="block translate-y-4">DATA</span>
-                            <span
-                                className="block italic font-light"
-                                style={{
-                                    background: 'linear-gradient(180deg, var(--text-main) 0%, var(--text-muted) 100%)',
-                                    WebkitBackgroundClip: 'text',
-                                    WebkitTextFillColor: 'transparent',
-                                    backgroundClip: 'text',
-                                }}
-                            >IN FOCUS</span>
+                            <span className="block text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-600 italic font-light">IN FOCUS</span>
                         </h1>
-                        {/* Decorative geometric element */}
+                        {/* Decorative geometric element overlaying text */}
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[1px] bg-primary/30 rotate-12 blur-[1px]"></div>
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[2px] bg-primary mix-blend-overlay rotate-12"></div>
                     </div>
