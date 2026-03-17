@@ -598,21 +598,108 @@ class NarrativeRequest(BaseModel):
     kpis: Dict[str, Any]
     domain: str
     dataset_name: str
+    charts: Optional[Dict[str, Any]] = None
 
 
-NARRATIVE_SYSTEM_PROMPT = """You are a senior data analyst writing a brief executive summary for a dashboard.
+NARRATIVE_SYSTEM_PROMPT = """You are a senior data analyst generating an executive insight brief for a BI dashboard.
+
+Your job is to analyze ALL the KPIs AND chart breakdowns provided and write clear, factual insights.
+
+Output format — write exactly 5-7 numbered points:
+1. [Headline] The single most important finding from the overall data.
+2. [Chart Insight] For EACH chart breakdown provided, write one point about its key pattern — which category dominates, which underperforms, concentration risk.
+3. [Trend] If a trend chart is present, note the direction and rate of change.
+4. [Risk] One area of concern or risk from the data.
+5. [Action] One concrete recommendation or question worth investigating.
+
+Example output format:
+1. Total revenue stands at $2.3M with a 12.3% upward trend, driven by strong performance in Q4.
+2. California dominates state revenue at $763K (33%), while Texas underperforms at a loss of $25.7K.
+3. Month-to-month contracts account for 89% of churn, signaling a retention risk in short-term customers.
+4. Revenue trend shows consistent growth from $28.7K in 2015 to $83.8K in 2017, a 191% increase.
+5. Average order value declined 17.5% — investigate whether aggressive discounting (15.6% impact) is eroding margins.
 
 Rules:
-- Write exactly 4-5 sentences
-- Sentence 1: The single most important finding from the KPIs
-- Sentence 2: One positive trend or strength
-- Sentence 3: One area of concern or risk
-- Sentence 4: One question worth investigating further
-- Sentence 5 (optional): A brief actionable recommendation
-- No jargon. No technical column names. Be direct and specific.
-- Use actual numbers from the KPIs provided.
-- Do NOT use markdown formatting, bullet points, or headers. Plain text only.
-"""
+- Start each point with the point number followed by a period and space.
+- Use actual numbers and percentages from the data provided.
+- Reference specific categories, segments, or time periods by name.
+- Every point must contain at least one data point from the provided data.
+- Do NOT use markdown formatting, bold, headers, or special characters. Plain numbered text only.
+- Do NOT invent data. Only reference what is explicitly provided.
+- Write in third person ("The data shows..." not "You should...")."""
+
+
+def _summarize_charts(charts: Dict[str, Any], max_charts: int = 8) -> str:
+    """Build a concise text summary of chart data for the LLM prompt."""
+    if not charts:
+        return ""
+
+    summaries = []
+    count = 0
+
+    for chart_id, chart in charts.items():
+        if count >= max_charts:
+            break
+
+        title = chart.get("title", chart_id)
+        chart_type = chart.get("type", "unknown")
+        data = chart.get("data", [])
+
+        if not isinstance(data, list) or len(data) == 0:
+            continue
+
+        first_row = data[0]
+        if not isinstance(first_row, dict):
+            continue
+
+        keys = list(first_row.keys())
+        # Identify dimension (string) and metric (number) columns
+        dim_col = next((k for k in keys if isinstance(first_row.get(k), str)), keys[0])
+        metric_col = next((k for k in keys if isinstance(first_row.get(k), (int, float))), None)
+
+        if not metric_col:
+            continue
+
+        # Extract values
+        rows = [(row.get(dim_col, "?"), row.get(metric_col, 0)) for row in data if row.get(metric_col) is not None]
+        if not rows:
+            continue
+
+        values = [v for _, v in rows]
+        total = sum(values) if values else 0
+
+        # Build summary based on chart type
+        if chart_type in ("pie", "donut", "doughnut"):
+            # Show top 3 segments with percentages
+            sorted_rows = sorted(rows, key=lambda x: x[1], reverse=True)
+            top = sorted_rows[:3]
+            parts = [f"{name}: {val} ({val/total*100:.1f}%)" if total else f"{name}: {val}" for name, val in top]
+            summaries.append(f"[{title}] Distribution — {', '.join(parts)}" + (f" (total: {total:.0f})" if total else ""))
+
+        elif chart_type in ("line", "area"):
+            # Show start, end, direction
+            if len(rows) >= 2:
+                start_name, start_val = rows[0]
+                end_name, end_val = rows[-1]
+                direction = "increasing" if end_val > start_val else "decreasing" if end_val < start_val else "flat"
+                pct = ((end_val - start_val) / start_val * 100) if start_val != 0 else 0
+                summaries.append(f"[{title}] Trend — {direction} from {start_val:.0f} ({start_name}) to {end_val:.0f} ({end_name}), change: {pct:+.1f}%")
+
+        else:
+            # bar, hbar, etc — show top 3 and bottom 1
+            sorted_rows = sorted(rows, key=lambda x: x[1], reverse=True)
+            top3 = sorted_rows[:3]
+            bottom1 = sorted_rows[-1] if len(sorted_rows) > 3 else None
+
+            parts = [f"{name}: {val}" for name, val in top3]
+            line = f"[{title}] Top — {', '.join(parts)}"
+            if bottom1:
+                line += f" | Lowest — {bottom1[0]}: {bottom1[1]}"
+            summaries.append(line)
+
+        count += 1
+
+    return "\n".join(summaries)
 
 
 @router.post("/analytics/narrative")
@@ -627,9 +714,10 @@ async def generate_narrative(
 
     try:
         # Authorization check
-        if not check_dataset_access(session, payload.dataset_id, current_user.id):
+        if not check_dataset_access(session, payload.dataset_id, UUID(current_user.user_id), current_user.role):
             raise HTTPException(status_code=403, detail="Unauthorized access to dataset.")
-        # Build a concise KPI summary string for the LLM
+
+        # Build KPI summary
         kpi_lines = []
         for key, kpi in payload.kpis.items():
             title = kpi.get("title", key)
@@ -647,19 +735,31 @@ async def generate_narrative(
 
         kpi_summary = "\n".join(kpi_lines)
 
+        # Build chart summary
+        chart_summary = ""
+        if payload.charts:
+            chart_summary = _summarize_charts(payload.charts)
+
+        # Compose user prompt
         user_prompt = f"""Dataset: {payload.dataset_name}
 Domain: {payload.domain}
 
 KPI Results:
-{kpi_summary}
+{kpi_summary}"""
 
-Write a brief executive summary based on these metrics."""
+        if chart_summary:
+            user_prompt += f"""
+
+Chart Breakdowns:
+{chart_summary}"""
+
+        user_prompt += "\n\nAnalyze all the data above and write an executive insight brief."
 
         client = get_llm_client()
         response = await client.complete(
             system_prompt=NARRATIVE_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            temperature=0.4,
+            temperature=0.3,
             max_tokens=512,
         )
 

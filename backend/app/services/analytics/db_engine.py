@@ -67,8 +67,8 @@ class DBEngine:
             pass
 
         self._write_con.register(f"_tmp_{table_name}", df)
-        self._write_con.execute(f"DROP TABLE IF EXISTS {table_name}")
-        self._write_con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM _tmp_{table_name}")
+        self._write_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+        self._write_con.execute(f'CREATE TABLE "{table_name}" AS SELECT * FROM "_tmp_{table_name}"')
         self._write_con.unregister(f"_tmp_{table_name}")
 
         # Run pre-flight coercion
@@ -81,8 +81,8 @@ class DBEngine:
     def load_csv(self, table_name: str, file_path: str):
         """Load a CSV file directly into DuckDB and run coercion."""
         try:
-            self._write_con.execute(f"DROP TABLE IF EXISTS {table_name}")
-            self._write_con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM read_csv_auto('{file_path}')")
+            self._write_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+            self._write_con.execute(f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_csv_auto('{file_path}')")
             
             # Run pre-flight coercion
             self.coercion_results = run_coercion_pipeline(self._write_con, table_name)
@@ -97,7 +97,7 @@ class DBEngine:
     def extract_schema(self, table_name: str) -> Dict[str, Any]:
         """Extract schema and include coercion formatting hints."""
         try:
-            schema_df = self._write_con.execute(f"DESCRIBE {table_name}").df()
+            schema_df = self._write_con.execute(f'DESCRIBE "{table_name}"').df()
             columns = {}
             for _, row in schema_df.iterrows():
                 columns[row['column_name']] = row['column_type']
@@ -105,7 +105,7 @@ class DBEngine:
             # Map coercion results for easy lookup
             coercion_map = {res.original_name: res for res in self.coercion_results}
 
-            sample_df = self._write_con.execute(f"SELECT * FROM {table_name} LIMIT 2").df()
+            sample_df = self._write_con.execute(f'SELECT * FROM "{table_name}" LIMIT 2').df()
             for col in sample_df.columns:
                 if sample_df[col].dtype == object:
                     sample_df[col] = sample_df[col].apply(lambda x: str(x)[:100] + "..." if isinstance(x, str) and len(x) > 100 else x)
@@ -127,7 +127,7 @@ class DBEngine:
                 "columns": columns,
                 "column_metadata": column_metadata,
                 "sample_data": sample_data,
-                "row_count": self._write_con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0],
+                "row_count": self._write_con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0],
             }
         except Exception as e:
             logger.error(f"Failed to extract schema for '{table_name}': {str(e)}")

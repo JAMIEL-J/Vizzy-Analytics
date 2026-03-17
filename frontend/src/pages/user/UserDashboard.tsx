@@ -1398,7 +1398,7 @@ export default function UserDashboard() {
             .finally(() => setCorrLoading(false));
     }, [selectedDatasetId]);
 
-    // Fetch narrative when KPIs are loaded
+    // Fetch narrative when KPIs and charts are loaded
     useEffect(() => {
         if (!analytics?.kpis || !selectedDatasetId) return;
         setNarrativeLoading(true);
@@ -1407,11 +1407,12 @@ export default function UserDashboard() {
             analytics.kpis,
             analytics.domain,
             analytics.dataset_name,
+            analytics.charts,
         )
             .then(text => setNarrative(text))
             .catch(() => setNarrative(null))
             .finally(() => setNarrativeLoading(false));
-    }, [analytics?.kpis, selectedDatasetId]);
+    }, [analytics?.kpis, analytics?.charts, selectedDatasetId]);
 
     const formatValue = (value: any, format = 'number') => {
         if (format === 'text') return String(value);
@@ -2073,7 +2074,14 @@ export default function UserDashboard() {
                                         <div className="h-3 bg-white/5 rounded-sm animate-pulse w-4/6" />
                                     </div>
                                 ) : narrative ? (
-                                    <p className="text-sm text-gray-300 leading-relaxed font-serif">{narrative}</p>
+                                    <div className="space-y-2">
+                                        {narrative.split('\n').filter(line => line.trim()).map((line, i) => (
+                                            <p key={i} className="text-sm text-gray-300 leading-relaxed font-serif flex gap-2">
+                                                <span className="text-primary font-bold shrink-0">{line.match(/^\d+\./) ? line.match(/^\d+\./)![0] : `${i + 1}.`}</span>
+                                                <span>{line.replace(/^\d+\.\s*/, '')}</span>
+                                            </p>
+                                        ))}
+                                    </div>
                                 ) : (
                                     <p className="text-sm text-gray-500 italic font-serif">Generating insights…</p>
                                 )}

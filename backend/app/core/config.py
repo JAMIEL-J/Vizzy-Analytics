@@ -95,15 +95,14 @@ class LLMSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Primary: Groq (using Llama 3.3 70B for high-performance SQL/Analytics)
+    # Account 1: Groq (Narrative)
     groq_api_key: SecretStr = Field(default=SecretStr(""))
     groq_model: str = Field(default="llama-3.3-70b-versatile")
     groq_fallback_model: str = Field(default="llama-3.1-70b-versatile")
 
-    # Groq (Main analytical engine)
-    groq_api_key: SecretStr = Field(default=SecretStr(""))
-    groq_model: str = Field(default="llama-3.3-70b-versatile")
-    groq_fallback_model: str = Field(default="llama-3.1-70b-versatile")
+    # Account 2: Groq (Chat/SQL - Kimi K2)
+    groq_chat_api_key: SecretStr = Field(default=SecretStr(""))
+    groq_chat_model: str = Field(default="moonshotai/kimi-k2-instruct-0905")
 
     # Provider Selection (Always Groq)
     primary_provider: Literal["groq"] = Field(default="groq")

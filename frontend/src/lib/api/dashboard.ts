@@ -157,13 +157,16 @@ export const narrativeService = {
         kpis: Record<string, any>,
         domain: string,
         datasetName: string,
+        charts?: Record<string, any>,
     ): Promise<string> => {
-        const response = await apiClient.post<{ narrative: string }>('/analytics/narrative', {
+        const payload: any = {
             dataset_id: datasetId,
             kpis,
             domain,
             dataset_name: datasetName,
-        });
+        };
+        if (charts) payload.charts = charts;
+        const response = await apiClient.post<{ narrative: string }>('/analytics/narrative', payload);
         return response.data.narrative;
     }
 };

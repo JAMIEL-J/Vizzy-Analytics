@@ -27,8 +27,8 @@ logger = get_logger(__name__)
 
 class LLMProvider(str, Enum):
     """Available LLM providers."""
-    GROQ = "groq"
-    GROQ_FALLBACK = "groq_fallback"
+    GROQ_NARRATIVE = "groq_narrative"
+    GROQ_CHAT = "groq_chat"
 
 
 @dataclass
@@ -49,6 +49,7 @@ class LLMClient:
         response = await client.complete(
             system_prompt="You are...",
             user_prompt="Classify this...",
+            purpose="sql"
         )
     """
 
@@ -62,7 +63,6 @@ class LLMClient:
         loop = asyncio.get_running_loop()
         
         # Check if we need to create or recreate the client
-        # Recreate if it doesn't exist, is closed, or belongs to a different loop
         should_recreate = (
             self._http_client is None or 
             self._http_client.is_closed or
@@ -72,7 +72,6 @@ class LLMClient:
 
         if should_recreate:
             if self._http_client and not self._http_client.is_closed:
-                # Close old client if loop changed
                 await self._http_client.aclose()
             
             self._http_client = httpx.AsyncClient(
@@ -92,31 +91,42 @@ class LLMClient:
         *,
         system_prompt: str,
         user_prompt: str,
-        temperature: float = 0.0,
-        max_tokens: int = 1024,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        purpose: str = "narrative",
     ) -> LLMResponse:
         """
-        Send completion request using Groq with internal fallback.
+        Send completion request using Groq with internal fallback based on purpose.
         
-        Tries:
-        1. Groq (Llama 3.3 70B)
-        2. Groq Fallback (Llama 3.1 70B)
+        Purpose 'sql' or 'chat' uses Account 2 (Kimi K2).
+        Purpose 'narrative' (default) uses Account 1 (Llama 3.3).
         """
-        providers = [
-            (LLMProvider.GROQ, self._call_groq),
-            (LLMProvider.GROQ_FALLBACK, self._call_groq_fallback),
-        ]
+        temp = temperature if temperature is not None else self.settings.temperature
+        tokens = max_tokens if max_tokens is not None else self.settings.max_tokens
+
+        if purpose in ["sql", "chat"]:
+            # SQL Priority: Kimi K2 -> Llama 3.3 (Fallback)
+            providers = [
+                (LLMProvider.GROQ_CHAT, self._call_groq_chat),
+                (LLMProvider.GROQ_NARRATIVE, self._call_groq_narrative),
+            ]
+        else:
+            # Narrative Priority: Llama 3.3 -> Kimi K2 (Fallback)
+            providers = [
+                (LLMProvider.GROQ_NARRATIVE, self._call_groq_narrative),
+                (LLMProvider.GROQ_CHAT, self._call_groq_chat),
+            ]
 
         last_error: Optional[Exception] = None
 
         for provider, call_fn in providers:
             try:
-                logger.info(f"Attempting LLM call with {provider.value}")
+                logger.info(f"Attempting LLM call with {provider.value} for purpose: {purpose}")
                 response = await call_fn(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
+                    temperature=temp,
+                    max_tokens=tokens,
                 )
                 logger.info(f"LLM call successful with {provider.value}")
                 return response
@@ -127,31 +137,30 @@ class LLMClient:
 
         raise InvalidOperation(
             operation="llm_complete",
-            reason="All LLM providers failed",
+            reason=f"All LLM providers failed for purpose: {purpose}",
             details=str(last_error) if last_error else "Unknown error",
         )
 
-
-    async def _call_groq(
+    async def _call_groq_internal(
         self,
-        *,
+        api_key_str: str,
+        model: str,
         system_prompt: str,
         user_prompt: str,
         temperature: float,
         max_tokens: int,
+        provider: LLMProvider,
     ) -> LLMResponse:
-        """Call Groq API."""
-        api_key = self.settings.groq_api_key.get_secret_value()
-        if not api_key:
-            raise ValueError("Groq API key not configured")
+        """Internal helper for Groq API calls."""
+        if not api_key_str:
+            raise ValueError(f"API key missing for {provider.value}")
 
-        model = self.settings.groq_model
         url = "https://api.groq.com/openai/v1/chat/completions"
-
         client = await self._get_client()
+        
         response = await client.post(
             url,
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": f"Bearer {api_key_str}"},
             json={
                 "model": model,
                 "messages": [
@@ -168,51 +177,35 @@ class LLMClient:
         content = data["choices"][0]["message"]["content"]
         return LLMResponse(
             content=content,
-            provider=LLMProvider.GROQ,
+            provider=provider,
             model=model,
             usage=data.get("usage"),
         )
 
-    async def _call_groq_fallback(
-        self,
-        *,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float,
-        max_tokens: int,
-    ) -> LLMResponse:
-        """Call Groq API (Fallback Model)."""
-        api_key = self.settings.groq_api_key.get_secret_value()
-        if not api_key:
-            raise ValueError("Groq API key not configured")
-
-        model = self.settings.groq_fallback_model
-        url = "https://api.groq.com/openai/v1/chat/completions"
-
-        client = await self._get_client()
-        response = await client.post(
-            url,
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
+    async def _call_groq_narrative(self, **kwargs) -> LLMResponse:
+        """Call Account 1 (Llama)."""
+        return await self._call_groq_internal(
+            api_key_str=self.settings.groq_api_key.get_secret_value(),
+            model=self.settings.groq_model,
+            provider=LLMProvider.GROQ_NARRATIVE,
+            **kwargs,
         )
-        response.raise_for_status()
-        data = response.json()
 
-        content = data["choices"][0]["message"]["content"]
-        return LLMResponse(
-            content=content,
-            provider=LLMProvider.GROQ_FALLBACK,
-            model=model,
-            usage=data.get("usage"),
+    async def _call_groq_chat(self, **kwargs) -> LLMResponse:
+        """Call Account 2 (Kimi K2)."""
+        # Fallback to Account 1 key if Account 2 key is not configured yet
+        # (Though user says they are giving us another)
+        chat_key = self.settings.groq_chat_api_key.get_secret_value()
+        final_key = chat_key if chat_key else self.settings.groq_api_key.get_secret_value()
+        
+        return await self._call_groq_internal(
+            api_key_str=final_key,
+            model=self.settings.groq_chat_model,
+            provider=LLMProvider.GROQ_CHAT,
+            **kwargs,
         )
+
+
 
 
 

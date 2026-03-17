@@ -50,23 +50,24 @@ FORMATTING_MAP = {
 
 def build_clean_expression(column: str, pattern_name: str) -> str:
     """Build a DuckDB SQL expression to clean a dirty numeric string."""
+    col = f'"{column}"'
     if pattern_name == 'currency_usd':
-        return f"REGEXP_REPLACE({column}, '[$,]', '', 'g')"
+        return f"REGEXP_REPLACE({col}, '[$,]', '', 'g')"
     elif pattern_name == 'currency_gbp':
-        return f"REGEXP_REPLACE({column}, '[£,]', '', 'g')"
+        return f"REGEXP_REPLACE({col}, '[£,]', '', 'g')"
     elif pattern_name == 'currency_eur':
-        return f"REGEXP_REPLACE({column}, '[€,]', '', 'g')"
+        return f"REGEXP_REPLACE({col}, '[€,]', '', 'g')"
     elif pattern_name in ['euro_format', 'euro_format_no_currency']:
         # Replace . with nothing, then , with ., then strip €
-        return f"REPLACE(REPLACE(REGEXP_REPLACE({column}, '[€]', '', 'g'), '.', ''), ',', '.')"
+        return f"REPLACE(REPLACE(REGEXP_REPLACE({col}, '[€]', '', 'g'), '.', ''), ',', '.')"
     elif pattern_name == 'comma_formatted':
-        return f"REPLACE({column}, ',', '')"
+        return f"REPLACE({col}, ',', '')"
     elif pattern_name == 'percentage':
-        return f"REPLACE({column}, '%', '')"
+        return f"REPLACE({col}, '%', '')"
     elif pattern_name == 'accounting_negative':
         # If it has parens, prefix with '-', otherwise keep as is, and strip parens and commas
-        return f"CASE WHEN {column} LIKE '(%' THEN '-' || REGEXP_REPLACE({column}, '[(),]', '', 'g') ELSE REGEXP_REPLACE({column}, '[,]', '', 'g') END"
-    return column
+        return f"CASE WHEN {col} LIKE '(%' THEN '-' || REGEXP_REPLACE({col}, '[(),]', '', 'g') ELSE REGEXP_REPLACE({col}, '[,]', '', 'g') END"
+    return col
 
 def coerce_column(
     conn: duckdb.DuckDBPyConnection,
@@ -77,7 +78,7 @@ def coerce_column(
     """Analyze and coerce a single VARCHAR column to numeric if it matches dirty patterns."""
     try:
         # Check column type
-        schema_df = conn.execute(f"DESCRIBE {table_name}").df()
+        schema_df = conn.execute(f'DESCRIBE "{table_name}"').df()
         col_info = schema_df[schema_df['column_name'] == column].iloc[0]
         original_type = col_info['column_type']
 
@@ -86,18 +87,18 @@ def coerce_column(
 
         # Step 1: Handle null strings
         conn.execute(f"""
-            UPDATE {table_name}
-            SET {column} = NULL
-            WHERE LOWER(TRIM({column})) IN ({
+            UPDATE "{table_name}"
+            SET "{column}" = NULL
+            WHERE LOWER(TRIM("{column}")) IN ({
                 ','.join(f"'{s}'" for s in NULL_STRINGS)
             })
         """)
 
         # Step 2: Detect patterns from a sample
         sample_df = conn.execute(f"""
-            SELECT {column}
-            FROM {table_name}
-            WHERE {column} IS NOT NULL
+            SELECT "{column}"
+            FROM "{table_name}"
+            WHERE "{column}" IS NOT NULL
             LIMIT {sample_size}
         """).df()
 
@@ -120,26 +121,26 @@ def coerce_column(
             return None
 
         # Step 3: Apply transformation
-        null_before = conn.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {column} IS NULL").fetchone()[0]
+        null_before = conn.execute(f'SELECT COUNT(*) FROM "{table_name}" WHERE "{column}" IS NULL').fetchone()[0]
         
         clean_expr = build_clean_expression(column, detected_pattern)
         
         # Create a temp column to test conversion
-        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column}__coerced_tmp DOUBLE")
+        conn.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{column}__coerced_tmp" DOUBLE')
         
         try:
-            conn.execute(f"UPDATE {table_name} SET {column}__coerced_tmp = TRY_CAST({clean_expr} AS DOUBLE)")
+            conn.execute(f'UPDATE "{table_name}" SET "{column}__coerced_tmp" = TRY_CAST({clean_expr} AS DOUBLE)')
         except Exception as e:
             logger.error(f"Coercion update failed for {column}: {e}")
-            conn.execute(f"ALTER TABLE {table_name} DROP COLUMN {column}__coerced_tmp")
+            conn.execute(f'ALTER TABLE "{table_name}" DROP COLUMN "{column}__coerced_tmp"')
             return None
 
         # Check success rate
         stats = conn.execute(f"""
             SELECT 
-                COUNT(*) FILTER (WHERE {column} IS NOT NULL AND {column}__coerced_tmp IS NULL) as failed_count,
+                COUNT(*) FILTER (WHERE "{column}" IS NOT NULL AND "{column}__coerced_tmp" IS NULL) as failed_count,
                 COUNT(*) as total_rows
-            FROM {table_name}
+            FROM "{table_name}"
         """).fetchone()
         
         failed_count, total_rows = stats
@@ -147,10 +148,10 @@ def coerce_column(
 
         if success_rate >= 0.95:
             # Commit changes
-            conn.execute(f"ALTER TABLE {table_name} DROP COLUMN {column}")
-            conn.execute(f"ALTER TABLE {table_name} RENAME COLUMN {column}__coerced_tmp TO {column}")
+            conn.execute(f'ALTER TABLE "{table_name}" DROP COLUMN "{column}"')
+            conn.execute(f'ALTER TABLE "{table_name}" RENAME COLUMN "{column}__coerced_tmp" TO "{column}"')
             
-            null_after = conn.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {column} IS NULL").fetchone()[0]
+            null_after = conn.execute(f'SELECT COUNT(*) FROM "{table_name}" WHERE "{column}" IS NULL').fetchone()[0]
             
             # Find sample problematic values if any
             problematic = []
@@ -172,7 +173,7 @@ def coerce_column(
             )
         else:
             # Rollback
-            conn.execute(f"ALTER TABLE {table_name} DROP COLUMN {column}__coerced_tmp")
+            conn.execute(f'ALTER TABLE "{table_name}" DROP COLUMN "{column}__coerced_tmp"')
             return None
 
     except Exception as e:
@@ -182,7 +183,7 @@ def coerce_column(
 def run_coercion_pipeline(conn: duckdb.DuckDBPyConnection, table_name: str) -> List[ColumnCoercionResult]:
     """Run coercion on all VARCHAR columns in a table."""
     results = []
-    schema_df = conn.execute(f"DESCRIBE {table_name}").df()
+    schema_df = conn.execute(f'DESCRIBE "{table_name}"').df()
     varchar_cols = schema_df[schema_df['column_type'] == 'VARCHAR']['column_name'].tolist()
     
     for col in varchar_cols:

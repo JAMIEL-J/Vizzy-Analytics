@@ -197,6 +197,7 @@ async def classify_intent(
             system_prompt=INTENT_CLASSIFICATION_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             temperature=0.0,
+            purpose="chat",
         )
         content_snippet = (response.content or "")[:100]
         logger.info(f"LLM response from {response.provider.value}: {content_snippet}...")

@@ -197,4 +197,19 @@ def deactivate_dataset(
         resource_id=str(dataset.id),
     )
 
-    return dataset
+
+def check_dataset_access(
+    session: Session,
+    dataset_id: UUID,
+    user_id: UUID,
+    role: UserRole = UserRole.USER,
+) -> bool:
+    """
+    Check if a user has access to a dataset.
+    Returns True if access is allowed, False otherwise.
+    """
+    try:
+        get_dataset_by_id(session, dataset_id, user_id, role)
+        return True
+    except (ResourceNotFound, AuthorizationError):
+        return False
