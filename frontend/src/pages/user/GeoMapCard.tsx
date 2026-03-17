@@ -50,6 +50,7 @@ interface GeoMapCardProps {
     mapType?: 'world' | 'us_states';
     chartTitle?: string;
     formatType?: string;
+    isDark?: boolean;
 }
 
 // ─── Map config per type ──────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ const MAP_CONFIG = {
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
-const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartTitle, formatType }) => {
+const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartTitle, formatType, isDark = true }) => {
     const [tooltipContent, setTooltipContent] = useState<{ title: string, dimension: string, value: string, metric: string, hasData: boolean, multiMetrics?: { label: string, formatted: string }[] } | null>(null);
     const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
@@ -100,9 +101,9 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
     const colorScale = useMemo(() =>
         scaleLinear<string>()
             .domain([0, maxValue * 0.1, maxValue])
-            .range(["#111111", "#cc5429", "#ff6933"])
+            .range(isDark ? ["#111111", "#cc5429", "#ff6933"] : ["#f1f5f9", "#ffa17a", "#ff6933"])
             .clamp(true),
-        [maxValue]);
+        [maxValue, isDark]);
 
     const resolveData = (geo: any): GeoDataPoint | undefined => {
         const name = geo.properties?.name?.toLowerCase().trim() ?? '';
@@ -166,23 +167,23 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
     return (
         <div className="relative w-full h-[220px] overflow-hidden rounded-sm glass-panel border border-border-main shadow-[0_0_15px_rgba(255,105,51,0.05)] transition-colors duration-300">
             {/* Top badge */}
-            <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2 py-0.5 border border-border-main rounded-sm">
+            <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-bg-card/50 dark:bg-black/50 backdrop-blur-md px-2 py-0.5 border border-border-main rounded-sm shadow-sm transition-colors">
                 <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
                         d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
                 </svg>
-                <span className="text-[9px] font-mono tracking-widest uppercase font-bold text-primary transition-colors">
+                <span className="text-[9px] font-mono tracking-widest uppercase font-bold text-primary">
                     {mapType === 'us_states' ? 'US States' : 'World Map'}
                 </span>
-                <span className="text-[8px] font-mono uppercase tracking-widest text-themed-muted transition-colors">· {matchedCount} regions</span>
+                <span className="text-[8px] font-mono uppercase tracking-widest text-themed-muted">· {matchedCount} regions</span>
             </div>
 
             {/* Zoom controls */}
             <div className="absolute top-2 right-8 z-10 flex flex-col gap-0.5">
                 <button onClick={() => setZoom(z => Math.min(z * 1.4, cfg.maxZoom))}
-                    className="w-5 h-5 flex items-center justify-center bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-colors shadow-sm">+</button>
+                    className="w-5 h-5 flex items-center justify-center bg-bg-card/50 dark:bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-all shadow-sm cursor-pointer">+</button>
                 <button onClick={() => setZoom(z => Math.max(z / 1.4, 1))}
-                    className="w-5 h-5 flex items-center justify-center bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-colors shadow-sm">−</button>
+                    className="w-5 h-5 flex items-center justify-center bg-bg-card/50 dark:bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-all shadow-sm cursor-pointer">−</button>
             </div>
 
             <ComposableMap
@@ -204,16 +205,16 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
                                         onMouseLeave={() => setTooltipContent(null)}
                                         style={{
                                             default: {
-                                                fill: d ? colorScale(d.value) : "#1a1a1a",
+                                                fill: d ? colorScale(d.value) : (isDark ? "#1a1a1a" : "#f1f5f9"),
                                                 outline: "none",
-                                                stroke: "#0a0a0a",
+                                                stroke: isDark ? "#0a0a0a" : "#cbd5e1",
                                                 strokeWidth: mapType === 'us_states' ? 0.4 : 0.15,
                                                 transition: "fill 0.2s ease, stroke 0.2s ease",
                                             },
                                             hover: {
-                                                fill: d ? "#ff6933" : "#2a2a2a",
+                                                fill: d ? "#ff6933" : (isDark ? "#2a2a2a" : "#e2e8f0"),
                                                 outline: "none",
-                                                stroke: "#ffffff30",
+                                                stroke: isDark ? "#ffffff30" : "#ff6933",
                                                 strokeWidth: 0.5,
                                                 cursor: "pointer",
                                             },
@@ -233,7 +234,7 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
             {/* Floating tooltip */}
             {tooltipContent && typeof document !== 'undefined' && createPortal(
                 <div
-                    className="fixed z-[99999] pointer-events-none rounded-sm px-4 py-3 border border-border-main backdrop-blur-md transition-colors duration-75 min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(255,105,51,0.1)] text-themed-main font-mono"
+                    className="fixed z-[99999] pointer-events-none rounded-sm px-4 py-3 border border-border-main backdrop-blur-md transition-colors duration-75 min-w-[160px] bg-bg-card/95 dark:bg-black/95 shadow-xl text-themed-main font-mono"
                     style={{
                         left: tooltipPos.x,
                         top: tooltipPos.y - 12,
@@ -274,12 +275,14 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
             )}
 
             {/* Legend */}
-            <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-black/50 border border-border-main backdrop-blur-md px-2 py-1 rounded-sm transition-colors font-mono">
+            <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-bg-card/50 dark:bg-black/50 border border-border-main backdrop-blur-md px-2 py-1 rounded-sm transition-colors font-mono shadow-sm">
                 <span className="text-[8px] text-themed-muted uppercase tracking-widest">Low</span>
                 <div className="w-14 h-1 rounded-sm opacity-80" style={{
-                    background: 'linear-gradient(to right, #111111, #cc5429, #ff6933)'
+                    background: isDark 
+                        ? 'linear-gradient(to right, #111111, #cc5429, #ff6933)'
+                        : 'linear-gradient(to right, #f1f5f9, #ffa17a, #ff6933)'
                 }} />
-                <span className="text-[8px] text-primary font-bold transition-colors uppercase tracking-widest text-shadow-[0_0_5px_rgba(255,105,51,0.5)]">Peak</span>
+                <span className="text-[8px] text-primary font-bold transition-colors uppercase tracking-widest">Peak</span>
             </div>
         </div>
     );

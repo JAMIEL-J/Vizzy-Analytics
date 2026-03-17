@@ -365,7 +365,24 @@ async def run_analysis_orchestration(
             logger.warning(f"Staleness check failed: {ex}")
 
     # 6. Branch based on intent_type
-    if intent.intent_type == IntentType.DASHBOARD:
+    # Map legacy types to new types for backward compatibility
+    _LEGACY_MAP = {
+        IntentType.ANALYSIS: 'analysis_chart',
+        IntentType.VISUALIZATION: 'analysis_chart',
+        IntentType.DASHBOARD: 'dashboard',
+        IntentType.TEXT_QUERY: 'retrieval',
+    }
+    _NEW_MAP = {
+        IntentType.RETRIEVAL: 'retrieval',
+        IntentType.COMPARATIVE: 'analysis_chart',
+        IntentType.AGGREGATIVE: 'analysis_chart',
+        IntentType.TREND: 'analysis_chart',
+        IntentType.INTERPRETIVE: 'interpretive',
+        IntentType.AMBIGUOUS: 'retrieval',
+    }
+    route = _LEGACY_MAP.get(intent.intent_type) or _NEW_MAP.get(intent.intent_type, 'analysis_chart')
+
+    if route == 'dashboard':
         # DASHBOARD MODE: Generate multi-widget overview
         dashboard_output = generate_overview_dashboard(
             df=df,
@@ -385,9 +402,85 @@ async def run_analysis_orchestration(
             widget_count=widget_count,
         )
 
-    elif intent.intent_type == IntentType.TEXT_QUERY:
-        # TEXT QUERY MODE: Text-only response without chart
-        logger.info("Processing text-only query (no visualization)")
+    elif route == 'interpretive':
+        # INTERPRETIVE MODE: Multi-query diagnostic battery
+        from app.services.analytics.diagnostic_battery import run_diagnostic_battery
+        from app.core.llm_client import get_llm_client
+
+        logger.info("Processing interpretive query — running diagnostic battery")
+
+        battery_result = await run_diagnostic_battery(
+            df=df,
+            query=query,
+            target_col=contract.target_column if hasattr(contract, 'target_column') else None,
+            metric_col=intent.metric,
+        )
+
+        diagnostics = battery_result.get("diagnostics", [])
+
+        if diagnostics:
+            # Synthesize findings with LLM
+            synthesis_prompt = f"""You are a senior data analyst. Based on the following diagnostic breakdowns,
+write a concise explanation answering the user's question.
+
+{battery_result['synthesis_context']}
+
+Rules:
+- Start with a direct answer to the question
+- Cite the top 2-3 drivers with actual numbers
+- Keep it under 200 words
+- Use plain English, no jargon
+- Do NOT use markdown formatting or bullet points. Plain text with paragraphs only."""
+
+            try:
+                llm_client = get_llm_client()
+                synthesis_response = await llm_client.complete(
+                    system_prompt="You are a data analyst writing a brief diagnostic summary.",
+                    user_prompt=synthesis_prompt,
+                    temperature=0.3,
+                    max_tokens=512,
+                )
+                synthesis_text = synthesis_response.content.strip()
+            except Exception as e:
+                logger.warning(f"LLM synthesis failed: {e}")
+                synthesis_text = battery_result["synthesis_context"]
+
+            # Build chart specs for each diagnostic
+            diag_charts = []
+            for diag in diagnostics:
+                diag_charts.append({
+                    "type": "bar",
+                    "title": diag["title"],
+                    "data": {
+                        "labels": [row.get(diag["dimension"], "") for row in diag["data"]],
+                        "rows": diag["data"],
+                    },
+                })
+
+            result_payload = {
+                "type": "interpretive",
+                "diagnostics": diagnostics,
+                "target": battery_result["target"],
+            }
+
+            formatted_response = {
+                "content": synthesis_text,
+                "output_data": {
+                    "type": "interpretive",
+                    "response_type": "multi_chart",
+                    "charts": diag_charts,
+                    "diagnostics_count": len(diagnostics),
+                    "detected_intent": "interpretive",
+                },
+                "intent_type": "interpretive",
+            }
+        else:
+            # No diagnostics → fall through to analysis chart
+            route = 'analysis_chart'
+
+    elif route == 'retrieval':
+        # RETRIEVAL MODE: Text-only response without chart (was TEXT_QUERY)
+        logger.info("Processing retrieval/text-only query (no visualization)")
         
         # Generate text answer
         text_result = generate_text_answer(

@@ -92,6 +92,7 @@ class DashboardAnalyticsResponse(BaseModel):
     geo_filters: Dict[str, List[str]] = {}
     raw_data: List[Dict[str, Any]] = []
     chart_configs: Dict[str, Any] = {}
+    data_quality: List[Dict[str, Any]] = []
 
 
 class DashboardStateRequest(BaseModel):
@@ -403,6 +404,16 @@ def get_dashboard_analytics(
                 "is_date": dim in classification.dates if dim else False
             }
 
+        # Data quality: null % per column
+        total = len(df)
+        data_quality = []
+        for col in df.columns:
+            null_count = int(df[col].isna().sum())
+            null_pct = round(null_count / total * 100, 1) if total > 0 else 0
+            dtype = str(df[col].dtype)
+            action = "coerced" if col in classification.metrics and df[col].dtype in ['float64', 'int64'] else "none"
+            data_quality.append({"column": col, "null_pct": null_pct, "null_count": null_count, "dtype": dtype, "action": action})
+
         return DashboardAnalyticsResponse(
             dataset_name=dataset_name,
             total_rows=len(df),
@@ -421,7 +432,8 @@ def get_dashboard_analytics(
             target_values=target_values,
             geo_filters=geo_filters,
             raw_data=raw_data_payload,
-            chart_configs=chart_configs
+            chart_configs=chart_configs,
+            data_quality=data_quality,
         )
         
     except HTTPException:
@@ -573,4 +585,77 @@ def get_correlation_matrix(
         raise HTTPException(
             status_code=500,
             detail=f"Error computing correlation: {str(e)}",
+        )
+
+
+# =============================================================================
+# Dashboard Insight Narrative
+# =============================================================================
+
+class NarrativeRequest(BaseModel):
+    """Request payload for generating a dashboard insight narrative."""
+    dataset_id: UUID
+    kpis: Dict[str, Any]
+    domain: str
+    dataset_name: str
+
+
+NARRATIVE_SYSTEM_PROMPT = """You are a senior data analyst writing a brief executive summary for a dashboard.
+
+Rules:
+- Write exactly 4-5 sentences
+- Sentence 1: The single most important finding from the KPIs
+- Sentence 2: One positive trend or strength
+- Sentence 3: One area of concern or risk
+- Sentence 4: One question worth investigating further
+- Sentence 5 (optional): A brief actionable recommendation
+- No jargon. No technical column names. Be direct and specific.
+- Use actual numbers from the KPIs provided.
+- Do NOT use markdown formatting, bullet points, or headers. Plain text only.
+"""
+
+
+@router.post("/analytics/narrative")
+async def generate_narrative(
+    payload: NarrativeRequest,
+    current_user: AuthenticatedUser,
+):
+    """Generate an AI insight narrative for the current dashboard state."""
+    from app.core.llm_client import get_llm_client
+
+    try:
+        # Build a concise KPI summary string for the LLM
+        kpi_lines = []
+        for key, kpi in payload.kpis.items():
+            title = kpi.get("title", key)
+            value = kpi.get("value", "N/A")
+            fmt = kpi.get("format", "number")
+            trend = kpi.get("trend")
+            trend_str = f" (trend: {trend:+.1f}%)" if trend is not None else ""
+            kpi_lines.append(f"- {title}: {value} [{fmt}]{trend_str}")
+
+        kpi_summary = "\n".join(kpi_lines)
+
+        user_prompt = f"""Dataset: {payload.dataset_name}
+Domain: {payload.domain}
+
+KPI Results:
+{kpi_summary}
+
+Write a brief executive summary based on these metrics."""
+
+        client = get_llm_client()
+        response = await client.complete(
+            system_prompt=NARRATIVE_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            temperature=0.4,
+            max_tokens=512,
+        )
+
+        return {"narrative": response.content.strip()}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating narrative: {str(e)}",
         )

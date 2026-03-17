@@ -151,7 +151,7 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartColors, chartTi
             return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
         };
         return (
-            <div className="rounded-sm px-4 py-3 border border-border-main backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(255,105,51,0.1)] text-themed-main font-serif tracking-wide z-[9999]">
+            <div className="rounded-sm px-4 py-3 border border-border-main backdrop-blur-md min-w-[160px] bg-bg-card/95 dark:bg-black/95 shadow-xl text-themed-main font-serif tracking-wide z-[9999]">
                 {chartTitle && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-border-main opacity-70 leading-tight">{chartTitle}</p>}
                 {fp.label && <p className="text-[10px] opacity-60 mb-2 pb-2 border-b border-border-main font-bold uppercase tracking-widest">{fp.label}</p>}
                 <div className="space-y-1.5">
@@ -212,8 +212,9 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartColors, chartTi
         }));
     }
 
+
     return (
-        <div className="rounded-sm px-4 py-3 border border-border-main backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(255,105,51,0.1)] text-themed-main font-mono z-[9999]">
+        <div className="rounded-sm px-4 py-3 border border-border-main backdrop-blur-md min-w-[160px] bg-bg-card/95 dark:bg-black/95 shadow-xl text-themed-main font-mono z-[9999]">
             {chartTitle && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-border-main opacity-70 leading-tight">{chartTitle}</p>}
 
             {displayLabel && (
@@ -696,7 +697,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
             return (
                 <div className="flex flex-col h-full w-full">
                     {renderOutlierToggle()}
-                    <GeoMapCard data={chartData} mapType={chart.geo_meta?.map_type ?? 'world'} chartTitle={chart.title} formatType={chart.format_type} />
+                    <GeoMapCard data={chartData} mapType={chart.geo_meta?.map_type ?? 'world'} chartTitle={chart.title} formatType={chart.format_type} isDark={isDark} />
                 </div>
             );
 
@@ -829,7 +830,7 @@ const MultiFilterPanel = ({
     if (allCols.length === 0) return null;
 
     return (
-        <div ref={panelRef} className="mb-6">
+        <div ref={panelRef} className="mb-6 relative z-30">
             {/* Panel card */}
             <div className="glass-panel rounded-sm shadow-sm p-4">
 
@@ -991,15 +992,15 @@ const MultiFilterPanel = ({
 
                                         {/* Values dropdown */}
                                         {isValuesOpen && (
-                                            <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-bg-card rounded-sm shadow-2xl z-50 overflow-hidden">
-                                                <div className="flex items-center justify-between px-3 py-2 border-b border-border-main">
+                                            <div className="absolute top-full left-0 mt-1 w-full min-w-[200px] bg-bg-card border border-border-main rounded-sm shadow-2xl z-50 overflow-hidden">
+                                                <div className="flex items-center justify-between px-3 py-2.5 border-b border-border-main bg-bg-card/50 backdrop-blur-sm">
                                                     <button
                                                         onClick={() => onFilterChange(selectedCol, [...geoFilters[selectedCol]])}
-                                                        className="text-[13px] font-serif text-primary hover:text-primary/80 font-medium transition-colors"
+                                                        className="text-[12px] uppercase tracking-wider font-serif text-primary hover:text-primary/80 font-bold transition-colors"
                                                     >Select all</button>
                                                     <button
                                                         onClick={() => onFilterChange(selectedCol, [])}
-                                                        className="text-[13px] font-serif text-themed-muted hover:text-red-400 font-medium transition-colors"
+                                                        className="text-[12px] uppercase tracking-wider font-serif text-themed-muted hover:text-red-400 font-bold transition-colors"
                                                     >Clear</button>
                                                 </div>
                                                 <div className="max-h-52 overflow-y-auto py-1">
@@ -1782,40 +1783,40 @@ export default function UserDashboard() {
                     <select
                         value={currentAgg === 'avg' ? 'mean' : currentAgg}
                         onChange={(e) => setChartOverride(chart.id, { aggregation: e.target.value })}
-                        className="text-[12px] font-serif px-2 py-0.5 rounded-sm border border-border-main outline-none transition-colors bg-black/50 text-themed-muted hover:border-primary/40 focus:border-primary"
+                        className="text-[12px] font-serif px-2 py-1 rounded-sm border border-border-main outline-none transition-colors bg-bg-card dark:bg-black/50 text-themed-muted hover:border-primary/40 focus:border-primary cursor-pointer"
                         title="Aggregation Method"
                     >
-                        <option className="bg-[#16181D] text-gray-300" value="sum">Sum</option>
-                        <option className="bg-[#16181D] text-gray-300" value="mean">Average</option>
+                        <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="sum">Sum</option>
+                        <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="mean">Average</option>
                     </select>
                 )}
                 <select
                     value={currentType}
                     onChange={(e) => setChartOverride(chart.id, { type: e.target.value })}
-                    className="text-[12px] font-serif px-2 py-0.5 rounded-sm border border-border-main outline-none transition-colors bg-black/50 text-themed-main hover:border-primary/40 focus:border-primary"
+                    className="text-[12px] font-serif px-2 py-1 rounded-sm border border-border-main outline-none transition-colors bg-bg-card dark:bg-black/50 text-themed-main hover:border-primary/40 focus:border-primary cursor-pointer"
                     title="Chart Type"
                 >
-                    <option className="bg-[#16181D] text-gray-300" value="bar">Bar</option>
-                    <option className="bg-[#16181D] text-gray-300" value="hbar">H-Bar</option>
-                    <option className="bg-[#16181D] text-gray-300" value="line">Line</option>
-                    <option className="bg-[#16181D] text-gray-300" value="area">Area</option>
-                    <option className="bg-[#16181D] text-gray-300" value="pie">Pie</option>
-                    <option className="bg-[#16181D] text-gray-300" value="donut">Donut</option>
-                    <option className="bg-[#16181D] text-gray-300" value="scatter">Scatter</option>
-                    <option className="bg-[#16181D] text-gray-300" value="treemap">Treemap</option>
-                    <option className="bg-[#16181D] text-gray-300" value="radar">Radar</option>
-                    <option className="bg-[#16181D] text-gray-300" value="geo_map">Map</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="bar">Bar</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="hbar">H-Bar</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="line">Line</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="area">Area</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="pie">Pie</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="donut">Donut</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="scatter">Scatter</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="treemap">Treemap</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="radar">Radar</option>
+                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="geo_map">Map</option>
                 </select>
                 <button
                     onClick={() => exportChartCSV(chart)}
-                    className="p-1 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-black/50"
+                    className="p-1.5 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-bg-card dark:bg-black/50"
                     title="Export CSV"
                 >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 </button>
                 <button
                     onClick={() => exportChartHTML(chart)}
-                    className="p-1 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-black/50"
+                    className="p-1.5 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-bg-card dark:bg-black/50"
                     title="Export Interactive HTML"
                 >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
@@ -1830,7 +1831,7 @@ export default function UserDashboard() {
             <div className="flex flex-col min-h-screen relative z-10">
 
                 {/* ── Header ── */}
-                <header className="flex justify-between items-center px-6 lg:px-8 py-5 sticky top-0 z-20 bg-bg-main/80 backdrop-blur-md border-b border-border-main transition-colors duration-300">
+                <header className="flex justify-between items-center px-6 lg:px-8 py-5 sticky top-0 z-50 bg-bg-main/80 backdrop-blur-md border-b border-border-main transition-colors duration-300">
                     <div className="flex items-center gap-4">
                         <span className="material-symbols-outlined text-primary text-2xl">diamond</span>
                         <h1 className="text-xl lg:text-2xl font-light tracking-widest uppercase text-themed-main">
@@ -1850,7 +1851,7 @@ export default function UserDashboard() {
                         <button
                             onClick={() => loadAnalytics()}
                             disabled={isLoading}
-                            className="p-2.5 rounded-sm bg-transparent border border-white/20 text-themed-muted hover:text-primary hover:border-primary/50 transition-all shadow-sm disabled:opacity-50"
+                            className="p-2.5 rounded-sm bg-transparent border border-border-main text-themed-muted hover:text-primary hover:border-primary/50 transition-all shadow-sm disabled:opacity-50"
                             title="Refresh data"
                         >
                             <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1912,7 +1913,7 @@ export default function UserDashboard() {
                                 onClick={() => setTargetValue('all')}
                                 className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === 'all'
                                     ? 'bg-primary text-black shadow-md shadow-primary/20'
-                                    : 'bg-black/40 text-gray-500 border border-white/10 hover:text-primary hover:border-primary/50'}`}
+                                    : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
                             >
                                 All {analytics.target_column?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                             </button>
@@ -1922,7 +1923,7 @@ export default function UserDashboard() {
                                     onClick={() => setTargetValue(val)}
                                     className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === val
                                         ? 'bg-primary text-black shadow-md shadow-primary/20'
-                                        : 'bg-black/40 text-gray-500 border border-white/10 hover:text-primary hover:border-primary/50'}`}
+                                        : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
                                 >
                                     {val.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                                 </button>

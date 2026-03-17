@@ -77,34 +77,49 @@ def _detect_dashboard_intent(query: str) -> bool:
 INTENT_CLASSIFICATION_SYSTEM_PROMPT = """
 You are a production-grade analytical intent classifier for a BI copilot.
 
-Your job is to classify user queries into structured JSON for data analysis.
+Your job is to classify user queries into one of 6 intent types:
+
+1. "retrieval" = User wants a SINGLE NUMBER or a simple lookup
+   - "What is the total revenue?"
+   - "How many customers churned?"
+   - "List the top 5 products"
+
+2. "comparative" = User wants to COMPARE values across categories
+   - "Compare sales by region"
+   - "Show revenue vs expenses"
+   - "Top 10 cities by revenue"
+
+3. "aggregative" = User wants a GROUPED metric with specific aggregation
+   - "Average tenure by contract type"
+   - "Sum of charges per payment method"
+   - "Count orders by month"
+
+4. "trend" = User wants to see change OVER TIME
+   - "Revenue trend by month"
+   - "How has churn changed over time?"
+   - "Monthly growth in signups"
+
+5. "interpretive" = User wants to UNDERSTAND WHY something is happening
+   - "Why is churn so high?"
+   - "What drives revenue?"
+   - "Explain the drop in sales"
+
+6. "ambiguous" = Query is unclear, column reference is vague, or multiple interpretations exist
+   - "Show me top customers" (top by what?)
+   - "Analyze the data" (too broad)
+   - "What about performance?" (which metric?)
 
 Rules:
-- If user EXPLICITLY asks for a visualization (show, plot, chart, graph, visualize) → intent_type = "analysis"
-- If user asks a specific question about a number (what is, how many, total, count, list) WITHOUT asking for a chart → intent_type = "text_query"
-- If user asks for dashboard, overview, summary → intent_type = "dashboard"
 - Do NOT guess column names - use exact names from schema
+- If a time-related word is used (monthly, yearly, trend, over time), classify as "trend"
+- If user asks "why" or "what drives" or "explain", classify as "interpretive"
+- If user asks to "compare" or uses "by" with a dimension, classify as "comparative"
+- Only use "ambiguous" when genuinely unclear
 - Always return valid JSON
-
-Intent Type Guidelines:
-1. "analysis" = User wants a CHART (bar, line, pie, etc.)
-   - "Show sales by region"
-   - "Plot revenue trend"
-   - "Graph the distribution"
-
-2. "text_query" = User wants a TEXT ANSWER only (no chart)
-   - "What is the total revenue?" (Single number)
-   - "How many customers do we have?" (Single number)
-   - "List the top 5 products" (Table/List)
-   - "Who is the best customer?" (Single entity)
-
-3. "dashboard" = User wants multiple charts/overview
-   - "Give me an overview"
-   - "Dashboard for sales"
 
 Output format:
 {
-  "intent_type": "analysis" | "dashboard" | "text_query",
+  "intent_type": "retrieval" | "comparative" | "aggregative" | "trend" | "interpretive" | "ambiguous",
   "aggregation": "count" | "sum" | "average" | "min" | "max" | null,
   "metric": "<column_name>" | null,
   "group_by": ["<column_name>"] | null,
@@ -137,59 +152,79 @@ async def classify_intent(
     schema: Dict[str, Any],
 ) -> AnalysisIntent:
     """
-    Classify user query into structured AnalysisIntent using LLM.
+    Classify user query into structured AnalysisIntent.
     
-    Uses multi-provider LLM client with automatic fallback.
-    Pre-filters using keyword detection for faster response.
+    Strategy: Use fast heuristic as primary signal, LLM for structured extraction.
+    The heuristic decides the intent_type, the LLM extracts metric/group_by/etc.
     """
-    # Quick keyword-based detection first
-    is_dashboard = _detect_dashboard_intent(query)
-    is_visualization = _detect_visualization_intent(query)
-    
-    client = get_llm_client()
+    # Step 1: Fast heuristic for intent type (zero cost)
+    fast_intent, fast_confidence, fast_label = classify_intent_fast(query)
+    logger.info(f"Fast classifier: {fast_label} (confidence: {fast_confidence})")
 
+    # Map fast heuristic to IntentType enum
+    FAST_TO_INTENT = {
+        'kpi': 'retrieval',
+        'comparison': 'comparative',
+        'trend': 'trend',
+        'distribution': 'comparative',  # distributions are visual comparisons
+        'exploration': 'retrieval',
+        'dashboard': 'retrieval',       # dashboard handled separately upstream
+    }
+
+    # Detect interpretive ("why" questions) — not in fast classifier
+    query_lower = query.lower().strip()
+    is_interpretive = any(p in query_lower for p in [
+        'why ', 'what drives', 'what causes', 'explain the', 'reason for',
+        'what led to', 'what is behind', 'root cause', 'factors behind',
+    ])
+
+    if is_interpretive:
+        heuristic_type = 'interpretive'
+    elif fast_confidence < 0.4:
+        heuristic_type = 'ambiguous'
+    else:
+        heuristic_type = FAST_TO_INTENT.get(fast_intent, 'retrieval')
+
+    # Step 2: LLM for structured field extraction
+    client = get_llm_client()
     user_prompt = build_user_prompt(query, schema)
 
-    response = await client.complete(
-        system_prompt=INTENT_CLASSIFICATION_SYSTEM_PROMPT,
-        user_prompt=user_prompt,
-        temperature=0.0,  # Deterministic output
-    )
+    try:
+        response = await client.complete(
+            system_prompt=INTENT_CLASSIFICATION_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            temperature=0.0,
+        )
+        logger.info(f"LLM response from {response.provider.value}: {response.content[:100]}...")
+        data = parse_json_response(response.content)
+    except Exception as e:
+        logger.warning(f"LLM classification failed, using heuristic only: {e}")
+        data = {}
 
-    logger.info(f"LLM response from {response.provider.value}: {response.content[:100]}...")
+    # Step 3: Merge — heuristic wins for type, LLM wins for fields
+    llm_type = data.get('intent_type', heuristic_type)
 
-    # Parse JSON response
-    data = parse_json_response(response.content)
-
-    # Override with keyword detection if LLM misses it
-    llm_intent = data.get("intent_type", "analysis")
-    
-    # Force dashboard if clearly detected
-    if is_dashboard:
-        llm_intent = "dashboard"
-    # Force analysis if visualization keywords detected
-    elif is_visualization and llm_intent == "text_query":
-        llm_intent = "analysis"
-    # Keep text_query if no visualization keywords
-    elif not is_visualization and llm_intent == "analysis":
-        llm_intent = "text_query"
+    # If LLM says interpretive or ambiguous, trust it
+    # Otherwise, trust heuristic for type
+    if llm_type in ('interpretive', 'ambiguous'):
+        final_type = llm_type
+    else:
+        final_type = heuristic_type
 
     # Handle null aggregation
-    if data.get("aggregation") is None:
-        data["aggregation"] = "count"
+    if data.get('aggregation') is None:
+        data['aggregation'] = 'count'
 
-    # Validate and create AnalysisIntent
     intent = AnalysisIntent(
-        intent_type=IntentType(llm_intent),
-        aggregation=Aggregation(data["aggregation"]),
-        metric=data.get("metric"),
-        group_by=data.get("group_by"),
-        time_column=data.get("time_column"),
-        time_granularity=data.get("time_granularity"),
+        intent_type=IntentType(final_type),
+        aggregation=Aggregation(data.get('aggregation', 'count')),
+        metric=data.get('metric'),
+        group_by=data.get('group_by'),
+        time_column=data.get('time_column'),
+        time_granularity=data.get('time_granularity'),
     )
 
-    logger.info(f"Classified intent: {intent.intent_type.value}, aggregation: {intent.aggregation.value}")
-
+    logger.info(f"Final intent: {intent.intent_type.value} (heuristic={heuristic_type}, llm={llm_type})")
     return intent
 
 

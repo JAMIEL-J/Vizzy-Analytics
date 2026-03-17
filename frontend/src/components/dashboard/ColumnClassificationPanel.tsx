@@ -36,21 +36,21 @@ export const ColumnClassificationPanel: React.FC<ColumnClassificationPanelProps>
     allCols.sort((a, b) => a.name.localeCompare(b.name));
 
     return (
-        <div className="mb-6 rounded-sm border border-white/10 overflow-hidden glass-panel">
+        <div className="mb-6 rounded-sm border border-border-main overflow-hidden glass-panel relative z-10">
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full px-5 py-3.5 flex items-center justify-between text-left transition-colors hover:bg-white/5"
+                className="w-full px-5 py-3.5 flex items-center justify-between text-left transition-colors hover:bg-bg-hover"
             >
                 <div>
-                    <h3 className="font-serif text-[17px] text-white tracking-wide">
+                    <h3 className="font-serif text-[17px] text-themed-main tracking-wide">
                         Column Classification
                     </h3>
-                    <p className="text-[13px] font-serif mt-0.5 text-gray-400">
+                    <p className="text-[13px] font-serif mt-0.5 text-themed-muted">
                         Review how Vizzy detected your columns. Override roles if necessary.
                     </p>
                 </div>
                 <svg
-                    className={`w-5 h-5 transition-transform text-gray-400 ${isOpen ? 'rotate-180' : ''}`}
+                    className={`w-5 h-5 transition-transform text-themed-muted ${isOpen ? 'rotate-180' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                 >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -58,16 +58,16 @@ export const ColumnClassificationPanel: React.FC<ColumnClassificationPanelProps>
             </button>
 
             {isOpen && (
-                <div className="p-5 pt-2 border-t border-white/10 text-sm">
+                <div className="p-5 pt-2 border-t border-border-main text-sm">
                     <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                         {allCols.map(col => {
                             const isOverridden = !!classification_overrides[col.name];
                             const currentRole = classification_overrides[col.name] || col.detectedRole;
 
                             return (
-                                <div key={col.name} className="flex flex-col gap-1.5 p-3 rounded-sm border border-white/10 bg-black/20">
+                                <div key={col.name} className="flex flex-col gap-1.5 p-3 rounded-sm border border-border-main bg-gray-50/80 dark:bg-black/20 shadow-sm">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-serif text-[14px] text-gray-200 truncate mr-2" title={col.name}>
+                                        <span className="font-serif text-[14px] text-themed-main truncate mr-2" title={col.name}>
                                             {col.name}
                                         </span>
                                         {isOverridden && (
@@ -77,10 +77,10 @@ export const ColumnClassificationPanel: React.FC<ColumnClassificationPanelProps>
                                     <select
                                         value={currentRole}
                                         onChange={(e) => setClassificationOverride(col.name, e.target.value as ClassificationRole)}
-                                        className="w-full px-2 py-1.5 text-[13px] font-serif rounded-sm border border-white/10 bg-black/50 text-gray-300 transition-colors focus:ring-1 focus:ring-primary focus:border-primary hover:border-white/20 outline-none"
+                                        className="w-full px-2 py-1.5 text-[13px] font-serif rounded-sm border border-border-main bg-bg-card dark:bg-black/50 text-themed-main transition-colors focus:ring-1 focus:ring-primary focus:border-primary hover:border-primary/30 outline-none cursor-pointer"
                                     >
                                         {ROLES.map(r => (
-                                            <option key={r.value} value={r.value}>{r.label} - {r.description}</option>
+                                            <option key={r.value} value={r.value}>{r.label} — {r.description}</option>
                                         ))}
                                     </select>
                                 </div>

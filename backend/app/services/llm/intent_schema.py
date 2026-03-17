@@ -5,11 +5,22 @@ from pydantic import BaseModel, Field
 
 
 class IntentType(str, Enum):
-    ANALYSIS = "analysis"           # Chart-based analysis (triggered by visualization keywords)
-    VISUALIZATION = "visualization" # Explicit visualization request
-    DASHBOARD = "dashboard"         # Multi-chart dashboard
-    TEXT_QUERY = "text_query"       # Text-only response (no chart)
+    """
+    Granular 6-type intent classification.
+    Each type maps to a dedicated prompt template and execution strategy.
+    """
+    RETRIEVAL    = "retrieval"     # Single SQL → scalar/table ("What is total revenue?")
+    COMPARATIVE  = "comparative"   # SQL with GROUP BY + comparison ("Sales by region")
+    AGGREGATIVE  = "aggregative"   # Grouped aggregation, correct method enforced ("Average tenure by contract")
+    INTERPRETIVE = "interpretive"  # Diagnostic battery + LLM synthesis ("Why is churn high?")
+    TREND        = "trend"         # Time-series SQL, line chart forced ("Revenue over time")
+    AMBIGUOUS    = "ambiguous"     # Clarification required, no SQL generated ("Show me top customers")
 
+    # Legacy aliases (kept for backward compatibility in existing saved sessions)
+    ANALYSIS      = "analysis"
+    VISUALIZATION = "visualization"
+    DASHBOARD     = "dashboard"
+    TEXT_QUERY    = "text_query"
 
 
 class Aggregation(str, Enum):
@@ -64,3 +75,4 @@ class AnalysisIntent(BaseModel):
         default=None,
         description="Structured filters (validated later)",
     )
+
