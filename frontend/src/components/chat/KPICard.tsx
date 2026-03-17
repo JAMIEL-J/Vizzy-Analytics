@@ -8,6 +8,7 @@ interface KPICardProps {
     suffix?: string;
     trendLabel?: string;
     variant?: 'default' | 'minimal';
+    compact?: boolean;
 }
 
 export const KPICard: React.FC<KPICardProps> = ({
@@ -17,14 +18,15 @@ export const KPICard: React.FC<KPICardProps> = ({
     prefix = '',
     suffix = '',
     trendLabel = 'vs last period',
-    variant = 'default'
+    variant = 'default',
+    compact = false,
 }) => {
     // Format value if it's a number
     const formattedValue = typeof value === 'number'
         ? new Intl.NumberFormat('en-US', {
             minimumFractionDigits: 0,
             maximumFractionDigits: 2,
-            notation: value > 1000000 ? "compact" : "standard"
+            notation: compact && Math.abs(value) >= 1000 ? "compact" : "standard"
         }).format(value)
         : value;
 
@@ -35,10 +37,10 @@ export const KPICard: React.FC<KPICardProps> = ({
     return (
         <div className={containerClasses}>
             <div className="relative z-10">
-                <div className="text-[13px] text-gray-400 font-serif tracking-wide mb-2">
+                <div className="text-[13px] text-gray-600 dark:text-gray-400 font-serif tracking-wide mb-2">
                     {label}
                 </div>
-                <div className="text-3xl font-serif tracking-tighter text-white group-hover:text-primary transition-colors drop-shadow-md">
+                <div className="text-3xl font-serif tracking-tighter text-gray-900 dark:text-white group-hover:text-primary transition-colors drop-shadow-md">
                     {prefix}{formattedValue}{suffix}
                 </div>
             </div>

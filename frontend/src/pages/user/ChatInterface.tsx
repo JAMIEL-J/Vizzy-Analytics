@@ -6,6 +6,27 @@ import { datasetService, type Dataset } from '../../lib/api/dataset';
 import ChartRenderer from '../../components/chat/ChartRenderer';
 import { PlusIcon, ChatBubbleLeftIcon, Bars3Icon, XMarkIcon, TrashIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildClarifiedQuery = (originalQuery: string, term: string, selectedColumn: string) => {
+    const source = (originalQuery || '').trim();
+    if (!source) {
+        return `Use column ${selectedColumn}`;
+    }
+
+    if (!term) {
+        return `${source}. Use column ${selectedColumn}.`;
+    }
+
+    const pattern = new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i');
+    if (pattern.test(source)) {
+        return source.replace(pattern, selectedColumn);
+    }
+
+    return `${source}. Use column ${selectedColumn}.`;
+};
+
 export default function ChatInterface() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputValue, setInputValue] = useState('');
@@ -327,7 +348,7 @@ export default function ChatInterface() {
                                                 VX
                                             </div>
                                         )}
-                                        <div className={`px-5 py-4 ${msg.role === 'user' ? 'bg-primary text-black rounded-sm border-b-2 border-[#b5461c] shadow-[0_0_15px_rgba(255,105,51,0.2)]' : 'glass-panel text-gray-200'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
+                                        <div className={`px-5 py-4 ${msg.role === 'user' ? 'bg-primary text-black rounded-sm border-b-2 border-[#b5461c] shadow-[0_0_15px_rgba(255,105,51,0.2)]' : 'glass-panel text-gray-800 dark:text-gray-200'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
                                             <div className="text-sm leading-relaxed">
                                                 {['analysis', 'visualization', 'dashboard', 'text_query', 'clarification'].includes(msg.intent_type || '') ? (
                                                     <div className="space-y-4 w-full">
@@ -362,10 +383,7 @@ export default function ChatInterface() {
                                                                     {msg.output_data.ambiguity.candidates.map((candidate: any, idx: number) => {
                                                                         const originalQuery = msg.output_data.ambiguity.original_query || '';
                                                                         const term = msg.output_data.ambiguity.term || '';
-                                                                        const newQuery = originalQuery.replace(
-                                                                            new RegExp(term, 'i'),
-                                                                            candidate.column
-                                                                        );
+                                                                        const newQuery = buildClarifiedQuery(originalQuery, term, candidate.column);
                                                                         const confidence = Math.round(candidate.score * 100);
                                                                         return (
                                                                             <button
@@ -454,17 +472,16 @@ export default function ChatInterface() {
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* ── SQL Panel (always visible) ── */}
+                                                                        {/* SQL Panel */}
                                                                         {sqlQuery && (
-                                                                            <div className="mt-3">
-                                                                                <div className="flex items-center justify-between mb-1.5">
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <span className="text-[10px] font-bold font-mono tracking-widest uppercase text-themed-muted flex items-center gap-1">
-                                                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                                                                            <div className="mt-4 rounded-sm border border-border-main bg-bg-main/40">
+                                                                                <div className="flex items-center justify-between px-3 py-2 border-b border-border-main/70">
+                                                                                    <div className="flex items-center gap-2.5">
+                                                                                        <span className="text-[10px] font-semibold font-mono tracking-[0.16em] uppercase text-themed-muted">
                                                                                             Generated SQL
                                                                                         </span>
                                                                                         {msg.output_data?.detected_intent && (
-                                                                                            <span className="text-[10px] font-mono tracking-widest uppercase px-1.5 py-0.5 rounded-sm bg-primary/20 text-primary">
+                                                                                            <span className="text-[10px] font-medium font-mono tracking-widest uppercase px-2 py-0.5 rounded-sm bg-primary/15 text-primary border border-primary/30">
                                                                                                 {msg.output_data.detected_intent}
                                                                                             </span>
                                                                                         )}
@@ -475,7 +492,7 @@ export default function ChatInterface() {
                                                                                             setCopiedSqlMsgId(msg.id);
                                                                                             setTimeout(() => setCopiedSqlMsgId(null), 2000);
                                                                                         }}
-                                                                                        className="text-[10px] font-mono font-bold tracking-widest uppercase text-themed-muted hover:text-primary transition-colors flex items-center gap-1"
+                                                                                        className="text-[10px] font-mono font-semibold tracking-widest uppercase text-themed-muted hover:text-primary transition-colors flex items-center gap-1"
                                                                                     >
                                                                                         {copiedSqlMsgId === msg.id ? (
                                                                                             <><svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg> Copied!</>
@@ -484,26 +501,39 @@ export default function ChatInterface() {
                                                                                         )}
                                                                                     </button>
                                                                                 </div>
-                                                                                <pre className="p-4 bg-bg-main/50 border border-border-main rounded-sm text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap leading-relaxed shadow-inner">
+                                                                                <pre className="mx-3 my-3 p-3 bg-slate-50 dark:bg-black/50 border border-border-main/70 rounded-sm text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap leading-relaxed">
                                                                                     <code>{sqlQuery}</code>
                                                                                 </pre>
 
                                                                                 {/* Timing Strip */}
                                                                                 {msg.output_data?.timing && (
-                                                                                    <div className="mt-2 flex items-center gap-2 text-[10px] font-mono text-themed-muted dark:text-themed-muted flex-wrap">
+                                                                                    <div className="px-3 pb-3 pt-0.5 flex items-center gap-2 flex-wrap">
                                                                                         {(() => {
                                                                                             const t = msg.output_data.timing;
-                                                                                            const colorFor = (ms: number) => ms > 3000 ? 'text-red-400' : ms > 1000 ? 'text-yellow-400' : 'text-green-400';
+                                                                                            const toneFor = (ms: number) => ms > 3000
+                                                                                                ? 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20'
+                                                                                                : ms > 1000
+                                                                                                    ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20'
+                                                                                                    : 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20';
                                                                                             return (
                                                                                                 <>
-                                                                                                    <span className={colorFor(t.llm_ms)}>🧠 LLM: {(t.llm_ms / 1000).toFixed(2)}s</span>
-                                                                                                    <span className="text-gray-600">→</span>
-                                                                                                    <span className={colorFor(t.validation_ms)}>✅ Validation: {t.validation_ms}ms</span>
-                                                                                                    <span className="text-gray-600">→</span>
-                                                                                                    <span className={colorFor(t.execution_ms)}>⚡ DB: {t.execution_ms}ms</span>
-                                                                                                    <span className="text-gray-600">→</span>
-                                                                                                    <span className="font-bold text-themed-main dark:text-themed-muted">Total: {(t.total_ms / 1000).toFixed(2)}s</span>
-                                                                                                    {t.retries > 0 && <span className="text-yellow-500 ml-1">(⟳ {t.retries} retries)</span>}
+                                                                                                    <span className={`text-[10px] font-mono font-semibold px-2 py-1 rounded-sm border ${toneFor(t.llm_ms)}`}>
+                                                                                                        LLM {(t.llm_ms / 1000).toFixed(2)}s
+                                                                                                    </span>
+                                                                                                    <span className={`text-[10px] font-mono font-semibold px-2 py-1 rounded-sm border ${toneFor(t.validation_ms)}`}>
+                                                                                                        Validation {t.validation_ms}ms
+                                                                                                    </span>
+                                                                                                    <span className={`text-[10px] font-mono font-semibold px-2 py-1 rounded-sm border ${toneFor(t.execution_ms)}`}>
+                                                                                                        DB {t.execution_ms}ms
+                                                                                                    </span>
+                                                                                                    <span className="text-[10px] font-mono font-semibold px-2 py-1 rounded-sm border border-border-main text-themed-main bg-bg-main/70">
+                                                                                                        Total {(t.total_ms / 1000).toFixed(2)}s
+                                                                                                    </span>
+                                                                                                    {t.retries > 0 && (
+                                                                                                        <span className="text-[10px] font-mono font-semibold px-2 py-1 rounded-sm border border-amber-200 dark:border-amber-500/20 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10">
+                                                                                                            Retries {t.retries}
+                                                                                                        </span>
+                                                                                                    )}
                                                                                                 </>
                                                                                             );
                                                                                         })()}

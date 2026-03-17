@@ -2076,7 +2076,7 @@ export default function UserDashboard() {
                                 ) : narrative ? (
                                     <div className="space-y-2">
                                         {narrative.split('\n').filter(line => line.trim()).map((line, i) => (
-                                            <p key={i} className="text-sm text-gray-300 leading-relaxed font-serif flex gap-2">
+                                            <p key={i} className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-serif flex gap-2">
                                                 <span className="text-primary font-bold shrink-0">{line.match(/^\d+\./) ? line.match(/^\d+\./)![0] : `${i + 1}.`}</span>
                                                 <span>{line.replace(/^\d+\.\s*/, '')}</span>
                                             </p>

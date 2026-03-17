@@ -129,6 +129,58 @@ def _find_target_column(df: pd.DataFrame) -> Optional[str]:
     return None
 
 
+def _currency_symbol_from_code(code: Optional[str]) -> str:
+    mapping = {
+        "USD": "$",
+        "GBP": "£",
+        "EUR": "€",
+        "INR": "₹",
+        "JPY": "¥",
+        "CNY": "¥",
+        "KRW": "₩",
+        "AUD": "A$",
+        "CAD": "C$",
+        "SGD": "S$",
+        "NZD": "NZ$",
+        "BRL": "R$",
+        "MXN": "Mex$",
+    }
+    return mapping.get((code or "").upper(), "$")
+
+
+def _is_currency_label(text: str) -> bool:
+    label = (text or "").lower()
+    keywords = [
+        "revenue", "profit", "income", "earnings", "cost", "expense",
+        "price", "charges", "payment", "budget", "salary", "wage",
+        "fee", "sales", "discount", "amount", "value",
+    ]
+    return any(kw in label for kw in keywords)
+
+
+def _format_narrative_value(value: Any, is_currency: bool = False, currency_symbol: str = "$") -> str:
+    if not isinstance(value, (int, float, np.integer, np.floating)):
+        return str(value)
+
+    num = float(value)
+    abs_num = abs(num)
+    sign = "-" if num < 0 else ""
+
+    if abs_num >= 1_000_000_000:
+        base = f"{sign}{abs_num / 1_000_000_000:.2f}".rstrip("0").rstrip(".") + "B"
+    elif abs_num >= 1_000_000:
+        base = f"{sign}{abs_num / 1_000_000:.2f}".rstrip("0").rstrip(".") + "M"
+    elif abs_num >= 1_000:
+        base = f"{sign}{abs_num / 1_000:.2f}".rstrip("0").rstrip(".") + "K"
+    else:
+        if num.is_integer():
+            base = f"{int(num):,}"
+        else:
+            base = f"{num:,.2f}".rstrip("0").rstrip(".")
+
+    return f"{currency_symbol}{base}" if is_currency else base
+
+
 # =============================================================================
 # API Endpoints
 # =============================================================================
@@ -629,7 +681,7 @@ Rules:
 - Write in third person ("The data shows..." not "You should...")."""
 
 
-def _summarize_charts(charts: Dict[str, Any], max_charts: int = 8) -> str:
+def _summarize_charts(charts: Dict[str, Any], max_charts: int = 8, currency_symbol: str = "$") -> str:
     """Build a concise text summary of chart data for the LLM prompt."""
     if not charts:
         return ""
@@ -667,14 +719,20 @@ def _summarize_charts(charts: Dict[str, Any], max_charts: int = 8) -> str:
 
         values = [v for _, v in rows]
         total = sum(values) if values else 0
+        metric_is_currency = _is_currency_label(f"{title} {metric_col}")
 
         # Build summary based on chart type
         if chart_type in ("pie", "donut", "doughnut"):
             # Show top 3 segments with percentages
             sorted_rows = sorted(rows, key=lambda x: x[1], reverse=True)
             top = sorted_rows[:3]
-            parts = [f"{name}: {val} ({val/total*100:.1f}%)" if total else f"{name}: {val}" for name, val in top]
-            summaries.append(f"[{title}] Distribution — {', '.join(parts)}" + (f" (total: {total:.0f})" if total else ""))
+            parts = [
+                f"{name}: {_format_narrative_value(val, metric_is_currency, currency_symbol)} ({val/total*100:.1f}%)"
+                if total else f"{name}: {_format_narrative_value(val, metric_is_currency, currency_symbol)}"
+                for name, val in top
+            ]
+            total_txt = _format_narrative_value(total, metric_is_currency, currency_symbol) if total else ""
+            summaries.append(f"[{title}] Distribution — {', '.join(parts)}" + (f" (total: {total_txt})" if total else ""))
 
         elif chart_type in ("line", "area"):
             # Show start, end, direction
@@ -683,7 +741,9 @@ def _summarize_charts(charts: Dict[str, Any], max_charts: int = 8) -> str:
                 end_name, end_val = rows[-1]
                 direction = "increasing" if end_val > start_val else "decreasing" if end_val < start_val else "flat"
                 pct = ((end_val - start_val) / start_val * 100) if start_val != 0 else 0
-                summaries.append(f"[{title}] Trend — {direction} from {start_val:.0f} ({start_name}) to {end_val:.0f} ({end_name}), change: {pct:+.1f}%")
+                start_txt = _format_narrative_value(start_val, metric_is_currency, currency_symbol)
+                end_txt = _format_narrative_value(end_val, metric_is_currency, currency_symbol)
+                summaries.append(f"[{title}] Trend — {direction} from {start_txt} ({start_name}) to {end_txt} ({end_name}), change: {pct:+.1f}%")
 
         else:
             # bar, hbar, etc — show top 3 and bottom 1
@@ -691,10 +751,10 @@ def _summarize_charts(charts: Dict[str, Any], max_charts: int = 8) -> str:
             top3 = sorted_rows[:3]
             bottom1 = sorted_rows[-1] if len(sorted_rows) > 3 else None
 
-            parts = [f"{name}: {val}" for name, val in top3]
+            parts = [f"{name}: {_format_narrative_value(val, metric_is_currency, currency_symbol)}" for name, val in top3]
             line = f"[{title}] Top — {', '.join(parts)}"
             if bottom1:
-                line += f" | Lowest — {bottom1[0]}: {bottom1[1]}"
+                line += f" | Lowest — {bottom1[0]}: {_format_narrative_value(bottom1[1], metric_is_currency, currency_symbol)}"
             summaries.append(line)
 
         count += 1
@@ -717,12 +777,22 @@ async def generate_narrative(
         if not check_dataset_access(session, payload.dataset_id, UUID(current_user.user_id), current_user.role):
             raise HTTPException(status_code=403, detail="Unauthorized access to dataset.")
 
+        # Determine narrative currency symbol
+        currency_symbol = _currency_symbol_from_code("USD")
+        for _, kpi in payload.kpis.items():
+            symbol = kpi.get("currency_symbol")
+            if isinstance(symbol, str) and symbol.strip():
+                currency_symbol = symbol.strip()
+                break
+
         # Build KPI summary
         kpi_lines = []
         for key, kpi in payload.kpis.items():
             title = kpi.get("title", key)
             value = kpi.get("value", "N/A")
             fmt = kpi.get("format", "number")
+            is_currency = str(fmt).lower() == "currency" or _is_currency_label(title)
+            value_txt = _format_narrative_value(value, is_currency=is_currency, currency_symbol=currency_symbol)
             trend = kpi.get("trend")
             trend_str = ""
             if trend is not None:
@@ -731,14 +801,14 @@ async def generate_narrative(
                     trend_str = f" (trend: {trend_val:+.1f}%)"
                 except (ValueError, TypeError):
                     trend_str = " (trend: --)"
-            kpi_lines.append(f"- {title}: {value} [{fmt}]{trend_str}")
+            kpi_lines.append(f"- {title}: {value_txt} [{fmt}]{trend_str}")
 
         kpi_summary = "\n".join(kpi_lines)
 
         # Build chart summary
         chart_summary = ""
         if payload.charts:
-            chart_summary = _summarize_charts(payload.charts)
+            chart_summary = _summarize_charts(payload.charts, currency_symbol=currency_symbol)
 
         # Compose user prompt
         user_prompt = f"""Dataset: {payload.dataset_name}

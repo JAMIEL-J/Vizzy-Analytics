@@ -9,6 +9,14 @@ from ..llm.llm_router import LLMRouter
 logger = logging.getLogger(__name__)
 
 
+def _extract_current_question(user_query: str) -> str:
+    """Extract the latest user question when context is prepended."""
+    marker = "[Current Question]:"
+    if marker in user_query:
+        return user_query.rsplit(marker, 1)[1].strip()
+    return user_query
+
+
 class Executor:
     """NL2SQL self-healing execution engine with timing instrumentation."""
 
@@ -42,7 +50,8 @@ class Executor:
 
         # Pre-resolve semantic hints once (doesn't change across retries)
         from .semantic_resolver import find_column, find_ambiguous_columns
-        words = user_query.lower().split()
+        query_for_resolution = _extract_current_question(user_query)
+        words = query_for_resolution.lower().split()
         hints = []
         keywords = [w.strip("?,.!") for w in words if len(w) > 3]
         for kw in keywords:

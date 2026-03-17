@@ -15,6 +15,80 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _currency_symbol_from_code(code: Optional[str]) -> str:
+    mapping = {
+        "USD": "$",
+        "GBP": "£",
+        "EUR": "€",
+        "INR": "₹",
+        "JPY": "¥",
+        "CNY": "¥",
+        "KRW": "₩",
+        "AUD": "A$",
+        "CAD": "C$",
+        "SGD": "S$",
+        "NZD": "NZ$",
+        "BRL": "R$",
+        "MXN": "Mex$",
+    }
+    return mapping.get((code or "").upper(), "$")
+
+
+def _currency_symbol_for_metric(metric_col: Optional[str], column_metadata: Optional[Dict[str, Any]]) -> str:
+    metadata = column_metadata or {}
+    if metric_col and metric_col in metadata:
+        display_format = metadata.get(metric_col, {}).get("display_format", {})
+        if isinstance(display_format, dict) and display_format.get("type") == "currency":
+            return _currency_symbol_from_code(display_format.get("currency"))
+    return "$"
+
+
+def _is_currency_metric(label: str, metric_col: Optional[str], column_metadata: Optional[Dict[str, Any]]) -> bool:
+    """Infer whether a metric should be displayed as currency."""
+    metadata = column_metadata or {}
+    if metric_col and metric_col in metadata:
+        display_format = metadata.get(metric_col, {}).get("display_format", {})
+        if isinstance(display_format, dict) and display_format.get("type") == "currency":
+            return True
+
+    text = f"{label or ''} {metric_col or ''}".lower()
+    currency_keywords = [
+        "revenue", "profit", "income", "earnings", "cost", "expense",
+        "price", "charges", "payment", "budget", "salary", "wage",
+        "fee", "sales", "discount", "amount", "value",
+    ]
+    return any(kw in text for kw in currency_keywords)
+
+
+def _format_compact_number(value: Any, is_currency: bool = False, symbol: str = "$") -> str:
+    """Format a number into compact K/M/B notation."""
+    if not isinstance(value, (int, float)):
+        return str(value)
+
+    abs_value = abs(float(value))
+    sign = "-" if float(value) < 0 else ""
+
+    if abs_value >= 1_000_000_000:
+        num = abs_value / 1_000_000_000
+        suffix = "B"
+    elif abs_value >= 1_000_000:
+        num = abs_value / 1_000_000
+        suffix = "M"
+    elif abs_value >= 1_000:
+        num = abs_value / 1_000
+        suffix = "K"
+    else:
+        if isinstance(value, int) or float(value).is_integer():
+            base = f"{int(value):,}"
+        else:
+            base = f"{float(value):,.2f}".rstrip("0").rstrip(".")
+        return f"{symbol}{base}" if is_currency else base
+
+    decimals = 2 if num < 10 else (1 if num < 100 else 0)
+    compact = f"{sign}{num:.{decimals}f}".rstrip("0").rstrip(".") + suffix
+    return f"{symbol}{compact}" if is_currency else compact
+
+
 def build_chart_from_nl2sql(nl2sql_result: dict) -> Dict[str, Any]:
     """
     Transform NL2SQL executor output into a frontend-compatible chart spec.
@@ -67,7 +141,7 @@ def build_chart_from_nl2sql(nl2sql_result: dict) -> Dict[str, Any]:
         "explanation": {
             "summary": explanation_text or title,
             "detailed": explanation_text,
-            "key_insight": _extract_key_insight(data, chart_type, columns),
+            "key_insight": _extract_key_insight(data, chart_type, columns, column_metadata, title),
         },
         "followup_suggestions": _suggest_followups(chart_type),
     }
@@ -277,7 +351,13 @@ def _detect_time_value_cols(columns: list, data: list) -> tuple:
 # ─── Insight & Suggestion Helpers ────────────────────────────────────────────
 
 
-def _extract_key_insight(data: list, chart_type: str, columns: list) -> str:
+def _extract_key_insight(
+    data: list,
+    chart_type: str,
+    columns: list,
+    column_metadata: Optional[Dict[str, Any]] = None,
+    title: str = "",
+) -> str:
     """Auto-generate a key insight from the data."""
     if not data:
         return "No data available."
@@ -287,8 +367,9 @@ def _extract_key_insight(data: list, chart_type: str, columns: list) -> str:
         for col in columns:
             val = row.get(col)
             if isinstance(val, (int, float)):
-                # Whole if possible, else 2 decimal
-                fmt_val = f"{val:,}" if isinstance(val, int) else (f"{val:,.2f}".rstrip('0').rstrip('.') if isinstance(val, float) else str(val))
+                is_currency = _is_currency_metric(title or col, col, column_metadata)
+                currency_symbol = _currency_symbol_for_metric(col, column_metadata)
+                fmt_val = _format_compact_number(val, is_currency=is_currency, symbol=currency_symbol)
                 return f"The result is {fmt_val}"
         return "Result computed."
 
@@ -297,7 +378,9 @@ def _extract_key_insight(data: list, chart_type: str, columns: list) -> str:
         category_col = [c for c in columns if c != value_col][0] if len(columns) > 1 else columns[0]
         top_row = max(data, key=lambda r: r.get(value_col, 0))
         val = top_row.get(value_col, 0)
-        fmt_val = f"{val:,}" if isinstance(val, int) else (f"{val:,.2f}".rstrip('0').rstrip('.') if isinstance(val, float) else str(val))
+        is_currency = _is_currency_metric(title, value_col, column_metadata)
+        currency_symbol = _currency_symbol_for_metric(value_col, column_metadata)
+        fmt_val = _format_compact_number(val, is_currency=is_currency, symbol=currency_symbol)
         return f"{top_row.get(category_col, 'Top item')} leads with {fmt_val}."
 
     return f"Showing {len(data)} data points."

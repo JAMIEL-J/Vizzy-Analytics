@@ -25,6 +25,80 @@ from app.services.llm.intent_classifier import classify_intent_fast, FAST_INTENT
 router = APIRouter()
 
 
+def _is_currency_kpi(kpi_label: str, chart_spec: dict) -> bool:
+    """Detect whether KPI should be rendered as currency."""
+    column_metadata = chart_spec.get("column_metadata", {}) if isinstance(chart_spec, dict) else {}
+    for meta in column_metadata.values():
+        if isinstance(meta, dict) and isinstance(meta.get("display_format"), dict):
+            if meta["display_format"].get("type") == "currency":
+                return True
+
+    label = (kpi_label or "").lower()
+    currency_keywords = [
+        "revenue", "profit", "income", "earnings", "cost", "expense",
+        "price", "charges", "payment", "budget", "salary", "wage",
+        "fee", "sales", "discount", "amount", "value",
+    ]
+    return any(kw in label for kw in currency_keywords)
+
+
+def _currency_symbol_from_code(code: str) -> str:
+    mapping = {
+        "USD": "$",
+        "GBP": "£",
+        "EUR": "€",
+        "INR": "₹",
+        "JPY": "¥",
+        "CNY": "¥",
+        "KRW": "₩",
+        "AUD": "A$",
+        "CAD": "C$",
+        "SGD": "S$",
+        "NZD": "NZ$",
+        "BRL": "R$",
+        "MXN": "Mex$",
+    }
+    return mapping.get((code or "").upper(), "$")
+
+
+def _kpi_currency_symbol(chart_spec: dict) -> str:
+    column_metadata = chart_spec.get("column_metadata", {}) if isinstance(chart_spec, dict) else {}
+    for meta in column_metadata.values():
+        display_format = meta.get("display_format", {}) if isinstance(meta, dict) else {}
+        if isinstance(display_format, dict) and display_format.get("type") == "currency":
+            return _currency_symbol_from_code(display_format.get("currency", "USD"))
+    return "$"
+
+
+def _format_compact_value(value: object, is_currency: bool = False, currency_symbol: str = "$") -> str:
+    """Format numeric values into compact K/M form for readability."""
+    if not isinstance(value, (int, float)):
+        return str(value)
+
+    abs_value = abs(float(value))
+    sign = "-" if float(value) < 0 else ""
+
+    if abs_value >= 1_000_000_000:
+        num = abs_value / 1_000_000_000
+        suffix = "B"
+    elif abs_value >= 1_000_000:
+        num = abs_value / 1_000_000
+        suffix = "M"
+    elif abs_value >= 1_000:
+        num = abs_value / 1_000
+        suffix = "K"
+    else:
+        if isinstance(value, int) or float(value).is_integer():
+            base = f"{int(value):,}"
+        else:
+            base = f"{float(value):,.2f}".rstrip("0").rstrip(".")
+        return f"{currency_symbol}{base}" if is_currency else base
+
+    decimals = 2 if num < 10 else (1 if num < 100 else 0)
+    compact = f"{sign}{num:.{decimals}f}".rstrip("0").rstrip(".") + suffix
+    return f"{currency_symbol}{compact}" if is_currency else compact
+
+
 # =============================================================================
 # Request/Response Schemas
 # =============================================================================
@@ -409,7 +483,9 @@ async def send_message(
                     if chart_type == "kpi":
                         kpi_value = chart_spec.get("data", {}).get("value", "")
                         kpi_label = chart_spec.get("data", {}).get("label", "Result")
-                        formatted_val = f"{kpi_value:,}" if isinstance(kpi_value, int) else (f"{kpi_value:,.2f}".rstrip('0').rstrip('.') if isinstance(kpi_value, float) else str(kpi_value))
+                        is_currency_kpi = _is_currency_kpi(kpi_label, chart_spec)
+                        currency_symbol = _kpi_currency_symbol(chart_spec)
+                        formatted_val = _format_compact_value(kpi_value, is_currency=is_currency_kpi, currency_symbol=currency_symbol)
                         
                         assistant_content = (
                             explanation.get("summary", "")

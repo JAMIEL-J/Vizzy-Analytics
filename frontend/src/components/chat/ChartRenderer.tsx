@@ -146,6 +146,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                 change={change}
                 prefix={data.prefix || (isCurrencyChart ? effectiveCurrency : undefined)}
                 suffix={suffix}
+                compact={isCurrencyChart}
                 variant={variant}
             />
         );
@@ -341,7 +342,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                         {rows.slice(0, 10).map((row: any, i: number) => (
                             <tr key={i} className="bg-transparent border-b border-white/5 hover:bg-white/5 transition-colors">
                                 {headers.map((h: string) => (
-                                    <td key={h} className="px-4 py-3 text-white text-xs">
+                                    <td key={h} className="px-4 py-3 text-gray-800 dark:text-white text-xs">
                                         {typeof row[h] === 'number' && !h.toLowerCase().includes('id') ?
                                             formatYAxisValue(row[h]) :
                                             String(row[h] || '-')
@@ -374,7 +375,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
 
                     return (
                         <div key={index} className={`${colSpan} obsidian-card p-4 rounded-sm border border-white/10 shadow-[0_0_15px_rgba(255,105,51,0.05)] hover:border-white/20 transition-all duration-300`}>
-                            <h4 className="text-[10px] tracking-widest uppercase font-bold text-gray-400 mb-3 border-b border-white/10 pb-2">{widget.title}</h4>
+                            <h4 className="text-[10px] tracking-widest uppercase font-bold text-gray-700 dark:text-gray-400 mb-3 border-b border-white/10 pb-2">{widget.title}</h4>
                             <ChartRenderer
                                 type={widget.type}
                                 data={{ data: widget.data }}
