@@ -634,8 +634,16 @@ async def _handle_analysis_chart(
         
     # Append PoP info to explanation if available
     if pop_data:
-        growth_str = f"{pop_data['growth_pct']:.1f}%" if pop_data['growth_pct'] is not None else "N/A"
-        direction = "increase" if pop_data['growth_pct'] > 0 else "decrease"
+        growth = pop_data.get('growth_pct')
+        if growth is None:
+            growth_str = "N/A"
+            direction = "(no change recorded)"
+        elif growth > 0:
+            growth_str = f"{growth:+.1f}%"
+            direction = "increase"
+        else:
+            growth_str = f"{growth:+.1f}%"
+            direction = "decrease"
         
         # Use currency in PoP if financial
         curr_prefix = currency_symbol if is_financial else ""

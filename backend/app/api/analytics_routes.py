@@ -665,6 +665,8 @@ Write a brief executive summary based on these metrics."""
 
         return {"narrative": response.content.strip()}
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
