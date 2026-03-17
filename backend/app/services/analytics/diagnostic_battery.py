@@ -152,7 +152,13 @@ async def run_diagnostic_battery(
     for diag in successful:
         context_lines.append(f"### {diag['title']}")
         for row in diag["data"][:5]:
-            context_lines.append(f"  - {row[diag['dimension']]}: {row['value']:.2f}" if isinstance(row.get('value'), float) else f"  - {row.get(diag['dimension'], 'N/A')}: {row.get('value', 'N/A')}")
+            dim_val = row.get(diag['dimension'], "N/A")
+            val = row.get('value', 0)
+            if isinstance(val, (int, float)):
+                val_str = "{:.2f}".format(val)
+            else:
+                val_str = str(val)
+            context_lines.append(f"  - {dim_val}: {val_str}")
         context_lines.append("")
 
     return {

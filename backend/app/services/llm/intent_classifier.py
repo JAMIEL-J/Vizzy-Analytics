@@ -169,12 +169,15 @@ async def classify_intent(
         'distribution': 'comparative',  # distributions are visual comparisons
         'exploration': 'retrieval',
         'dashboard': 'retrieval',       # dashboard handled separately upstream
+        'aggregative': 'aggregative',
     }
 
     # Detect interpretive ("why" questions) — not in fast classifier
     query_lower = query.lower().strip()
-    is_interpretive = any(p in query_lower for p in [
-        'why ', 'what drives', 'what causes', 'explain the', 'reason for',
+    # Normalize query for better matching
+    normalized_query = re.sub(r'[^\w\s]', '', query_lower)
+    is_interpretive = any(re.search(fr'\b{p}\b', normalized_query) for p in [
+        'why', 'what drives', 'what causes', 'explain the', 'reason for',
         'what led to', 'what is behind', 'root cause', 'factors behind',
     ])
 
@@ -195,7 +198,8 @@ async def classify_intent(
             user_prompt=user_prompt,
             temperature=0.0,
         )
-        logger.info(f"LLM response from {response.provider.value}: {response.content[:100]}...")
+        content_snippet = (response.content or "")[:100]
+        logger.info(f"LLM response from {response.provider.value}: {content_snippet}...")
         data = parse_json_response(response.content)
     except Exception as e:
         logger.warning(f"LLM classification failed, using heuristic only: {e}")

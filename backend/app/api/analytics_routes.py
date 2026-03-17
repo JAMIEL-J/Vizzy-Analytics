@@ -411,7 +411,7 @@ def get_dashboard_analytics(
             null_count = int(df[col].isna().sum())
             null_pct = round(null_count / total * 100, 1) if total > 0 else 0
             dtype = str(df[col].dtype)
-            action = "coerced" if col in classification.metrics and df[col].dtype in ['float64', 'int64'] else "none"
+            action = "coerced" if col in classification.metrics and df[col].dtype.name in ['float64', 'int64'] else "none"
             data_quality.append({"column": col, "null_pct": null_pct, "null_count": null_count, "dtype": dtype, "action": action})
 
         return DashboardAnalyticsResponse(
@@ -618,12 +618,17 @@ Rules:
 @router.post("/analytics/narrative")
 async def generate_narrative(
     payload: NarrativeRequest,
+    session: DBSession,
     current_user: AuthenticatedUser,
 ):
     """Generate an AI insight narrative for the current dashboard state."""
     from app.core.llm_client import get_llm_client
+    from app.services.dataset_service import check_dataset_access
 
     try:
+        # Authorization check
+        if not check_dataset_access(session, payload.dataset_id, current_user.id):
+            raise HTTPException(status_code=403, detail="Unauthorized access to dataset.")
         # Build a concise KPI summary string for the LLM
         kpi_lines = []
         for key, kpi in payload.kpis.items():
@@ -631,7 +636,13 @@ async def generate_narrative(
             value = kpi.get("value", "N/A")
             fmt = kpi.get("format", "number")
             trend = kpi.get("trend")
-            trend_str = f" (trend: {trend:+.1f}%)" if trend is not None else ""
+            trend_str = ""
+            if trend is not None:
+                try:
+                    trend_val = float(trend)
+                    trend_str = f" (trend: {trend_val:+.1f}%)"
+                except (ValueError, TypeError):
+                    trend_str = " (trend: --)"
             kpi_lines.append(f"- {title}: {value} [{fmt}]{trend_str}")
 
         kpi_summary = "\n".join(kpi_lines)

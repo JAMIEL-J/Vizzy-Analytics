@@ -471,12 +471,19 @@ Rules:
                     "charts": diag_charts,
                     "diagnostics_count": len(diagnostics),
                     "detected_intent": "interpretive",
+                    "staleness_warning": staleness_warning,
                 },
                 "intent_type": "interpretive",
+                "staleness_warning": staleness_warning,
             }
+
+            if staleness_warning:
+                formatted_response["content"] = f"{staleness_warning}\n\n{formatted_response['content']}"
         else:
             # No diagnostics → fall through to analysis chart
-            route = 'analysis_chart'
+            result_payload, formatted_response = await _handle_analysis_chart(
+                df=df, query=query, intent=intent, contract=contract, context=context, staleness_warning=staleness_warning
+            )
 
     elif route == 'retrieval':
         # RETRIEVAL MODE: Text-only response without chart (was TEXT_QUERY)
@@ -517,92 +524,8 @@ Rules:
 
     else:
         # ANALYSIS MODE: Single chart with explanation
-        # validate_intent returns intent with resolved/fuzzy-matched column names
-        intent = validate_intent(
-            intent=intent,
-            contract=contract,
-            available_columns=list(df.columns),
-            time_columns=[col for col in df.columns if "date" in col.lower() or "time" in col.lower()],
-        )
-
-        operation = map_intent_to_operation(intent)
-        result = execute_analysis(df=df, operation_spec=operation)
-        
-        # [NEW] PoP Logic injection
-        # If intent is about a metric sum/count, try to calculate PoP
-        pop_data = None
-        if intent.aggregation in [Aggregation.SUM, Aggregation.COUNT, Aggregation.AVG] and intent.metric:
-            # Find date column
-            date_col = next((c for c in df.columns if "date" in c.lower()), None)
-            if date_col:
-                pop_data = _calculate_pop_change(df, intent.metric, date_col)
-                if pop_data:
-                    result["pop_analysis"] = pop_data
-        
-        # build_single_chart returns {"chart": {...}}
-        chart_output = build_single_chart(result)
-        chart_spec = chart_output.get("chart", {})
-        
-        result_payload = result
-
-        # Infer currency based on the visualization context
-        visualization_data = chart_spec.get("data", {})
-        currency_symbol = _infer_currency_symbol(df, visualization_data=visualization_data)
-        
-        # Inject currency into chart spec ONLY if it's EXPLICITLY a financial metric
-        explicit_money_keywords = [
-            'revenue', 'profit', 'income', 'earnings', 'cost', 'expense', 
-            'price', 'charges', 'payment', 'budget', 'fee'
-        ]
-        
-        is_financial = False
-        chart_str = str(chart_spec).lower()
-        if any(kw in chart_str for kw in explicit_money_keywords):
-            is_financial = True
-            
-        has_sales_only = 'sales' in chart_str and not is_financial
-        if has_sales_only:
-            is_financial = False
-            
-        if is_financial:
-            chart_spec["currency"] = currency_symbol
-
-        # Generate chart explanation using LLM
-        explanation = await generate_chart_explanation(
-            chart_type=chart_spec.get("type", "chart"),
-            chart_data=chart_spec,
-            user_query=query,
-            currency_symbol=currency_symbol if is_financial else None,
-        )
-
-        # Append Staleness Warning to explanation (At the end)
-        if staleness_warning:
-            # explanation["summary"] = ... (Do not touch summary)
-            explanation["explanation"] = f"{explanation.get('explanation', '')}\n\n{staleness_warning}"
-            
-        # Append PoP info to explanation if available
-        if pop_data:
-            growth_str = f"{pop_data['growth_pct']:.1f}%" if pop_data['growth_pct'] is not None else "N/A"
-            direction = "increase" if pop_data['growth_pct'] > 0 else "decrease"
-            
-            # Use currency in PoP if financial
-            curr_prefix = currency_symbol if is_financial else ""
-            
-            pop_text = (
-                f"\n\n**Period-over-Period (MTD):**\n"
-                f"- **Current Period** ({pop_data['current_period']}): {curr_prefix}{_format_number(pop_data['current_value'])}\n"
-                f"- **Previous Period** ({pop_data['previous_period']}): {curr_prefix}{_format_number(pop_data['previous_value'])}\n"
-                f"- **Change**: {growth_str} {direction} vs last month."
-            )
-            explanation["explanation"] = explanation.get("explanation", "") + pop_text
-
-        # Format analysis response
-        formatted_response = format_analysis_response(
-            query=query,
-            chart_spec=chart_spec,
-            explanation=explanation,
-            intent_type=intent.intent_type.value,
-            context={"previous_messages": context} if context else None,
+        result_payload, formatted_response = await _handle_analysis_chart(
+            df=df, query=query, intent=intent, contract=contract, context=context, staleness_warning=staleness_warning
         )
 
     # 7. Persist result
@@ -629,6 +552,111 @@ Rules:
     )
 
     return formatted_response
+
+
+async def _handle_analysis_chart(
+    *,
+    df: pd.DataFrame,
+    query: str,
+    intent: Any,
+    contract: Any,
+    context: Optional[List[Dict[str, str]]],
+    staleness_warning: Optional[str],
+) -> tuple:
+    """Helper to handle the analysis_chart branch logic recursively/re-dispatchable."""
+    from app.services.llm.intent_validator import validate_intent
+    from app.services.llm.intent_mapper import map_intent_to_operation
+    from app.services.analysis_execution.analysis_executor import execute_analysis
+    from app.services.visualization.dashboard_generator import build_single_chart
+    from app.services.llm.chart_explainer import generate_chart_explanation
+    from app.services.llm.response_formatter import format_analysis_response
+    from app.services.llm.intent_schema import Aggregation
+
+    # validate_intent returns intent with resolved/fuzzy-matched column names
+    intent = validate_intent(
+        intent=intent,
+        contract=contract,
+        available_columns=list(df.columns),
+        time_columns=[col for col in df.columns if "date" in col.lower() or "time" in col.lower()],
+    )
+
+    operation = map_intent_to_operation(intent)
+    result = execute_analysis(df=df, operation_spec=operation)
+    
+    # PoP Logic injection
+    pop_data = None
+    if intent.aggregation in [Aggregation.SUM, Aggregation.COUNT, Aggregation.AVG] and intent.metric:
+        # Find date column
+        date_col = next((c for c in df.columns if "date" in c.lower()), None)
+        if date_col:
+            pop_data = _calculate_pop_change(df, intent.metric, date_col)
+            if pop_data:
+                result["pop_analysis"] = pop_data
+    
+    chart_output = build_single_chart(result)
+    chart_spec = chart_output.get("chart", {})
+    
+    result_payload = result
+
+    # Infer currency based on the visualization context
+    visualization_data = chart_spec.get("data", {})
+    currency_symbol = _infer_currency_symbol(df, visualization_data=visualization_data)
+    
+    # Inject currency into chart spec ONLY if it's EXPLICITLY a financial metric
+    explicit_money_keywords = [
+        'revenue', 'profit', 'income', 'earnings', 'cost', 'expense', 
+        'price', 'charges', 'payment', 'budget', 'fee'
+    ]
+    
+    is_financial = False
+    chart_str = str(chart_spec).lower()
+    if any(kw in chart_str for kw in explicit_money_keywords):
+        is_financial = True
+        
+    has_sales_only = 'sales' in chart_str and not is_financial
+    if has_sales_only:
+        is_financial = False
+        
+    if is_financial:
+        chart_spec["currency"] = currency_symbol
+
+    explanation = await generate_chart_explanation(
+        chart_type=chart_spec.get("type", "chart"),
+        chart_data=chart_spec,
+        user_query=query,
+        currency_symbol=currency_symbol if is_financial else None,
+    )
+
+    # Append Staleness Warning to explanation (At the end)
+    if staleness_warning:
+        # explanation["summary"] = ... (Do not touch summary)
+        explanation["explanation"] = f"{explanation.get('explanation', '')}\n\n{staleness_warning}"
+        
+    # Append PoP info to explanation if available
+    if pop_data:
+        growth_str = f"{pop_data['growth_pct']:.1f}%" if pop_data['growth_pct'] is not None else "N/A"
+        direction = "increase" if pop_data['growth_pct'] > 0 else "decrease"
+        
+        # Use currency in PoP if financial
+        curr_prefix = currency_symbol if is_financial else ""
+        
+        pop_text = (
+            f"\n\n**Period-over-Period (MTD):**\n"
+            f"- **Current Period** ({pop_data['current_period']}): {curr_prefix}{_format_number(pop_data['current_value'])}\n"
+            f"- **Previous Period** ({pop_data['previous_period']}): {curr_prefix}{_format_number(pop_data['previous_value'])}\n"
+            f"- **Change**: {growth_str} {direction} vs last month."
+        )
+        explanation["explanation"] = explanation.get("explanation", "") + pop_text
+
+    formatted_response = format_analysis_response(
+        query=query,
+        chart_spec=chart_spec,
+        explanation=explanation,
+        intent_type=intent.intent_type.value,
+        context={"previous_messages": context} if context else None,
+    )
+    
+    return result_payload, formatted_response
 
 
 async def run_analysis_with_context(
