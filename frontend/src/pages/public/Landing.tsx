@@ -4,7 +4,7 @@ import ThemeToggle from '../../components/ui/ThemeToggle';
 export default function Landing() {
     return (
         <div
-            className="font-display overflow-x-hidden antialiased selection:bg-primary selection:text-black"
+            className="newsreader-page font-display overflow-x-hidden antialiased selection:bg-primary selection:text-black"
             style={{ background: 'var(--landing-bg)', color: 'var(--text-main)' }}
         >
             <div className="grain-overlay"></div>

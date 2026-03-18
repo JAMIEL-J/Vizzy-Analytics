@@ -49,7 +49,7 @@ export default function Register() {
 
     return (
         <div
-            className="min-h-screen font-display overflow-x-hidden antialiased flex items-center justify-center px-4 py-12 transition-colors duration-300"
+            className="newsreader-page min-h-screen font-display overflow-x-hidden antialiased flex items-center justify-center px-4 py-12 transition-colors duration-300"
             style={{ background: 'var(--bg-main)', color: 'var(--text-main)' }}
         >
             <div className="grain-overlay"></div>

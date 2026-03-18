@@ -26,8 +26,23 @@
     --color-background-dark: #0a0a0a;
     --color-obsidian: #111111;
     --color-marble: #1a1a1a;
+    --font-display: "Aptos", "Segoe UI", "Inter", system-ui, sans-serif;
+    --font-mono: "DM Sans", "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Keep Newsreader only on selected public pages (landing/login/register). */
+.newsreader-page {
     --font-display: "Newsreader", serif;
-    --font-mono: "JetBrains Mono", monospace;
+    font-family: "Newsreader", serif;
+}
+
+.newsreader-page .font-display,
+.newsreader-page .font-serif {
+    font-family: "Newsreader", serif;
+}
+
+.newsreader-page .font-mono {
+    font-family: "JetBrains Mono", monospace;
 }
 
 /* Custom gradient utilities to match prototype */
@@ -58,7 +73,7 @@
    ============================================================ */
 
 :root {
-    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    font-family: "Aptos", "Segoe UI", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     font-weight: 400;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
@@ -303,4 +318,14 @@ body {
 
 .dark .auth-card {
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* Enforce Aptos for display/serif utility usage across the app by default. */
+.font-display,
+.font-serif {
+    font-family: "Aptos", "Segoe UI", "Inter", system-ui, sans-serif;
+}
+
+.font-mono {
+    font-family: "DM Sans", "Inter", "Segoe UI", system-ui, sans-serif;
 }

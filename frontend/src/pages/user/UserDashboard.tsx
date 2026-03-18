@@ -19,6 +19,7 @@ type CachedEntry<T> = {
 };
 
 const DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
+const DASHBOARD_SESSION_CACHE_KEY = 'vizzy.dashboard.analyticsCache.v1';
 
 class BoundedCache<T> {
     private map = new Map<string, CachedEntry<T>>();
@@ -66,6 +67,16 @@ const createDashboardCacheBundle = (): DashboardCacheBundle => ({
     narrative: new BoundedCache<string>(30),
 });
 
+// Keep dashboard caches alive across route switches (Dashboard <-> Chat) within the same browser session.
+let sharedDashboardCacheBundle: DashboardCacheBundle | null = null;
+
+const getDashboardCacheBundle = (): DashboardCacheBundle => {
+    if (!sharedDashboardCacheBundle) {
+        sharedDashboardCacheBundle = createDashboardCacheBundle();
+    }
+    return sharedDashboardCacheBundle;
+};
+
 const stableSerialize = (value: unknown): string => {
     const seen = new WeakSet<object>();
 
@@ -96,6 +107,46 @@ const stableSerialize = (value: unknown): string => {
 };
 
 const isFresh = (createdAt: number) => Date.now() - createdAt < DASHBOARD_CACHE_TTL_MS;
+
+type SessionAnalyticsCacheEntry = {
+    createdAt: number;
+    value: DashboardAnalytics;
+};
+
+const getSessionAnalyticsCache = (): Record<string, SessionAnalyticsCacheEntry> => {
+    try {
+        const raw = sessionStorage.getItem(DASHBOARD_SESSION_CACHE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+};
+
+const getSessionCachedAnalytics = (cacheKey: string): DashboardAnalytics | null => {
+    const all = getSessionAnalyticsCache();
+    const entry = all[cacheKey];
+    if (!entry || !entry.createdAt || !entry.value) return null;
+    return isFresh(entry.createdAt) ? entry.value : null;
+};
+
+const setSessionCachedAnalytics = (cacheKey: string, value: DashboardAnalytics) => {
+    try {
+        const all = getSessionAnalyticsCache();
+        all[cacheKey] = {
+            createdAt: Date.now(),
+            value,
+        };
+
+        // Bound stored keys to avoid unbounded session growth.
+        const entries = Object.entries(all).sort((a, b) => (b[1]?.createdAt || 0) - (a[1]?.createdAt || 0));
+        const trimmed = Object.fromEntries(entries.slice(0, 25));
+        sessionStorage.setItem(DASHBOARD_SESSION_CACHE_KEY, JSON.stringify(trimmed));
+    } catch {
+        // Best-effort cache only.
+    }
+};
 
 // ─── Color Palettes ──────────────────────────────────────────────────────────
 
@@ -1319,7 +1370,7 @@ function getDashboardTitle(domain: string | undefined): string {
 }
 
 export default function UserDashboard() {
-    const cacheRef = useRef<DashboardCacheBundle>(createDashboardCacheBundle());
+    const cacheRef = useRef<DashboardCacheBundle>(getDashboardCacheBundle());
     const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
     const [isLoading, setIsLoading] = useState(false); // Only for full data loads (Dataset/Domain/Classification)
     const [isKPILoading, setIsKPILoading] = useState(false); // Only for background KPI refreshes (Filters)
@@ -1394,14 +1445,6 @@ export default function UserDashboard() {
         }
         previousDatasetIdRef.current = selectedDatasetId;
     }, [selectedDatasetId]);
-
-    useEffect(() => {
-        return () => {
-            cacheRef.current.analytics.clear();
-            cacheRef.current.correlation.clear();
-            cacheRef.current.narrative.clear();
-        };
-    }, []);
 
     // Reset slots + filters when dataset changes
     useEffect(() => {
@@ -1512,6 +1555,24 @@ export default function UserDashboard() {
                 return;
             }
 
+            if (!forceRefresh) {
+                const sessionCached = getSessionCachedAnalytics(cacheKey);
+                if (sessionCached) {
+                    setAnalytics(sessionCached);
+                    cacheRef.current.analytics.set(cacheKey, sessionCached);
+                    if (sessionCached.raw_data && sessionCached.chart_configs) {
+                        const initial: Record<string, any> = {};
+                        if (sessionCached.charts) {
+                            Object.entries(sessionCached.charts).forEach(([key, chart]: [string, any]) => {
+                                initial[key] = chart.data;
+                            });
+                        }
+                        setDashboardData(sessionCached.raw_data, sessionCached.chart_configs, initial, sessionCached.total_rows, sessionCached.target_column);
+                    }
+                    return;
+                }
+            }
+
             // If we have rawData already, this is a background KPI refresh
             const isKPIOnly = !!useFilterStore.getState().rawData;
 
@@ -1530,6 +1591,7 @@ export default function UserDashboard() {
             );
             setAnalytics(data);
             cacheRef.current.analytics.set(cacheKey, data);
+            setSessionCachedAnalytics(cacheKey, data);
             if (data.raw_data && data.chart_configs) {
                 console.log(`[Hybrid Engine] Received ${data.raw_data.length} rows for local recomputation. Target: ${data.target_column}`);
                 const initial: Record<string, any> = {};

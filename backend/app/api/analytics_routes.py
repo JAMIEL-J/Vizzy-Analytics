@@ -19,6 +19,7 @@ from app.api.deps import DBSession, AuthenticatedUser
 from app.core.exceptions import AuthorizationError
 from app.models.dataset import Dataset
 from app.models.analysis_contract import AnalysisContract
+from app.models.analysis_result import AnalysisResult
 from app.models.user import UserRole as ModelUserRole
 from app.services.dataset_version_service import get_latest_version
 from app.services.analysis_contract_service import create_analysis_contract
@@ -489,14 +490,30 @@ def get_dashboard_analytics(
                 tracking_user_id = UUID(current_user.user_id)
                 tracking_role = ModelUserRole(current_user.role.value)
 
-                contract = session.exec(
-                    select(AnalysisContract).where(
-                        AnalysisContract.dataset_version_id == latest_version.id,
-                        AnalysisContract.is_active == True,
+                existing_dashboard_results = list(session.exec(
+                    select(AnalysisResult).where(
+                        AnalysisResult.dataset_version_id == latest_version.id,
+                        AnalysisResult.generated_by == tracking_user_id,
+                        AnalysisResult.is_active == True,
                     )
-                ).first()
+                ))
+                already_tracked = any(
+                    isinstance(row.result_payload, dict)
+                    and str(row.result_payload.get("type")) == "dashboard"
+                    for row in existing_dashboard_results
+                )
 
-                if not contract:
+                if already_tracked:
+                    contract = None
+                else:
+                    contract = session.exec(
+                        select(AnalysisContract).where(
+                            AnalysisContract.dataset_version_id == latest_version.id,
+                            AnalysisContract.is_active == True,
+                        )
+                    ).first()
+
+                if not already_tracked and not contract:
                     contract = create_analysis_contract(
                         session=session,
                         dataset_version_id=latest_version.id,
@@ -507,21 +524,22 @@ def get_dashboard_analytics(
                         constraints={"source": "dashboard_page_auto"},
                     )
 
-                create_analysis_result(
-                    session=session,
-                    dataset_version_id=latest_version.id,
-                    analysis_contract_id=contract.id,
-                    result_payload={
-                        "type": "dashboard",
-                        "source": "dashboard_page",
-                        "domain": domain.value,
-                        "dataset_id": str(state.dataset_id),
-                        "kpi_count": len(kpis or {}),
-                        "chart_count": len(charts or {}),
-                    },
-                    user_id=tracking_user_id,
-                    role=tracking_role,
-                )
+                if not already_tracked and contract:
+                    create_analysis_result(
+                        session=session,
+                        dataset_version_id=latest_version.id,
+                        analysis_contract_id=contract.id,
+                        result_payload={
+                            "type": "dashboard",
+                            "source": "dashboard_page",
+                            "domain": domain.value,
+                            "dataset_id": str(state.dataset_id),
+                            "kpi_count": len(kpis or {}),
+                            "chart_count": len(charts or {}),
+                        },
+                        user_id=tracking_user_id,
+                        role=tracking_role,
+                    )
             except AuthorizationError:
                 # Tracking is best-effort; skip when user cannot write contract/result for this dataset.
                 pass
