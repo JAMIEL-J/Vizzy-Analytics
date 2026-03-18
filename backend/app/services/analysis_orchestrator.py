@@ -2,6 +2,7 @@ import pandas as pd
 from uuid import UUID
 from typing import Dict, Any, Optional, List
 import datetime
+import re
 
 from sqlmodel import Session, select
 
@@ -143,6 +144,91 @@ def _format_number(value: float) -> str:
                 return f"{value:,.2f}"
         return f"{value:,}"
     return str(value)
+
+
+def _extract_points_from_text(text: str, max_points: int = 8) -> List[str]:
+    """Extract bullet-like points from free text deterministically."""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    bullet_lines = []
+    for ln in lines:
+        if re.match(r"^([-*•]|\d+[.)])\s+", ln):
+            bullet_lines.append(re.sub(r"^([-*•]|\d+[.)])\s+", "", ln).strip())
+
+    if bullet_lines:
+        return bullet_lines[:max_points]
+
+    sentence_candidates = re.split(r"(?<=[.!?])\s+", raw.replace("\n", " ").strip())
+    points = [s.strip() for s in sentence_candidates if s.strip()]
+    if not points:
+        points = [raw]
+    return points[:max_points]
+
+
+def _diagnostic_points_from_results(diagnostics: List[Dict[str, Any]], max_points: int = 8) -> List[str]:
+    """Build deterministic evidence points directly from diagnostic outputs."""
+    points: List[str] = []
+
+    for diag in diagnostics:
+        rows = diag.get("data") or []
+        dim = diag.get("dimension") or "category"
+        title = diag.get("title") or f"Breakdown by {dim}"
+        if not rows:
+            continue
+
+        top = rows[0]
+        top_dim = top.get(dim, "Unknown")
+        top_val = top.get("value", 0)
+        top_fmt = _format_number(float(top_val)) if isinstance(top_val, (int, float)) else str(top_val)
+
+        if len(rows) > 1 and isinstance(rows[1].get("value"), (int, float)) and isinstance(top_val, (int, float)):
+            second = rows[1]
+            second_dim = second.get(dim, "Unknown")
+            second_val = second.get("value", 0)
+            second_fmt = _format_number(float(second_val)) if isinstance(second_val, (int, float)) else str(second_val)
+            points.append(f"{title}: {top_dim} leads at {top_fmt}, followed by {second_dim} at {second_fmt}.")
+        else:
+            points.append(f"{title}: {top_dim} is highest at {top_fmt}.")
+
+        if len(points) >= max_points:
+            break
+
+    return points[:max_points]
+
+
+def _format_explanation_as_points(
+    text: str,
+    max_points: int = 8,
+    min_points: int = 6,
+    supplemental_points: Optional[List[str]] = None,
+) -> str:
+    """Normalize interpretive explanations into rich analyst-style points."""
+    points = _extract_points_from_text(text, max_points=max_points)
+
+    if supplemental_points:
+        for sp in supplemental_points:
+            if len(points) >= max_points:
+                break
+            if sp and sp not in points:
+                points.append(sp)
+
+    if not points:
+        points = ["No clear diagnostic insight could be generated."]
+
+    points = points[:max_points]
+
+    # Ensure a minimum amount of detail when possible.
+    if len(points) < min_points and supplemental_points:
+        for sp in supplemental_points:
+            if len(points) >= min_points:
+                break
+            if sp and sp not in points:
+                points.append(sp)
+
+    return "\n".join(f"- {p}" for p in points[:max_points])
 
 
 def _calculate_pop_change(df: pd.DataFrame, metric: str, date_col: str) -> Optional[Dict[str, Any]]:
@@ -426,24 +512,39 @@ write a concise explanation answering the user's question.
 {battery_result['synthesis_context']}
 
 Rules:
-- Start with a direct answer to the question
-- Cite the top 2-3 drivers with actual numbers
-- Keep it under 200 words
+- Start with a direct answer in the first point
+- Provide 6 to 8 points
+- Cover multiple drivers, not just one segment
+- Include at least 5 numeric facts from the diagnostics
 - Use plain English, no jargon
-- Do NOT use markdown formatting or bullet points. Plain text with paragraphs only."""
+- Return the answer as 6-8 concise points
+- Each point must start with '- '
+- Keep each point to one sentence."""
 
             try:
                 llm_client = get_llm_client()
                 synthesis_response = await llm_client.complete(
                     system_prompt="You are a data analyst writing a brief diagnostic summary.",
                     user_prompt=synthesis_prompt,
-                    temperature=0.3,
+                    temperature=0.0,
                     max_tokens=512,
                 )
-                synthesis_text = synthesis_response.content.strip()
+                supplemental_points = _diagnostic_points_from_results(diagnostics, max_points=8)
+                synthesis_text = _format_explanation_as_points(
+                    synthesis_response.content,
+                    max_points=8,
+                    min_points=6,
+                    supplemental_points=supplemental_points,
+                )
             except Exception as e:
                 logger.warning(f"LLM synthesis failed: {e}")
-                synthesis_text = battery_result["synthesis_context"]
+                supplemental_points = _diagnostic_points_from_results(diagnostics, max_points=8)
+                synthesis_text = _format_explanation_as_points(
+                    battery_result["synthesis_context"],
+                    max_points=8,
+                    min_points=6,
+                    supplemental_points=supplemental_points,
+                )
 
             # Build chart specs for each diagnostic
             diag_charts = []

@@ -125,6 +125,13 @@ export default function UserLayout() {
                             </svg>
                             <span className={spanClasses}>Downloads</span>
                         </Link>
+
+                        <Link to="/user/profile" title={isCollapsed ? 'Profile' : ''} className={linkClasses('/user/profile')} style={{ color: isActive('/user/profile') ? undefined : 'var(--text-sidebar)' }}>
+                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.121 17.804A9 9 0 1118.88 17.8M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            <span className={spanClasses}>Profile</span>
+                        </Link>
                     </nav>
                 </div>
 

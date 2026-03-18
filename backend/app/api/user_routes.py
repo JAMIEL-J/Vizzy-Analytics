@@ -78,6 +78,28 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class ProfileUsageItem(BaseModel):
+    feature: str
+    count: int
+
+
+class MonthlyActivityItem(BaseModel):
+    month: str
+    datasets: int
+    uploads: int
+    dashboards: int
+    chats: int
+    analyses: int
+
+
+class UserProfileStatsResponse(BaseModel):
+    user: UserResponse
+    totals: dict
+    feature_usage: List[ProfileUsageItem]
+    monthly_activity: List[MonthlyActivityItem]
+    dataset_sources: dict
+
+
 # =============================================================================
 # Routes
 # =============================================================================
@@ -142,6 +164,29 @@ def get_current_user_profile(
         )
         return UserResponse.model_validate(user)
 
+    except ResourceNotFound as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        )
+
+
+@router.get(
+    "/me/profile",
+    response_model=UserProfileStatsResponse,
+    summary="Get current user profile analytics",
+    description="Retrieve profile KPIs and feature usage analytics for the authenticated user.",
+)
+def get_current_user_profile_stats(
+    session: DBSession,
+    current_user: AuthenticatedUser,
+) -> UserProfileStatsResponse:
+    try:
+        data = user_services.get_user_profile_stats(
+            session=session,
+            user_id=UUID(current_user.user_id),
+        )
+        return UserProfileStatsResponse.model_validate(data)
     except ResourceNotFound as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

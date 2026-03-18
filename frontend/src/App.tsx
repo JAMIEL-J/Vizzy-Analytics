@@ -22,6 +22,7 @@ import ChatInterface from './pages/user/ChatInterface';
 import DataCleaning from './pages/user/DataCleaning';
 import ConnectDatabase from './pages/user/ConnectDatabase';
 import Downloads from './pages/user/Downloads';
+import UserProfile from './pages/user/UserProfile';
 
 // User Pages
 import UserLayout from './components/layout/UserLayout';
@@ -52,6 +53,7 @@ function App() {
                             <Route path="cleaning" element={<DataCleaning />} />
                             <Route path="connect-db" element={<ConnectDatabase />} />
                             <Route path="downloads" element={<Downloads />} />
+                            <Route path="profile" element={<UserProfile />} />
                         </Route>
 
                         {/* Admin Routes (Protected) */}

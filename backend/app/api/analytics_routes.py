@@ -17,7 +17,10 @@ from pydantic import BaseModel
 
 from app.api.deps import DBSession, AuthenticatedUser
 from app.models.dataset import Dataset
+from app.models.analysis_contract import AnalysisContract
 from app.services.dataset_version_service import get_latest_version
+from app.services.analysis_contract_service import create_analysis_contract
+from app.services.analysis_service import create_analysis_result
 from app.services.analytics import (
     detect_domain,
     get_domain_confidence,
@@ -27,6 +30,7 @@ from app.services.analytics import (
     DomainType
 )
 from app.services.analytics.pivot_generator import generate_pivot_config, generate_pivot_data
+from sqlmodel import select
 import pandas as pd
 import numpy as np
 import os
@@ -465,6 +469,52 @@ def get_dashboard_analytics(
             dtype = str(df[col].dtype)
             action = "coerced" if col in classification.metrics and df[col].dtype.name in ['float64', 'int64'] else "none"
             data_quality.append({"column": col, "null_pct": null_pct, "null_count": null_count, "dtype": dtype, "action": action})
+
+        # Track base dashboard generations for profile analytics.
+        # Avoid counting transient UI filter/override recomputes as full generations.
+        is_base_generation = (
+            (not state.active_filters)
+            and (not state.chart_overrides)
+            and (not state.classification_overrides)
+            and ((not state.target_value) or str(state.target_value).lower() == "all")
+        )
+        if is_base_generation:
+            try:
+                contract = session.exec(
+                    select(AnalysisContract).where(
+                        AnalysisContract.dataset_version_id == latest_version.id,
+                        AnalysisContract.is_active == True,
+                    )
+                ).first()
+
+                if not contract:
+                    contract = create_analysis_contract(
+                        session=session,
+                        dataset_version_id=latest_version.id,
+                        allowed_metrics={"metrics": classification.metrics},
+                        allowed_dimensions={"dimensions": classification.dimensions},
+                        user_id=current_user.id,
+                        role=current_user.role,
+                        constraints={"source": "dashboard_page_auto"},
+                    )
+
+                create_analysis_result(
+                    session=session,
+                    dataset_version_id=latest_version.id,
+                    analysis_contract_id=contract.id,
+                    result_payload={
+                        "type": "dashboard",
+                        "source": "dashboard_page",
+                        "domain": domain.value,
+                        "dataset_id": str(state.dataset_id),
+                        "kpi_count": len(kpis or {}),
+                        "chart_count": len(charts or {}),
+                    },
+                    user_id=current_user.id,
+                    role=current_user.role,
+                )
+            except Exception as track_err:
+                print(f"Warning: dashboard generation tracking failed: {track_err}")
 
         return DashboardAnalyticsResponse(
             dataset_name=dataset_name,

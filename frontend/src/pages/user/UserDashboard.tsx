@@ -13,6 +13,30 @@ import {
 } from 'recharts';
 import { ColumnClassificationPanel } from '../../components/dashboard/ColumnClassificationPanel';
 
+type CachedEntry<T> = {
+    value: T;
+    createdAt: number;
+};
+
+const DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
+const dashboardAnalyticsCache = new Map<string, CachedEntry<DashboardAnalytics>>();
+const dashboardCorrelationCache = new Map<string, CachedEntry<CorrelationMatrix>>();
+const dashboardNarrativeCache = new Map<string, CachedEntry<string>>();
+let lastSelectedDatasetId: string = '';
+
+const stableStringify = (value: any): string => {
+    if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(',')}]`;
+    }
+    if (value && typeof value === 'object') {
+        const keys = Object.keys(value).sort();
+        return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+};
+
+const isFresh = (createdAt: number) => Date.now() - createdAt < DASHBOARD_CACHE_TTL_MS;
+
 // ─── Color Palettes ──────────────────────────────────────────────────────────
 
 const KPI_COLORS = [
@@ -133,7 +157,7 @@ const KPI_ICON_SVG: Record<string, React.ReactNode> = {
 
 // ─── Dark Tooltip ─────────────────────────────────────────────────────────────
 
-const ThemedTooltip = ({ active, payload, label, formatter, chartColors, chartTitle, valueLabel, formatType }: any) => {
+const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLabel, formatType }: any) => {
     if (!active || !payload?.length) return null;
 
     const fp = payload[0]?.payload;
@@ -393,8 +417,19 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
 
     const handleSliceClick = (data: any) => {
         if (!onFilterClick || !data) return;
-        const val = data[nameKey] || data.name || data.x;
-        if (val) onFilterClick(filterCol, String(val));
+
+        // Recharts emits different click payload shapes by chart type.
+        const payload = data?.payload || data;
+        const val = payload?.[nameKey]
+            ?? payload?.name
+            ?? payload?.date
+            ?? payload?.x
+            ?? data?.activeLabel
+            ?? data?.label
+            ?? data?.name;
+
+        if (val === undefined || val === null || val === '') return;
+        onFilterClick(filterCol, String(val));
     };
 
     const renderOutlierToggle = () => {
@@ -487,8 +522,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
                             <Legend iconType="circle" iconSize={8}
                                 formatter={(v: string) => <span className="text-xs text-themed-muted">{v === 'positive' ? 'Churned' : 'Retained'}</span>} />
-                            <Bar dataKey="positive" stackId="a" fill="url(#stackedPos)" maxBarSize={40} name="positive" />
-                            <Bar dataKey="negative" stackId="a" fill="url(#stackedNeg)" maxBarSize={40} name="negative" />
+                            <Bar dataKey="positive" stackId="a" fill="url(#stackedPos)" maxBarSize={40} name="positive" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
+                            <Bar dataKey="negative" stackId="a" fill="url(#stackedNeg)" maxBarSize={40} name="negative" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -589,7 +624,10 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
                             <Area type="monotone" dataKey="value" stroke="#ff8f66" strokeWidth={2.5}
-                                fill="url(#areaDark)" dot={false} activeDot={{ r: 5, fill: '#ff8f66', stroke: '#111111' }} />
+                                fill="url(#areaDark)" dot={false}
+                                activeDot={{ r: 5, fill: '#ff8f66', stroke: '#111111', onClick: (e: any) => handleSliceClick(e?.payload || e) }}
+                                onClick={handleSliceClick}
+                                cursor={onFilterClick ? 'pointer' : 'default'} />
                         </AreaChart>
                     </ResponsiveContainer>
                 </div>
@@ -618,7 +656,9 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             {(chart.categories || []).map((cat: string, i: number) => (
                                 <Area key={cat} type="monotone" dataKey={cat} stackId="a"
                                     stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                                    fill={`url(#stackGrad${i})`} strokeWidth={1.5} />
+                                    fill={`url(#stackGrad${i})`} strokeWidth={1.5}
+                                    onClick={handleSliceClick}
+                                    cursor={onFilterClick ? 'pointer' : 'default'} />
                             ))}
                         </AreaChart>
                     </ResponsiveContainer>
@@ -686,7 +726,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <PolarGrid stroke={chartColors.grid} />
                             <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: chartColors.text }} />
                             <PolarRadiusAxis tick={{ fontSize: 9, fill: chartColors.axis }} />
-                            <Radar dataKey="value" stroke="#ff6933" fill="#ff6933" fillOpacity={0.35} />
+                            <Radar dataKey="value" stroke="#ff6933" fill="#ff6933" fillOpacity={0.35} onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
                         </RadarChart>
                     </ResponsiveContainer>
@@ -1223,7 +1263,7 @@ export default function UserDashboard() {
     const [isLoading, setIsLoading] = useState(false); // Only for full data loads (Dataset/Domain/Classification)
     const [isKPILoading, setIsKPILoading] = useState(false); // Only for background KPI refreshes (Filters)
     const [error, setError] = useState<string | null>(null);
-    const [selectedDatasetId, setSelectedDatasetId] = useState('');
+    const [selectedDatasetId, setSelectedDatasetId] = useState(lastSelectedDatasetId || '');
     const [datasets, setDatasets] = useState<any[]>([]);
 
     // Zustand Store for Filters
@@ -1269,6 +1309,10 @@ export default function UserDashboard() {
     const [dataQualityOpen, setDataQualityOpen] = useState(false);
 
     useEffect(() => { loadDatasets(); }, []);
+
+    useEffect(() => {
+        lastSelectedDatasetId = selectedDatasetId;
+    }, [selectedDatasetId]);
 
     // Reset slots + filters when dataset changes
     useEffect(() => {
@@ -1334,12 +1378,28 @@ export default function UserDashboard() {
         };
     }, [selectedDatasetId, target_value, classification_overrides, selected_domain, active_filters, chart_overrides]);
 
+    const buildDashboardCacheKey = () => {
+        const normalizedFilters = Object.fromEntries(
+            Object.entries(active_filters || {}).filter(([, vals]) => Array.isArray(vals) && vals.length > 0)
+        );
+
+        return stableStringify({
+            datasetId: selectedDatasetId,
+            targetValue: target_value || 'all',
+            selectedDomain: selected_domain || 'auto',
+            filters: normalizedFilters,
+            chartOverrides: chart_overrides || {},
+            classificationOverrides: classification_overrides || {},
+        });
+    };
+
     const loadDatasets = async () => {
         try {
             const data = await datasetService.listDatasets();
             setDatasets(data);
             if (data.length > 0) {
-                setSelectedDatasetId(data[0].id);
+                const hasRetainedDataset = !!lastSelectedDatasetId && data.some((d: any) => d.id === lastSelectedDatasetId);
+                setSelectedDatasetId(hasRetainedDataset ? lastSelectedDatasetId : data[0].id);
             }
             // If no datasets, ensure loading is false so empty state shows
         } catch {
@@ -1347,8 +1407,25 @@ export default function UserDashboard() {
         }
     };
 
-    const loadAnalytics = async (signal?: AbortSignal) => {
+    const loadAnalytics = async (signal?: AbortSignal, forceRefresh = false) => {
         try {
+            const cacheKey = buildDashboardCacheKey();
+            const cached = dashboardAnalyticsCache.get(cacheKey);
+            if (!forceRefresh && cached && isFresh(cached.createdAt)) {
+                const cachedData = cached.value;
+                setAnalytics(cachedData);
+                if (cachedData.raw_data && cachedData.chart_configs) {
+                    const initial: Record<string, any> = {};
+                    if (cachedData.charts) {
+                        Object.entries(cachedData.charts).forEach(([key, chart]: [string, any]) => {
+                            initial[key] = chart.data;
+                        });
+                    }
+                    setDashboardData(cachedData.raw_data, cachedData.chart_configs, initial, cachedData.total_rows, cachedData.target_column);
+                }
+                return;
+            }
+
             // If we have rawData already, this is a background KPI refresh
             const isKPIOnly = !!useFilterStore.getState().rawData;
 
@@ -1366,6 +1443,7 @@ export default function UserDashboard() {
                 signal
             );
             setAnalytics(data);
+            dashboardAnalyticsCache.set(cacheKey, { value: data, createdAt: Date.now() });
             if (data.raw_data && data.chart_configs) {
                 console.log(`[Hybrid Engine] Received ${data.raw_data.length} rows for local recomputation. Target: ${data.target_column}`);
                 const initial: Record<string, any> = {};
@@ -1387,13 +1465,21 @@ export default function UserDashboard() {
         }
     };
 
-    // Fetch correlation matrix whenever dataset changes
     useEffect(() => {
         if (!selectedDatasetId) return;
+        const cached = dashboardCorrelationCache.get(selectedDatasetId);
+        if (cached && isFresh(cached.createdAt)) {
+            setCorrMatrix(cached.value);
+            setCorrLoading(false);
+            return;
+        }
         setCorrLoading(true);
         setCorrMatrix(null);
         correlationService.getMatrix(selectedDatasetId)
-            .then(m => setCorrMatrix(m))
+            .then(m => {
+                dashboardCorrelationCache.set(selectedDatasetId, { value: m, createdAt: Date.now() });
+                setCorrMatrix(m);
+            })
             .catch(() => setCorrMatrix(null))
             .finally(() => setCorrLoading(false));
     }, [selectedDatasetId]);
@@ -1401,6 +1487,19 @@ export default function UserDashboard() {
     // Fetch narrative when KPIs and charts are loaded
     useEffect(() => {
         if (!analytics?.kpis || !selectedDatasetId) return;
+        const narrativeKey = stableStringify({
+            datasetId: selectedDatasetId,
+            domain: analytics.domain,
+            datasetName: analytics.dataset_name,
+            kpis: analytics.kpis,
+            charts: analytics.charts,
+        });
+        const cached = dashboardNarrativeCache.get(narrativeKey);
+        if (cached && isFresh(cached.createdAt)) {
+            setNarrative(cached.value);
+            setNarrativeLoading(false);
+            return;
+        }
         setNarrativeLoading(true);
         narrativeService.generate(
             selectedDatasetId,
@@ -1409,7 +1508,10 @@ export default function UserDashboard() {
             analytics.dataset_name,
             analytics.charts,
         )
-            .then(text => setNarrative(text))
+            .then(text => {
+                dashboardNarrativeCache.set(narrativeKey, { value: text, createdAt: Date.now() });
+                setNarrative(text);
+            })
             .catch(() => setNarrative(null))
             .finally(() => setNarrativeLoading(false));
     }, [analytics?.kpis, analytics?.charts, selectedDatasetId]);
@@ -1850,7 +1952,7 @@ export default function UserDashboard() {
 
                         {/* Refresh */}
                         <button
-                            onClick={() => loadAnalytics()}
+                            onClick={() => loadAnalytics(undefined, true)}
                             disabled={isLoading}
                             className="p-2.5 rounded-sm bg-transparent border border-border-main text-themed-muted hover:text-primary hover:border-primary/50 transition-all shadow-sm disabled:opacity-50"
                             title="Refresh data"

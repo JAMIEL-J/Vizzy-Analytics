@@ -5,8 +5,8 @@ Belongs to: API layer
 Responsibility: HTTP interfaces for chat operations
 Restrictions: Thin controller - all logic delegated to services
 """
-
-from typing import List, Optional
+from typing import List, Optional, Any, Tuple
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
@@ -97,6 +97,103 @@ def _format_compact_value(value: object, is_currency: bool = False, currency_sym
     decimals = 2 if num < 10 else (1 if num < 100 else 0)
     compact = f"{sign}{num:.{decimals}f}".rstrip("0").rstrip(".") + suffix
     return f"{currency_symbol}{compact}" if is_currency else compact
+
+
+def _looks_interpretive_query(query: str) -> bool:
+    """Detect analyst-style explanatory queries (why/driver/cause questions)."""
+    q = (query or "").lower().strip()
+    q = re.sub(r"[^\w\s]", " ", q)
+    patterns = [
+        r"\bwhy\b",
+        r"\bwhat\s+drives?\b",
+        r"\bwhat\s+causes?\b",
+        r"\bexplain\b",
+        r"\breason\s+for\b",
+        r"\broot\s+cause\b",
+        r"\bwhat\s+is\s+behind\b",
+        r"\bfactors?\s+behind\b",
+    ]
+    return any(re.search(p, q) for p in patterns)
+
+
+def _explicitly_requests_visual(query: str) -> bool:
+    """Detect whether user explicitly asks for chart/graph output."""
+    q = (query or "").lower()
+    visual_keywords = [
+        "chart", "graph", "plot", "visualize", "visualisation", "visualization",
+        "dashboard", "pie", "bar", "line", "scatter", "heatmap", "show as",
+    ]
+    return any(k in q for k in visual_keywords)
+
+
+def _normalize_orchestrator_response(result: dict, default_intent: str = "analysis") -> tuple[str, str, Optional[dict]]:
+    """Support both legacy and new orchestrator response shapes."""
+    assistant_content = result.get("message") or result.get("content") or "Here is your analysis."
+    metadata = result.get("metadata", {}) if isinstance(result.get("metadata"), dict) else {}
+    intent_type = result.get("intent_type") or metadata.get("intent_type") or default_intent
+    output_data = result.get("output_data") or result.get("dashboard") or result.get("chart") or result.get("data")
+    return assistant_content, intent_type, output_data
+
+
+def _normalize_query_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _find_prior_exact_answer(messages: List[Any], query: str) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
+    """Find the latest assistant response paired with an identical user query in this session."""
+    target = _normalize_query_text(query)
+    matched: Tuple[Optional[str], Optional[dict], Optional[str]] = (None, None, None)
+
+    for idx in range(len(messages) - 1):
+        user_msg = messages[idx]
+        assistant_msg = messages[idx + 1]
+
+        user_role = getattr(getattr(user_msg, "role", None), "value", str(getattr(user_msg, "role", ""))).lower()
+        assistant_role = getattr(getattr(assistant_msg, "role", None), "value", str(getattr(assistant_msg, "role", ""))).lower()
+
+        if user_role != "user" or assistant_role != "assistant":
+            continue
+
+        if _normalize_query_text(getattr(user_msg, "content", "")) != target:
+            continue
+
+        matched = (
+            getattr(assistant_msg, "content", None),
+            getattr(assistant_msg, "output_data", None),
+            getattr(assistant_msg, "intent_type", None),
+        )
+
+    return matched
+
+
+def _ensure_point_style(text: str, min_points: int = 6, max_points: int = 8) -> str:
+    """Convert paragraph responses to stable bullet points while preserving wording."""
+    raw = (text or "").strip()
+    if not raw:
+        return raw
+
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    extracted: List[str] = []
+
+    for ln in lines:
+        m = re.match(r"^([-*•]|\d+[.)])\s+(.*)$", ln)
+        if m:
+            extracted.append(m.group(2).strip())
+
+    if not extracted:
+        sentences = re.split(r"(?<=[.!?])\s+", raw.replace("\n", " "))
+        extracted = [s.strip() for s in sentences if s.strip()]
+
+    # Prefer richer output when source has enough sentence granularity.
+    extracted = extracted[:max_points] if extracted else [raw]
+    if len(extracted) < min_points and len(lines) > len(extracted):
+        for ln in lines:
+            if len(extracted) >= min_points:
+                break
+            if ln not in extracted:
+                extracted.append(ln)
+
+    return "\n".join(f"- {p}" for p in extracted[:max_points])
 
 
 # =============================================================================
@@ -362,6 +459,16 @@ async def send_message(
             user_id=UUID(current_user.user_id),
         )
 
+        # Deterministic replay: if exact same query already answered in this session,
+        # return the same assistant response verbatim.
+        session_messages = chat_service.get_session_messages(
+            session=session,
+            session_id=session_id,
+            user_id=UUID(current_user.user_id),
+            limit=300,
+        )
+        cached_content, cached_output, cached_intent = _find_prior_exact_answer(session_messages, request.content)
+
         # Add user message
         user_msg = chat_service.add_user_message(
             session=session,
@@ -378,11 +485,54 @@ async def send_message(
                 first_message=request.content,
             )
 
+        is_interpretive_query = _looks_interpretive_query(request.content)
+
+        if cached_content:
+            if is_interpretive_query:
+                cached_is_interpretive = (
+                    (cached_intent == "interpretive")
+                    or (
+                        isinstance(cached_output, dict)
+                        and (
+                            cached_output.get("type") in {"interpretive", "interpretive_text"}
+                            or cached_output.get("source") == "orchestrator_interpretive"
+                            or cached_output.get("detected_intent") == "interpretive"
+                        )
+                    )
+                )
+                # Skip replay for old KPI/chart answers so the new interpretive path can run.
+                if not cached_is_interpretive:
+                    cached_content = None
+                    cached_output = None
+                    cached_intent = None
+
+            if cached_content and is_interpretive_query:
+                cached_content = _ensure_point_style(cached_content, min_points=6, max_points=8)
+
+            replay_output = cached_output.copy() if isinstance(cached_output, dict) else cached_output
+            if isinstance(replay_output, dict):
+                replay_output["reused_response"] = True
+
+            if cached_content:
+                assistant_msg = chat_service.add_assistant_message(
+                    session=session,
+                    session_id=session_id,
+                    content=cached_content,
+                    output_data=replay_output,
+                    intent_type=cached_intent,
+                )
+
+                return ChatResponse(
+                    user_message=MessageResponse.model_validate(user_msg),
+                    assistant_message=MessageResponse.model_validate(assistant_msg),
+                )
+
         # Run analysis if dataset is attached
         if chat_session.dataset_version_id:
             # ── Intent Detection (6-type heuristic) ──
             detected_intent, intent_confidence, intent_label = classify_intent_fast(request.content)
             is_dashboard = detected_intent == 'dashboard'
+            interpretive_text_mode = _looks_interpretive_query(request.content) and not _explicitly_requests_visual(request.content)
 
             if is_dashboard:
                 # ══════════════════════════════════════════════════
@@ -396,12 +546,37 @@ async def send_message(
                     query=request.content,
                 )
 
-                assistant_content = result.get("message", "Here is your dashboard.")
-                metadata = result.get("metadata", {})
-                intent_type = metadata.get("intent_type", "dashboard")
-                output_data = result.get("dashboard") or result.get("chart") or result.get("data")
+                assistant_content, intent_type, output_data = _normalize_orchestrator_response(result, default_intent="dashboard")
                 if output_data and isinstance(output_data, dict):
                     output_data["detected_intent"] = intent_label
+
+            elif interpretive_text_mode:
+                # ══════════════════════════════════════════════════
+                # WHY/EXPLAIN (text-first) → Orchestrator Interpretive Path
+                # ══════════════════════════════════════════════════
+                result = await run_analysis_orchestration(
+                    session=session,
+                    dataset_version_id=chat_session.dataset_version_id,
+                    user_id=UUID(current_user.user_id),
+                    role=current_user.role,
+                    query=request.content,
+                )
+
+                assistant_content, intent_type, orch_output = _normalize_orchestrator_response(result, default_intent="interpretive")
+
+                # DA-first UX: for explanatory questions, always return textual narrative unless visual was explicitly requested.
+                output_data = {
+                    "type": "interpretive_text",
+                    "response_type": "text",
+                    "detected_intent": intent_label,
+                    "source": "orchestrator_interpretive",
+                }
+                if isinstance(orch_output, dict):
+                    diag_count = orch_output.get("diagnostics_count")
+                    if isinstance(diag_count, int):
+                        output_data["diagnostics_count"] = diag_count
+                if result.get("staleness_warning"):
+                    output_data["staleness_warning"] = result.get("staleness_warning")
 
             else:
                 # ══════════════════════════════════════════════════
@@ -556,10 +731,7 @@ async def send_message(
                         query=request.content,
                     )
 
-                    assistant_content = result.get("message", "Here is your analysis.")
-                    metadata = result.get("metadata", {})
-                    intent_type = metadata.get("intent_type")
-                    output_data = result.get("chart") or result.get("dashboard") or result.get("data")
+                    assistant_content, intent_type, output_data = _normalize_orchestrator_response(result)
 
                     # Attach diagnostics for the frontend to optionally display
                     if output_data and isinstance(output_data, dict) and diagnostics:

@@ -8,10 +8,38 @@ When intent_type == INTERPRETIVE, this module produces multi-axis analysis.
 
 from typing import Any, Dict, List, Optional
 import pandas as pd
+import re
 
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_binary_numeric(series: pd.Series) -> bool:
+    """True when numeric series effectively behaves as binary target (0/1, true/false)."""
+    if not pd.api.types.is_numeric_dtype(series):
+        return False
+    vals = [v for v in series.dropna().unique().tolist() if pd.notna(v)]
+    normalized = {int(v) for v in vals if str(v).strip() != ""}
+    return len(normalized) <= 2 and normalized.issubset({0, 1})
+
+
+def _normalize_col_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(name).lower()).strip()
+
+
+def _find_mentioned_columns(query: str, columns: List[str]) -> List[str]:
+    """Find schema columns explicitly mentioned in the natural language query."""
+    q = _normalize_col_name(query)
+    mentioned: List[str] = []
+    for col in columns:
+        norm = _normalize_col_name(col)
+        if not norm:
+            continue
+        # Match full normalized phrase or all tokens present
+        if norm in q or all(tok in q.split() for tok in norm.split() if tok):
+            mentioned.append(col)
+    return mentioned
 
 
 # ─── Diagnostic query generators ──────────────────────────────────────────────
@@ -28,9 +56,19 @@ def _build_diagnostic_queries(
     """
     queries = []
 
-    # If no metric, default to row count
-    agg_expr = "count" if not metric_col else "mean"
-    agg_col = metric_col or target_col
+    # If no metric:
+    # - Use mean(target) for binary targets (gives rate)
+    # - Else use count for generic volume diagnostics
+    if metric_col:
+        agg_expr = "mean"
+        agg_col = metric_col
+    else:
+        if target_col in df.columns and _is_binary_numeric(df[target_col]):
+            agg_expr = "mean"
+            agg_col = target_col
+        else:
+            agg_expr = "count"
+            agg_col = target_col
 
     for dim in dimensions[:5]:  # Max 5 dimensions
         queries.append({
@@ -98,22 +136,55 @@ async def run_diagnostic_battery(
             "synthesis_context": str  # Pre-formatted text for LLM synthesis
         }
     """
-    # Auto-detect target if not given
+    mentioned_cols = _find_mentioned_columns(query, list(df.columns))
+
+    # Auto-detect metric if not supplied and query names a numeric column.
+    if not metric_col:
+        for col in mentioned_cols:
+            if pd.api.types.is_numeric_dtype(df[col]):
+                metric_col = col
+                break
+
+    # Auto-detect target if not given.
     if not target_col:
-        target_keywords = ['churn', 'outcome', 'status', 'default', 'converted', 'target', 'label']
-        cat_cols = df.select_dtypes(include=['object', 'category']).columns
-        for col in cat_cols:
+        # 1) Prefer query-mentioned low-cardinality categorical/bool or binary numeric columns.
+        for col in mentioned_cols:
+            nunique = df[col].dropna().nunique()
+            if pd.api.types.is_numeric_dtype(df[col]):
+                if _is_binary_numeric(df[col]):
+                    target_col = col
+                    break
+            elif nunique <= 20:
+                target_col = col
+                break
+
+    if not target_col:
+        # 2) Prefer common outcome/status-like columns if present.
+        target_keywords = ['outcome', 'status', 'default', 'converted', 'target', 'label', 'segment', 'class', 'category']
+        for col in df.columns:
             if any(kw in col.lower() for kw in target_keywords):
-                if df[col].nunique() <= 5:
+                nunique = df[col].dropna().nunique()
+                if nunique <= 20:
                     target_col = col
                     break
 
     if not target_col:
-        # Fallback: use first categorical with low cardinality
-        for col in df.select_dtypes(include=['object', 'category']).columns:
-            if df[col].nunique() <= 10:
+        # 3) Fallback: first categorical/bool with low cardinality.
+        for col in df.select_dtypes(include=['object', 'category', 'bool']).columns:
+            if df[col].dropna().nunique() <= 20:
                 target_col = col
                 break
+
+    if not target_col:
+        # 4) Final fallback: numeric binary target.
+        for col in df.select_dtypes(include=['number']).columns:
+            if _is_binary_numeric(df[col]):
+                target_col = col
+                break
+
+    if not target_col and metric_col:
+        # Use metric column as anchor so diagnostics still run for generic "why" queries.
+        target_col = metric_col
 
     if not target_col:
         return {
@@ -126,12 +197,17 @@ async def run_diagnostic_battery(
     # Pick dimensions: all categoricals except the target, low cardinality
     dimensions = [
         col for col in df.select_dtypes(include=['object', 'category']).columns
-        if col != target_col and df[col].nunique() <= 20
+        if col != target_col and df[col].dropna().nunique() <= 20 and "id" not in col.lower()
     ]
+
+    # Prioritize dimensions explicitly mentioned by the user query.
+    if mentioned_cols:
+        mentioned_set = set(mentioned_cols)
+        dimensions = sorted(dimensions, key=lambda c: (0 if c in mentioned_set else 1, c))
 
     # Also consider numeric columns with low cardinality (binned)
     for col in df.select_dtypes(include=['number']).columns:
-        if col != metric_col and df[col].nunique() <= 10:
+        if col != metric_col and col != target_col and df[col].dropna().nunique() <= 10 and "id" not in col.lower():
             dimensions.append(col)
 
     if not dimensions:
