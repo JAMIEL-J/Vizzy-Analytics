@@ -19,20 +19,80 @@ type CachedEntry<T> = {
 };
 
 const DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
-const dashboardAnalyticsCache = new Map<string, CachedEntry<DashboardAnalytics>>();
-const dashboardCorrelationCache = new Map<string, CachedEntry<CorrelationMatrix>>();
-const dashboardNarrativeCache = new Map<string, CachedEntry<string>>();
-let lastSelectedDatasetId: string = '';
 
-const stableStringify = (value: any): string => {
-    if (Array.isArray(value)) {
-        return `[${value.map(stableStringify).join(',')}]`;
+class BoundedCache<T> {
+    private map = new Map<string, CachedEntry<T>>();
+    private readonly maxEntries: number;
+
+    constructor(maxEntries: number) {
+        this.maxEntries = maxEntries;
     }
-    if (value && typeof value === 'object') {
-        const keys = Object.keys(value).sort();
-        return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+
+    get(key: string): CachedEntry<T> | undefined {
+        const entry = this.map.get(key);
+        if (!entry) return undefined;
+        // Touch for LRU behavior
+        this.map.delete(key);
+        this.map.set(key, entry);
+        return entry;
     }
-    return JSON.stringify(value);
+
+    set(key: string, value: T): void {
+        if (this.map.has(key)) this.map.delete(key);
+        this.map.set(key, { value, createdAt: Date.now() });
+
+        if (this.map.size > this.maxEntries) {
+            const oldestKey = this.map.keys().next().value;
+            if (oldestKey !== undefined) {
+                this.map.delete(oldestKey);
+            }
+        }
+    }
+
+    clear(): void {
+        this.map.clear();
+    }
+}
+
+type DashboardCacheBundle = {
+    analytics: BoundedCache<DashboardAnalytics>;
+    correlation: BoundedCache<CorrelationMatrix>;
+    narrative: BoundedCache<string>;
+};
+
+const createDashboardCacheBundle = (): DashboardCacheBundle => ({
+    analytics: new BoundedCache<DashboardAnalytics>(30),
+    correlation: new BoundedCache<CorrelationMatrix>(10),
+    narrative: new BoundedCache<string>(30),
+});
+
+const stableSerialize = (value: unknown): string => {
+    const seen = new WeakSet<object>();
+
+    const normalize = (input: any): any => {
+        if (input === undefined) return { __type: 'undefined' };
+        if (typeof input === 'bigint') return { __type: 'bigint', value: input.toString() };
+        if (typeof input === 'symbol') return { __type: 'symbol', value: String(input) };
+        if (input instanceof Date) return { __type: 'date', value: input.toISOString() };
+
+        if (Array.isArray(input)) {
+            return input.map((item) => normalize(item));
+        }
+
+        if (input && typeof input === 'object') {
+            if (seen.has(input)) return { __type: 'circular' };
+            seen.add(input);
+            const out: Record<string, any> = {};
+            for (const key of Object.keys(input).sort()) {
+                out[key] = normalize(input[key]);
+            }
+            return out;
+        }
+
+        return input;
+    };
+
+    return JSON.stringify(normalize(value));
 };
 
 const isFresh = (createdAt: number) => Date.now() - createdAt < DASHBOARD_CACHE_TTL_MS;
@@ -1259,11 +1319,12 @@ function getDashboardTitle(domain: string | undefined): string {
 }
 
 export default function UserDashboard() {
+    const cacheRef = useRef<DashboardCacheBundle>(createDashboardCacheBundle());
     const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
     const [isLoading, setIsLoading] = useState(false); // Only for full data loads (Dataset/Domain/Classification)
     const [isKPILoading, setIsKPILoading] = useState(false); // Only for background KPI refreshes (Filters)
     const [error, setError] = useState<string | null>(null);
-    const [selectedDatasetId, setSelectedDatasetId] = useState(lastSelectedDatasetId || '');
+    const [selectedDatasetId, setSelectedDatasetId] = useState(() => sessionStorage.getItem('vizzy.dashboard.selectedDatasetId') || '');
     const [datasets, setDatasets] = useState<any[]>([]);
 
     // Zustand Store for Filters
@@ -1308,11 +1369,32 @@ export default function UserDashboard() {
     const [narrativeLoading, setNarrativeLoading] = useState(false);
     const [dataQualityOpen, setDataQualityOpen] = useState(false);
 
+    const previousDatasetIdRef = useRef<string>('');
+
     useEffect(() => { loadDatasets(); }, []);
 
     useEffect(() => {
-        lastSelectedDatasetId = selectedDatasetId;
+        if (selectedDatasetId) {
+            sessionStorage.setItem('vizzy.dashboard.selectedDatasetId', selectedDatasetId);
+        }
     }, [selectedDatasetId]);
+
+    useEffect(() => {
+        const prev = previousDatasetIdRef.current;
+        if (prev && prev !== selectedDatasetId) {
+            // Recreate caches on dataset switches to avoid stale cross-dataset payloads.
+            cacheRef.current = createDashboardCacheBundle();
+        }
+        previousDatasetIdRef.current = selectedDatasetId;
+    }, [selectedDatasetId]);
+
+    useEffect(() => {
+        return () => {
+            cacheRef.current.analytics.clear();
+            cacheRef.current.correlation.clear();
+            cacheRef.current.narrative.clear();
+        };
+    }, []);
 
     // Reset slots + filters when dataset changes
     useEffect(() => {
@@ -1383,7 +1465,7 @@ export default function UserDashboard() {
             Object.entries(active_filters || {}).filter(([, vals]) => Array.isArray(vals) && vals.length > 0)
         );
 
-        return stableStringify({
+        return stableSerialize({
             datasetId: selectedDatasetId,
             targetValue: target_value || 'all',
             selectedDomain: selected_domain || 'auto',
@@ -1398,8 +1480,9 @@ export default function UserDashboard() {
             const data = await datasetService.listDatasets();
             setDatasets(data);
             if (data.length > 0) {
-                const hasRetainedDataset = !!lastSelectedDatasetId && data.some((d: any) => d.id === lastSelectedDatasetId);
-                setSelectedDatasetId(hasRetainedDataset ? lastSelectedDatasetId : data[0].id);
+                const retained = sessionStorage.getItem('vizzy.dashboard.selectedDatasetId') || selectedDatasetId;
+                const hasRetainedDataset = !!retained && data.some((d: any) => d.id === retained);
+                setSelectedDatasetId(hasRetainedDataset ? retained : data[0].id);
             }
             // If no datasets, ensure loading is false so empty state shows
         } catch {
@@ -1410,7 +1493,7 @@ export default function UserDashboard() {
     const loadAnalytics = async (signal?: AbortSignal, forceRefresh = false) => {
         try {
             const cacheKey = buildDashboardCacheKey();
-            const cached = dashboardAnalyticsCache.get(cacheKey);
+            const cached = cacheRef.current.analytics.get(cacheKey);
             if (!forceRefresh && cached && isFresh(cached.createdAt)) {
                 const cachedData = cached.value;
                 setAnalytics(cachedData);
@@ -1443,7 +1526,7 @@ export default function UserDashboard() {
                 signal
             );
             setAnalytics(data);
-            dashboardAnalyticsCache.set(cacheKey, { value: data, createdAt: Date.now() });
+            cacheRef.current.analytics.set(cacheKey, data);
             if (data.raw_data && data.chart_configs) {
                 console.log(`[Hybrid Engine] Received ${data.raw_data.length} rows for local recomputation. Target: ${data.target_column}`);
                 const initial: Record<string, any> = {};
@@ -1467,7 +1550,7 @@ export default function UserDashboard() {
 
     useEffect(() => {
         if (!selectedDatasetId) return;
-        const cached = dashboardCorrelationCache.get(selectedDatasetId);
+        const cached = cacheRef.current.correlation.get(selectedDatasetId);
         if (cached && isFresh(cached.createdAt)) {
             setCorrMatrix(cached.value);
             setCorrLoading(false);
@@ -1477,7 +1560,7 @@ export default function UserDashboard() {
         setCorrMatrix(null);
         correlationService.getMatrix(selectedDatasetId)
             .then(m => {
-                dashboardCorrelationCache.set(selectedDatasetId, { value: m, createdAt: Date.now() });
+                cacheRef.current.correlation.set(selectedDatasetId, m);
                 setCorrMatrix(m);
             })
             .catch(() => setCorrMatrix(null))
@@ -1487,14 +1570,14 @@ export default function UserDashboard() {
     // Fetch narrative when KPIs and charts are loaded
     useEffect(() => {
         if (!analytics?.kpis || !selectedDatasetId) return;
-        const narrativeKey = stableStringify({
+        const narrativeKey = stableSerialize({
             datasetId: selectedDatasetId,
             domain: analytics.domain,
             datasetName: analytics.dataset_name,
             kpis: analytics.kpis,
             charts: analytics.charts,
         });
-        const cached = dashboardNarrativeCache.get(narrativeKey);
+        const cached = cacheRef.current.narrative.get(narrativeKey);
         if (cached && isFresh(cached.createdAt)) {
             setNarrative(cached.value);
             setNarrativeLoading(false);
@@ -1509,7 +1592,7 @@ export default function UserDashboard() {
             analytics.charts,
         )
             .then(text => {
-                dashboardNarrativeCache.set(narrativeKey, { value: text, createdAt: Date.now() });
+                cacheRef.current.narrative.set(narrativeKey, text);
                 setNarrative(text);
             })
             .catch(() => setNarrative(null))

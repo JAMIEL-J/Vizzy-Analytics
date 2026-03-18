@@ -5,7 +5,7 @@ Belongs to: API layer
 Responsibility: HTTP interfaces for chat operations
 Restrictions: Thin controller - all logic delegated to services
 """
-from typing import List, Optional, Any, Tuple
+from typing import List, Optional, Any, Tuple, Set
 import re
 from uuid import UUID
 
@@ -23,6 +23,11 @@ from app.services.llm.intent_classifier import classify_intent_fast, FAST_INTENT
 
 
 router = APIRouter()
+
+# Lightweight in-memory replay index by session.
+# Keeps normalized user queries seen in this process to avoid DB scans on every send.
+_SESSION_QUERY_INDEX: dict[str, Set[str]] = {}
+_SESSION_INDEX_WARMED: Set[str] = set()
 
 
 def _is_currency_kpi(kpi_label: str, chart_spec: dict) -> bool:
@@ -139,6 +144,39 @@ def _normalize_query_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
 
+def _remember_query(session_id: UUID, query: str) -> None:
+    sid = str(session_id)
+    _SESSION_QUERY_INDEX.setdefault(sid, set()).add(_normalize_query_text(query))
+
+
+def _index_queries_from_messages(session_id: UUID, messages: List[Any]) -> None:
+    sid = str(session_id)
+    bucket = _SESSION_QUERY_INDEX.setdefault(sid, set())
+    for msg in messages:
+        role = getattr(getattr(msg, "role", None), "value", str(getattr(msg, "role", ""))).lower()
+        if role == "user":
+            bucket.add(_normalize_query_text(getattr(msg, "content", "")))
+    _SESSION_INDEX_WARMED.add(sid)
+
+
+def _should_attempt_replay_lookup(session_id: UUID, message_count: int, normalized_query: str) -> bool:
+    """Cheap pre-check before hitting DB for replay lookup."""
+    if message_count < 2:
+        return False
+
+    sid = str(session_id)
+
+    # Fast path: we have seen this exact query in the current process.
+    if normalized_query in _SESSION_QUERY_INDEX.get(sid, set()):
+        return True
+
+    # One-time warm-up per session after restart to avoid permanent false negatives.
+    if sid not in _SESSION_INDEX_WARMED:
+        return True
+
+    return False
+
+
 def _find_prior_exact_answer(messages: List[Any], query: str) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
     """Find the latest assistant response paired with an identical user query in this session."""
     target = _normalize_query_text(query)
@@ -172,6 +210,9 @@ def _ensure_point_style(text: str, min_points: int = 6, max_points: int = 8) -> 
     if not raw:
         return raw
 
+    def _norm_point(s: str) -> str:
+        return re.sub(r"^([-*•]|\d+[.)])\s+", "", (s or "").strip()).strip().lower()
+
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     extracted: List[str] = []
 
@@ -184,14 +225,18 @@ def _ensure_point_style(text: str, min_points: int = 6, max_points: int = 8) -> 
         sentences = re.split(r"(?<=[.!?])\s+", raw.replace("\n", " "))
         extracted = [s.strip() for s in sentences if s.strip()]
 
+    seen_norm = {_norm_point(item) for item in extracted if item.strip()}
+
     # Prefer richer output when source has enough sentence granularity.
     extracted = extracted[:max_points] if extracted else [raw]
     if len(extracted) < min_points and len(lines) > len(extracted):
         for ln in lines:
             if len(extracted) >= min_points:
                 break
-            if ln not in extracted:
+            norm_ln = _norm_point(ln)
+            if norm_ln and norm_ln not in seen_norm:
                 extracted.append(ln)
+                seen_norm.add(norm_ln)
 
     return "\n".join(f"- {p}" for p in extracted[:max_points])
 
@@ -459,15 +504,18 @@ async def send_message(
             user_id=UUID(current_user.user_id),
         )
 
-        # Deterministic replay: if exact same query already answered in this session,
-        # return the same assistant response verbatim.
-        session_messages = chat_service.get_session_messages(
-            session=session,
-            session_id=session_id,
-            user_id=UUID(current_user.user_id),
-            limit=300,
-        )
-        cached_content, cached_output, cached_intent = _find_prior_exact_answer(session_messages, request.content)
+        # Deterministic replay with pre-check: only hit DB when replay is likely.
+        normalized_query = _normalize_query_text(request.content)
+        cached_content, cached_output, cached_intent = (None, None, None)
+        if _should_attempt_replay_lookup(chat_session.id, chat_session.message_count, normalized_query):
+            session_messages = chat_service.get_session_messages(
+                session=session,
+                session_id=session_id,
+                user_id=UUID(current_user.user_id),
+                limit=50,
+            )
+            _index_queries_from_messages(chat_session.id, session_messages)
+            cached_content, cached_output, cached_intent = _find_prior_exact_answer(session_messages, request.content)
 
         # Add user message
         user_msg = chat_service.add_user_message(
@@ -476,6 +524,7 @@ async def send_message(
             user_id=UUID(current_user.user_id),
             content=request.content,
         )
+        _remember_query(chat_session.id, request.content)
 
         # Auto-generate title from first message
         if chat_session.message_count == 1:

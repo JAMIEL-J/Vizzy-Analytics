@@ -1,5 +1,4 @@
-from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -315,28 +314,50 @@ def get_user_profile_stats(
         else:
             analysis_type_counts["other"] += 1
 
-    monthly = defaultdict(lambda: {
-        "datasets": 0,
-        "uploads": 0,
-        "dashboards": 0,
-        "chats": 0,
-        "analyses": 0,
-    })
+    # Pre-populate last 12 months so inactive months still appear in output.
+    now = datetime.now(timezone.utc)
+    month_keys = []
+    for offset in range(11, -1, -1):
+        total_months = (now.year * 12 + (now.month - 1)) - offset
+        year = total_months // 12
+        month = (total_months % 12) + 1
+        month_keys.append(_month_key(datetime(year, month, 1, tzinfo=timezone.utc)))
+
+    monthly = {
+        key: {
+            "datasets": 0,
+            "uploads": 0,
+            "saved_dashboards": 0,
+            "generated_dashboards": 0,
+            "chats": 0,
+            "analyses": 0,
+        }
+        for key in month_keys
+    }
 
     for row in datasets:
-        monthly[_month_key(row.created_at)]["datasets"] += 1
+        key = _month_key(row.created_at)
+        if key in monthly:
+            monthly[key]["datasets"] += 1
     for row in uploads:
-        monthly[_month_key(row.created_at)]["uploads"] += 1
+        key = _month_key(row.created_at)
+        if key in monthly:
+            monthly[key]["uploads"] += 1
     for row in dashboards:
-        monthly[_month_key(row.created_at)]["dashboards"] += 1
+        key = _month_key(row.created_at)
+        if key in monthly:
+            monthly[key]["saved_dashboards"] += 1
     for row in chat_sessions:
-        monthly[_month_key(row.created_at)]["chats"] += 1
+        key = _month_key(row.created_at)
+        if key in monthly:
+            monthly[key]["chats"] += 1
     for row in analysis_results:
-        monthly[_month_key(row.generated_at)]["analyses"] += 1
-        if isinstance(row.result_payload, dict) and str(row.result_payload.get("type")) == "dashboard":
-            monthly[_month_key(row.generated_at)]["dashboards"] += 1
+        key = _month_key(row.generated_at)
+        if key in monthly:
+            monthly[key]["analyses"] += 1
+            if isinstance(row.result_payload, dict) and str(row.result_payload.get("type")) == "dashboard":
+                monthly[key]["generated_dashboards"] += 1
 
-    month_keys = sorted(monthly.keys())[-12:]
     monthly_activity = [
         {
             "month": k,

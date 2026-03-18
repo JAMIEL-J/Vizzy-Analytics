@@ -104,7 +104,8 @@ export default function UserProfile() {
                                         <Tooltip />
                                         <Legend />
                                         <Line type="monotone" dataKey="uploads" stroke="#ff6933" strokeWidth={2.5} dot={false} />
-                                        <Line type="monotone" dataKey="dashboards" stroke="#cc4c18" strokeWidth={2.5} dot={false} />
+                                        <Line type="monotone" dataKey="generated_dashboards" stroke="#cc4c18" strokeWidth={2.5} dot={false} />
+                                        <Line type="monotone" dataKey="saved_dashboards" stroke="#ff9e66" strokeWidth={2.5} dot={false} />
                                         <Line type="monotone" dataKey="analyses" stroke="#fd8d3c" strokeWidth={2.5} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>

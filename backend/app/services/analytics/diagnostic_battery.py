@@ -20,7 +20,31 @@ def _is_binary_numeric(series: pd.Series) -> bool:
     if not pd.api.types.is_numeric_dtype(series):
         return False
     vals = [v for v in series.dropna().unique().tolist() if pd.notna(v)]
-    normalized = {int(v) for v in vals if str(v).strip() != ""}
+    normalized = set()
+
+    for v in vals:
+        if isinstance(v, bool):
+            normalized.add(int(v))
+            continue
+
+        if isinstance(v, int):
+            if v not in (0, 1):
+                return False
+            normalized.add(v)
+            continue
+
+        if isinstance(v, float):
+            if not v.is_integer():
+                return False
+            iv = int(v)
+            if iv not in (0, 1):
+                return False
+            normalized.add(iv)
+            continue
+
+        # Any other numeric subtype is treated conservatively as non-binary.
+        return False
+
     return len(normalized) <= 2 and normalized.issubset({0, 1})
 
 

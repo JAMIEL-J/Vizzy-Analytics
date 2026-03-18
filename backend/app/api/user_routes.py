@@ -87,7 +87,8 @@ class MonthlyActivityItem(BaseModel):
     month: str
     datasets: int
     uploads: int
-    dashboards: int
+    saved_dashboards: int
+    generated_dashboards: int
     chats: int
     analyses: int
 
