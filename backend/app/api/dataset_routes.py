@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -26,8 +27,9 @@ class DatasetResponse(BaseModel):
     name: str
     description: Optional[str]
     owner_id: UUID
-    owner_id: UUID
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
     current_version_id: Optional[UUID] = None
 
     class Config:

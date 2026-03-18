@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from app.api.deps import DBSession, AuthenticatedUser
 from app.core.exceptions import AuthorizationError
 from app.models.dataset import Dataset
+from app.models.dataset_version import DatasetVersion
 from app.models.analysis_contract import AnalysisContract
 from app.models.analysis_result import AnalysisResult
 from app.models.user import UserRole as ModelUserRole
@@ -487,19 +488,45 @@ def get_dashboard_analytics(
         )
         if is_base_generation:
             try:
+                import json as _json
+
                 tracking_user_id = UUID(current_user.user_id)
                 tracking_role = ModelUserRole(current_user.role.value)
 
-                existing_dashboard_results = list(session.exec(
-                    select(AnalysisResult).where(
-                        AnalysisResult.dataset_version_id == latest_version.id,
-                        AnalysisResult.generated_by == tracking_user_id,
-                        AnalysisResult.is_active == True,
-                    )
-                ))
+                # Query ALL versions for this dataset so re-cleaning / re-upload
+                # doesn't create duplicate dashboard tracking records.
+                all_version_ids = [
+                    v.id for v in session.exec(
+                        select(DatasetVersion).where(
+                            DatasetVersion.dataset_id == state.dataset_id,
+                            DatasetVersion.is_active == True,
+                        )
+                    ).all()
+                ]
+
+                existing_dashboard_results = []
+                if all_version_ids:
+                    existing_dashboard_results = list(session.exec(
+                        select(AnalysisResult).where(
+                            AnalysisResult.dataset_version_id.in_(all_version_ids),
+                            AnalysisResult.generated_by == tracking_user_id,
+                            AnalysisResult.is_active == True,
+                        )
+                    ))
+
+                def _is_dashboard_payload(payload) -> bool:
+                    """Check if payload has type 'dashboard', handling both dict and JSON string."""
+                    if isinstance(payload, str):
+                        try:
+                            payload = _json.loads(payload)
+                        except (ValueError, TypeError):
+                            return False
+                    if isinstance(payload, dict):
+                        return str(payload.get("type")) == "dashboard" and payload.get("source") == "dashboard_page"
+                    return False
+
                 already_tracked = any(
-                    isinstance(row.result_payload, dict)
-                    and str(row.result_payload.get("type")) == "dashboard"
+                    _is_dashboard_payload(row.result_payload)
                     for row in existing_dashboard_results
                 )
 
@@ -545,6 +572,7 @@ def get_dashboard_analytics(
                 pass
             except Exception as track_err:
                 print(f"Warning: dashboard generation tracking failed: {track_err}")
+
 
         return DashboardAnalyticsResponse(
             dataset_name=dataset_name,

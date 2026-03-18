@@ -111,7 +111,16 @@ export default function DatasetList() {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-themed-muted tracking-wider">{dataset.created_at ? new Date(dataset.created_at).toLocaleDateString() : '-'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-themed-muted tracking-wider">
+                                            {dataset.created_at
+                                                ? new Date(dataset.created_at.endsWith('Z') ? dataset.created_at : dataset.created_at + 'Z').toLocaleString('en-IN', {
+                                                    timeZone: 'Asia/Kolkata',
+                                                    year: 'numeric', month: 'short', day: '2-digit',
+                                                    hour: '2-digit', minute: '2-digit', hour12: true
+                                                })
+                                                : '-'
+                                            }
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2 py-1 text-[10px] font-bold tracking-widest uppercase rounded-sm ${dataset.is_active ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-red-500/20 text-red-500 border border-red-500/30'}`}>
                                                 {dataset.is_active ? 'Active' : 'Inactive'}

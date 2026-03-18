@@ -66,7 +66,16 @@ export default function Downloads() {
                                 datasets.map(ds => (
                                     <tr key={ds.id} className="hover:bg-bg-hover transition-colors group cursor-default">
                                         <td className="px-6 py-5 whitespace-nowrap font-bold text-themed-main tracking-widest text-sm">{ds.name}</td>
-                                        <td className="px-6 py-5 whitespace-nowrap font-mono text-xs text-themed-muted tracking-wider text-sm">{ds.created_at ? new Date(ds.created_at).toLocaleDateString() : '-'}</td>
+                                        <td className="px-6 py-5 whitespace-nowrap font-mono text-xs text-themed-muted tracking-wider">
+                                            {ds.created_at
+                                                ? new Date(ds.created_at.endsWith('Z') ? ds.created_at : ds.created_at + 'Z').toLocaleString('en-IN', {
+                                                    timeZone: 'Asia/Kolkata',
+                                                    year: 'numeric', month: 'short', day: '2-digit',
+                                                    hour: '2-digit', minute: '2-digit', hour12: true
+                                                })
+                                                : '-'
+                                            }
+                                        </td>
                                         <td className="px-6 py-5 whitespace-nowrap text-right">
                                             <div className="flex items-center justify-end space-x-3 transition-opacity">
                                                 <button

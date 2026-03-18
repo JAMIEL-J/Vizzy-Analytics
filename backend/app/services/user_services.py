@@ -298,12 +298,36 @@ def get_user_profile_stats(
         "other": 0,
     }
 
+    import json as _json
+
+    def _parse_payload(payload) -> dict:
+        """Parse result_payload, handling both dict and JSON string (SQLite)."""
+        if isinstance(payload, dict):
+            return payload
+        if isinstance(payload, str):
+            try:
+                parsed = _json.loads(payload)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+        return {}
+
+    # Track dashboard_page records per dataset_id to avoid counting duplicates
+    seen_dashboard_datasets: set = set()
+
     for row in analysis_results:
-        payload_type = "analysis_chart"
-        if isinstance(row.result_payload, dict):
-            payload_type = str(row.result_payload.get("type") or "analysis_chart")
+        parsed = _parse_payload(row.result_payload)
+        payload_type = str(parsed.get("type") or "analysis_chart")
+        payload_source = parsed.get("source", "")
 
         if payload_type == "dashboard":
+            # For dashboard_page auto-tracking records, count once per dataset
+            if payload_source == "dashboard_page":
+                ds_id = parsed.get("dataset_id", "")
+                if ds_id in seen_dashboard_datasets:
+                    continue
+                seen_dashboard_datasets.add(ds_id)
             analysis_type_counts["dashboard"] += 1
         elif payload_type == "text_query":
             analysis_type_counts["text_query"] += 1
@@ -313,6 +337,7 @@ def get_user_profile_stats(
             analysis_type_counts["analysis_chart"] += 1
         else:
             analysis_type_counts["other"] += 1
+
 
     # Pre-populate last 12 months so inactive months still appear in output.
     now = datetime.now(timezone.utc)
@@ -355,7 +380,8 @@ def get_user_profile_stats(
         key = _month_key(row.generated_at)
         if key in monthly:
             monthly[key]["analyses"] += 1
-            if isinstance(row.result_payload, dict) and str(row.result_payload.get("type")) == "dashboard":
+            parsed = _parse_payload(row.result_payload)
+            if str(parsed.get("type")) == "dashboard":
                 monthly[key]["generated_dashboards"] += 1
 
     monthly_activity = [
