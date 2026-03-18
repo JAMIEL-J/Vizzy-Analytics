@@ -1,4 +1,5 @@
 import { useTheme } from '../../context/ThemeContext';
+import { Button } from '@/components/ui/button';
 
 interface ThemeToggleProps {
     className?: string;
@@ -10,10 +11,13 @@ export default function ThemeToggle({ className = '', size = 'md' }: ThemeToggle
     const isDark = theme === 'dark';
 
     return (
-        <button
+        <Button
+            type="button"
             onClick={toggleTheme}
             title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             aria-label={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            variant="ghost"
+            size="icon"
             className={`theme-toggle-btn ${size === 'sm' ? '!w-8 !h-8 !rounded-md' : ''} ${className}`}
         >
             {isDark ? (
@@ -48,6 +52,6 @@ export default function ThemeToggle({ className = '', size = 'md' }: ThemeToggle
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                 </svg>
             )}
-        </button>
+        </Button>
     );
 }

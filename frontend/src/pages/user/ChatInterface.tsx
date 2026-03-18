@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { datasetService, type Dataset } from '../../lib/api/dataset';
 import ChartRenderer from '../../components/chat/ChartRenderer';
+import { ShiningText } from '../../components/ui/shining-text';
+import { Button } from '@/components/ui/button';
 import { PlusIcon, ChatBubbleLeftIcon, Bars3Icon, XMarkIcon, TrashIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 
@@ -231,19 +233,21 @@ export default function ChatInterface() {
             <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-bg-main/80 backdrop-blur-md border-r border-border-main transition-all duration-300 flex flex-col flex-shrink-0 overflow-hidden relative z-10`}>
                 <div className="p-4 border-b border-border-main flex items-center justify-between font-mono">
                     <h2 className="text-xs uppercase tracking-widest text-themed-muted">Chat History</h2>
-                    <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-themed-muted hover:text-themed-main transition-colors">
+                    <Button type="button" onClick={() => setIsSidebarOpen(false)} variant="ghost" size="icon" className="md:hidden text-themed-muted hover:text-themed-main transition-colors">
                         <XMarkIcon className="w-5 h-5" />
-                    </button>
+                    </Button>
                 </div>
 
                 <div className="p-3">
-                    <button
+                    <Button
+                        type="button"
                         onClick={handleNewChat}
                         className="w-full flex items-center justify-center gap-2 obsidian-card py-2.5 rounded-sm hover:border-primary/50 transition-colors font-mono text-xs uppercase tracking-widest text-themed-main group"
+                        variant="ghost"
                     >
                         <PlusIcon className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
                         <span>New Chat</span>
-                    </button>
+                    </Button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
@@ -265,14 +269,17 @@ export default function ChatInterface() {
                                     </p>
                                 </div>
                             </div>
-                            <button
+                            <Button
+                                type="button"
                                 onClick={(e) => handleDeleteSession(e, session.id)}
                                 className={`p-1.5 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 hover:text-red-600 dark:hover:text-red-400 transition opacity-0 group-hover:opacity-100 ${currentSessionId === session.id ? 'opacity-100' : ''
                                     }`}
                                 title="Delete Session"
+                                variant="ghost"
+                                size="icon"
                             >
                                 <TrashIcon className="w-4 h-4" />
-                            </button>
+                            </Button>
                         </div>
                     ))}
                     {sessions.length === 0 && (
@@ -288,12 +295,15 @@ export default function ChatInterface() {
                 {/* Header */}
                 <header className="bg-bg-main/80 backdrop-blur-md border-b border-border-main px-6 py-4 flex-shrink-0 flex items-center justify-between transition-colors">
                     <div className="flex items-center gap-4">
-                        <button
+                        <Button
+                            type="button"
                             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                             className="text-themed-muted hover:text-primary transition-colors focus:outline-none"
+                            variant="ghost"
+                            size="icon"
                         >
                             <Bars3Icon className="w-6 h-6" />
-                        </button>
+                        </Button>
                         <div className="flex items-center gap-3">
                             <span className="material-symbols-outlined text-primary text-xl">diamond</span>
                             <h1 className="text-xl font-light tracking-widest uppercase text-themed-main">Chat Analytics</h1>
@@ -328,12 +338,12 @@ export default function ChatInterface() {
 
                                 {selectedDatasetId && (
                                     <div className="grid grid-cols-2 gap-3 text-sm">
-                                        <button onClick={() => handleSendMessage('What is the total sales?')} className="p-4 glass-panel hover:bg-bg-hover transition text-left group">
+                                        <Button type="button" onClick={() => handleSendMessage('What is the total sales?')} className="p-4 glass-panel hover:bg-bg-hover transition text-left group" variant="ghost">
                                             <span className="text-themed-main group-hover:text-primary font-mono text-xs uppercase tracking-widest transition-colors"><span className="text-primary mr-2">/</span> What is the total sales?</span>
-                                        </button>
-                                        <button onClick={() => handleSendMessage('Show me revenue by region')} className="p-4 glass-panel hover:bg-bg-hover transition text-left group">
+                                        </Button>
+                                        <Button type="button" onClick={() => handleSendMessage('Show me revenue by region')} className="p-4 glass-panel hover:bg-bg-hover transition text-left group" variant="ghost">
                                             <span className="text-themed-main group-hover:text-primary font-mono text-xs uppercase tracking-widest transition-colors"><span className="text-primary mr-2">/</span> Show me revenue by region</span>
-                                        </button>
+                                        </Button>
                                     </div>
                                 )}
                             </div>
@@ -386,10 +396,12 @@ export default function ChatInterface() {
                                                                         const newQuery = buildClarifiedQuery(originalQuery, term, candidate.column);
                                                                         const confidence = Math.round(candidate.score * 100);
                                                                         return (
-                                                                            <button
+                                                                            <Button
+                                                                                type="button"
                                                                                 key={idx}
                                                                                 onClick={() => handleSendMessage(newQuery)}
                                                                                 className="flex items-center justify-between px-4 py-3 bg-white dark:bg-[#16181D] border-2 border-gray-200 dark:border-border-main rounded-xl hover:border-primary-blue dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all duration-200 group text-left"
+                                                                                variant="ghost"
                                                                             >
                                                                                 <div>
                                                                                     <span className="font-mono text-sm font-bold text-themed-main dark:text-gray-200 group-hover:text-primary-blue dark:group-hover:text-blue-400 transition-colors">
@@ -402,7 +414,7 @@ export default function ChatInterface() {
                                                                                     }`}>
                                                                                     {confidence}% match
                                                                                 </span>
-                                                                            </button>
+                                                                            </Button>
                                                                         );
                                                                     })}
                                                                 </div>
@@ -433,41 +445,51 @@ export default function ChatInterface() {
                                                                             <div className="flex items-center space-x-4">
                                                                                 {targetData.type !== 'kpi' && msg.output_data.response_type !== 'text' && (
                                                                                     <div className="flex glass-panel p-0.5 rounded-sm shadow-inner group transition-colors">
-                                                                                        <button
+                                                                                        <Button
+                                                                                            type="button"
                                                                                             onClick={() => setChartModes(prev => ({ ...prev, [msg.id]: 'chart' }))}
                                                                                             className={`px-4 py-1.5 text-[10px] font-mono tracking-widest uppercase transition-all ${!isTableMode ? 'bg-primary text-black font-bold shadow-sm' : 'text-themed-muted hover:text-themed-main'}`}
+                                                                                            variant="ghost"
                                                                                         >
                                                                                             Visual
-                                                                                        </button>
-                                                                                        <button
+                                                                                        </Button>
+                                                                                        <Button
+                                                                                            type="button"
                                                                                             onClick={() => setChartModes(prev => ({ ...prev, [msg.id]: 'table' }))}
                                                                                             className={`px-4 py-1.5 text-[10px] font-mono tracking-widest uppercase transition-all ${isTableMode ? 'bg-primary text-black font-bold shadow-sm' : 'text-themed-muted hover:text-themed-main'}`}
+                                                                                            variant="ghost"
                                                                                         >
                                                                                             Data
-                                                                                        </button>
+                                                                                        </Button>
                                                                                     </div>
                                                                                 )}
                                                                             </div>
 
                                                                             <div className="flex items-center space-x-3">
-                                                                                <button
+                                                                                <Button
+                                                                                    type="button"
                                                                                     onClick={() => handleDownloadCSV(targetData, targetData.title || 'data')}
                                                                                     className="flex items-center space-x-1.5 text-[10px] uppercase tracking-wider font-bold text-themed-muted hover:text-green-600 transition-colors p-1"
                                                                                     title="Download CSV"
+                                                                                    variant="ghost"
+                                                                                    size="sm"
                                                                                 >
                                                                                     <ArrowDownTrayIcon className="w-4 h-4" />
                                                                                     <span>CSV</span>
-                                                                                </button>
+                                                                                </Button>
 
                                                                                 {targetData.type !== 'kpi' && msg.output_data.response_type !== 'text' && (
-                                                                                    <button
+                                                                                    <Button
+                                                                                        type="button"
                                                                                         onClick={() => handleDownloadImage(msg.id, targetData.title || 'chart')}
                                                                                         className="flex items-center space-x-1.5 text-[10px] uppercase tracking-wider font-bold text-themed-muted hover:text-blue-600 transition-colors p-1"
                                                                                         title="Download SVG"
+                                                                                        variant="ghost"
+                                                                                        size="sm"
                                                                                     >
                                                                                         <ArrowDownTrayIcon className="w-4 h-4" />
                                                                                         <span>SVG</span>
-                                                                                    </button>
+                                                                                    </Button>
                                                                                 )}
                                                                             </div>
                                                                         </div>
@@ -486,20 +508,23 @@ export default function ChatInterface() {
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
-                                                                                    <button
+                                                                                    <Button
+                                                                                        type="button"
                                                                                         onClick={() => {
                                                                                             navigator.clipboard.writeText(sqlQuery);
                                                                                             setCopiedSqlMsgId(msg.id);
                                                                                             setTimeout(() => setCopiedSqlMsgId(null), 2000);
                                                                                         }}
                                                                                         className="text-[10px] font-mono font-semibold tracking-widest uppercase text-themed-muted hover:text-primary transition-colors flex items-center gap-1"
+                                                                                        variant="ghost"
+                                                                                        size="sm"
                                                                                     >
                                                                                         {copiedSqlMsgId === msg.id ? (
                                                                                             <><svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg> Copied!</>
                                                                                         ) : (
                                                                                             <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Copy</>
                                                                                         )}
-                                                                                    </button>
+                                                                                    </Button>
                                                                                 </div>
                                                                                 <pre className="mx-3 my-3 p-3 bg-slate-50 dark:bg-black/50 border border-border-main/70 rounded-sm text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap leading-relaxed">
                                                                                     <code>{sqlQuery}</code>
@@ -571,13 +596,15 @@ export default function ChatInterface() {
                                                         {msg.output_data?.followup_suggestions?.length > 0 && (
                                                             <div className="mt-6 flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2 duration-700">
                                                                 {msg.output_data.followup_suggestions.map((suggestion: string, idx: number) => (
-                                                                    <button
+                                                                    <Button
+                                                                        type="button"
                                                                         key={idx}
                                                                         onClick={() => handleSendMessage(suggestion)}
-                                                                        className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-full text-xs font-medium text-primary-blue dark:text-blue-400 hover:bg-primary-blue hover:text-themed-main dark:hover:bg-blue-600 dark:hover:text-themed-main transition-all duration-300 transform hover:scale-105"
+                                                                        className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-full text-xs font-medium text-primary-blue dark:text-blue-400 hover:bg-primary-blue hover:text-themed-main dark:hover:bg-blue-600 dark:hover:text-themed-main transition-colors"
+                                                                        variant="ghost"
                                                                     >
                                                                         {suggestion}
-                                                                    </button>
+                                                                    </Button>
                                                                 ))}
                                                             </div>
                                                         )}
@@ -606,11 +633,7 @@ export default function ChatInterface() {
                                             VX
                                         </div>
                                         <div className="glass-panel px-5 py-4 transition-colors duration-300">
-                                            <div className="flex space-x-1">
-                                                <div className="w-2 h-2 bg-primary animate-pulse"></div>
-                                                <div className="w-2 h-2 bg-primary animate-pulse delay-75"></div>
-                                                <div className="w-2 h-2 bg-primary animate-pulse delay-150"></div>
-                                            </div>
+                                            <ShiningText text="Vizzy is Analyzing..." />
                                         </div>
                                     </div>
                                 </div>
@@ -640,13 +663,15 @@ export default function ChatInterface() {
                                     className="w-full px-4 py-4 obsidian-card font-mono text-sm tracking-widest uppercase text-themed-main placeholder-gray-600 focus:border-primary/50 resize-none outline-none disabled:bg-gray-900 disabled:cursor-not-allowed transition-colors"
                                 ></textarea>
                             </div>
-                            <button
+                            <Button
+                                type="button"
                                 onClick={() => handleSendMessage(inputValue)}
                                 disabled={!inputValue.trim() || isTyping || !selectedDatasetId}
                                 className="px-6 py-4 obsidian-card font-mono text-xs uppercase tracking-widest text-primary hover:bg-primary hover:text-black transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed h-[54px]"
+                                variant="ghost"
                             >
                                 <span>Send</span>
-                            </button>
+                            </Button>
                         </div>
                         {!selectedDatasetId && <p className="text-xs text-red-500 mt-2">Please select a dataset to start chatting</p>}
                         <p className="text-xs text-themed-muted mt-2">Press Enter to send • Shift+Enter for new line</p>

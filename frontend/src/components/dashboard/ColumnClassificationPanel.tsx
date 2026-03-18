@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useFilterStore, type ClassificationRole } from '../../store/useFilterStore';
+import { Button } from '@/components/ui/button';
 
 interface ColumnClassificationPanelProps {
     columns: {
@@ -37,9 +38,12 @@ export const ColumnClassificationPanel: React.FC<ColumnClassificationPanelProps>
 
     return (
         <div className="mb-6 rounded-sm border border-border-main overflow-hidden glass-panel relative z-10">
-            <button
+            <Button
+                type="button"
                 onClick={() => setIsOpen(!isOpen)}
                 className="w-full px-5 py-3.5 flex items-center justify-between text-left transition-colors hover:bg-bg-hover"
+                variant="ghost"
+                size="none"
             >
                 <div>
                     <h3 className="font-serif text-[17px] text-themed-main tracking-wide">
@@ -55,7 +59,7 @@ export const ColumnClassificationPanel: React.FC<ColumnClassificationPanelProps>
                 >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
-            </button>
+            </Button>
 
             {isOpen && (
                 <div className="p-5 pt-2 border-t border-border-main text-sm">

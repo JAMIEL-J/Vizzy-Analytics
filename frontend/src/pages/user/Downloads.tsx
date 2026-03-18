@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { datasetService, type Dataset } from '../../lib/api/dataset';
+import { Button } from '@/components/ui/button';
 
 export default function Downloads() {
     const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -78,18 +79,21 @@ export default function Downloads() {
                                         </td>
                                         <td className="px-6 py-5 whitespace-nowrap text-right">
                                             <div className="flex items-center justify-end space-x-3 transition-opacity">
-                                                <button
+                                                <Button
+                                                    type="button"
                                                     onClick={() => handleDownload(ds.id, 'raw', `${ds.name}_raw.csv`)}
                                                     className="px-4 py-2 obsidian-card font-mono text-[10px] uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 text-center flex-1"
+                                                    variant="ghost"
                                                 >
                                                     Download Raw
-                                                </button>
-                                                <button
+                                                </Button>
+                                                <Button
+                                                    type="button"
                                                     onClick={() => handleDownload(ds.id, 'cleaned', `${ds.name}_cleaned.csv`)}
                                                     className="px-4 py-2 bg-primary text-black font-mono text-[10px] uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(255,105,51,0.2)] text-center flex-1"
                                                 >
                                                     Download Cleaned
-                                                </button>
+                                                </Button>
                                             </div>
                                         </td>
                                     </tr>

@@ -13,6 +13,7 @@ import {
     Legend,
 } from 'recharts';
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 // Mock data for charts
 const userGrowthData = [
@@ -190,8 +191,8 @@ export default function AdminDashboard() {
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-bold text-navy dark:text-white">User Growth</h3>
                         <div className="flex space-x-2">
-                            <button className="px-3 py-1 text-xs bg-admin-purple text-white rounded-full">Monthly</button>
-                            <button className="px-3 py-1 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">Weekly</button>
+                            <Button type="button" size="sm" className="px-3 py-1 text-xs bg-admin-purple text-white rounded-full">Monthly</Button>
+                            <Button type="button" variant="ghost" size="sm" className="px-3 py-1 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">Weekly</Button>
                         </div>
                     </div>
                     <ResponsiveContainer width="100%" height={250}>

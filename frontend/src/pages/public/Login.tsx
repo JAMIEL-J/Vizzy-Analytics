@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { authApi } from '../../lib/api/auth';
 import ThemeToggle from '../../components/ui/ThemeToggle';
+import { Button } from '@/components/ui/button';
 
 export default function Login() {
     const navigate = useNavigate();
@@ -142,7 +143,7 @@ export default function Login() {
                                 </a>
                             </div>
 
-                            <button
+                            <Button
                                 type="submit"
                                 disabled={isLoading}
                                 className="w-full md:w-auto md:mx-auto relative group px-12 py-4 overflow-hidden rounded-sm bg-primary border border-primary hover:bg-transparent transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -152,7 +153,7 @@ export default function Login() {
                                     {isLoading ? 'Authenticating...' : 'Initialize Session'}
                                     {!isLoading && <span className="material-symbols-outlined text-[1rem]">arrow_right_alt</span>}
                                 </span>
-                            </button>
+                            </Button>
                         </div>
 
                         <div className="pt-8 text-center mt-6" style={{ borderTop: '1px solid var(--border-main)' }}>

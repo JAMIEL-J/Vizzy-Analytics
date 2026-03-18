@@ -5,6 +5,7 @@ import type { InspectionReport } from '../../services/cleaningService';
 import { HealthDashboard } from '../../components/cleaning/HealthDashboard';
 import { RecommendationList } from '../../components/cleaning/RecommendationList';
 import { toast } from 'react-hot-toast';
+import { Button } from '@/components/ui/button';
 
 export default function DataCleaning() {
     const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -207,14 +208,16 @@ export default function DataCleaning() {
                     </div>
 
                     {selectedDatasetId && (
-                        <button
+                        <Button
+                            type="button"
                             onClick={() => loadInspection(selectedDatasetId, true)}
                             className="w-full sm:w-auto px-6 py-3 obsidian-card font-mono text-xs uppercase tracking-widest text-primary font-bold hover:bg-primary/90 hover:text-black transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,105,51,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={isLoading || isProcessing}
+                            variant="ghost"
                         >
                             <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                             Refresh Analysis
-                        </button>
+                        </Button>
                     )}
                 </div>
             </header>
@@ -253,10 +256,11 @@ export default function DataCleaning() {
                                         <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-themed-muted">Selected Actions</span>
                                         <span className="text-themed-main font-mono text-xs">{selectedRecIds.length} recommendations</span>
                                     </div>
-                                    <button
+                                    <Button
+                                        type="button"
                                         onClick={handleExecuteCleaning}
                                         disabled={isProcessing || selectedRecIds.length === 0}
-                                        className={`px-10 py-3.5 rounded-sm font-mono text-xs uppercase tracking-widest font-bold text-black transition-all transform hover:scale-[1.02] active:scale-95 flex items-center gap-3 ${isProcessing || selectedRecIds.length === 0
+                                        className={`px-10 py-3.5 rounded-sm font-mono text-xs uppercase tracking-widest font-bold text-black transition-colors flex items-center gap-3 ${isProcessing || selectedRecIds.length === 0
                                             ? 'bg-gray-700 cursor-not-allowed text-themed-muted'
                                             : 'bg-primary hover:bg-primary/90 shadow-[0_0_15px_rgba(255,105,51,0.2)]'
                                             }`}
@@ -272,7 +276,7 @@ export default function DataCleaning() {
                                                 <span>Apply {selectedRecIds.length} Corrections</span>
                                             </>
                                         )}
-                                    </button>
+                                    </Button>
                                 </div>
                             )}
                         </div>

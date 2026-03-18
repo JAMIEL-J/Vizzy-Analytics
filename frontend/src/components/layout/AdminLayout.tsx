@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import ThemeToggle from '../ui/ThemeToggle';
+import { Button } from '@/components/ui/button';
 
 const navItems = [
     { path: '/admin', label: 'Dashboard', icon: 'dashboard' },
@@ -67,10 +68,13 @@ export default function AdminLayout() {
                 `}
             >
                 {/* Fixed Toggle Button - Vertically Centered */}
-                <button
+                <Button
+                    type="button"
                     onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="absolute -right-3 top-1/2 -translate-y-1/2 bg-white text-navy rounded-full p-1.5 shadow-lg hover:scale-110 transition-all border border-gray-200 z-50 flex items-center justify-center group"
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 bg-white text-navy rounded-full p-1.5 shadow-lg transition-all border border-gray-200 z-50 flex items-center justify-center group"
                     title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+                    variant="ghost"
+                    size="icon"
                 >
                     <svg
                         className={`w-4 h-4 transition-transform duration-500 ${isCollapsed ? 'rotate-180' : ''}`}
@@ -80,7 +84,7 @@ export default function AdminLayout() {
                     >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"></path>
                     </svg>
-                </button>
+                </Button>
 
                 <div className={`flex-1 flex flex-col transition-all duration-500 shrink-0 overflow-hidden ${isCollapsed ? 'px-0 py-6' : 'p-6'}`}>
                     {/* Logo Section */}
@@ -167,13 +171,15 @@ export default function AdminLayout() {
                                     <p className="text-sm font-bold" style={{ color: 'var(--text-main)' }}>Admin User</p>
                                     <p className="text-[10px] font-bold text-admin-purple uppercase tracking-tighter">Super Admin</p>
                                 </div>
-                                <button
+                                <Button
+                                    type="button"
                                     onClick={handleLogout}
                                     className="ml-4 px-4 py-2 text-sm font-bold hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
                                     style={{ color: 'var(--text-muted)' }}
+                                    variant="ghost"
                                 >
                                     Log out
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>

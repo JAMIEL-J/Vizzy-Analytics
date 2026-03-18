@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { externalDbService, type DatabaseConnectionConfig } from '../../lib/api/external-db';
+import { Button } from '@/components/ui/button';
 
 export default function ConnectDatabase() {
     const [config, setConfig] = useState<DatabaseConnectionConfig>({
@@ -123,16 +124,18 @@ export default function ConnectDatabase() {
                     )}
 
                     <div className="flex justify-end space-x-4 mt-6">
-                        <button
+                        <Button
+                            type="button"
                             onClick={handleTestConnection}
                             disabled={isTesting}
                             className="px-6 py-3 obsidian-card font-mono text-xs uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 disabled:opacity-50"
+                            variant="ghost"
                         >
                             {isTesting ? 'Testing...' : 'Test Connection'}
-                        </button>
-                        <button disabled className="px-6 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:bg-gray-800 disabled:text-themed-muted leading-none">
+                        </Button>
+                        <Button type="button" disabled className="px-6 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:bg-gray-800 disabled:text-themed-muted leading-none">
                             Connect & Ingest
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>

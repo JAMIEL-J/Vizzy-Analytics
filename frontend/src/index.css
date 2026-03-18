@@ -36,11 +36,15 @@
     font-family: "Newsreader", serif;
 }
 
+.newsreader-page.font-display,
+.newsreader-page.font-serif,
+.newsreader-page.font-mono,
 .newsreader-page .font-display,
 .newsreader-page .font-serif {
     font-family: "Newsreader", serif;
 }
 
+.newsreader-page.font-mono,
 .newsreader-page .font-mono {
     font-family: "JetBrains Mono", monospace;
 }

@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { authApi } from '../../lib/api/auth';
 import Grainient from '@/components/ui/backgrounds/Grainient';
+import { Button } from '@/components/ui/button';
 
 
 export default function AdminLogin() {
@@ -158,10 +159,10 @@ export default function AdminLogin() {
                         </div>
 
                         {/* Submit Button with Gradient */}
-                        <button
+                        <Button
                             type="submit"
                             disabled={isLoading}
-                            className="group relative w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-xl text-base font-bold text-white bg-gradient-to-r from-navy via-primary-blue to-navy bg-size-200 bg-pos-0 hover:bg-pos-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-navy transition-all duration-500 transform hover:scale-[1.02] shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                            className="group relative w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-xl text-base font-bold text-white bg-gradient-to-r from-navy via-primary-blue to-navy bg-size-200 bg-pos-0 hover:bg-pos-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-navy transition-colors duration-500 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
                                 backgroundSize: '200% auto',
                                 backgroundPosition: 'left center'
@@ -178,7 +179,7 @@ export default function AdminLogin() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
                                 </svg>
                             )}
-                        </button>
+                        </Button>
 
                         {/* Divider */}
                         <div className="relative">
@@ -192,8 +193,9 @@ export default function AdminLogin() {
 
                         {/* Social Login Buttons */}
                         <div className="grid grid-cols-2 gap-3">
-                            <button
+                            <Button
                                 type="button"
+                                variant="outline"
                                 className="w-full inline-flex justify-center items-center gap-2 py-3 px-4 border-2 border-gray-200 rounded-xl shadow-sm bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition"
                             >
                                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -203,16 +205,17 @@ export default function AdminLogin() {
                                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                                 </svg>
                                 <span className="hidden sm:inline">Google</span>
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                                 type="button"
+                                variant="outline"
                                 className="w-full inline-flex justify-center items-center gap-2 py-3 px-4 border-2 border-gray-200 rounded-xl shadow-sm bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition"
                             >
                                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                                     <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.285 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
                                 </svg>
                                 <span className="hidden sm:inline">GitHub</span>
-                            </button>
+                            </Button>
                         </div>
                     </form>
 

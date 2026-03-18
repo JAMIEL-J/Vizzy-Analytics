@@ -1,13 +1,17 @@
 import { useTheme } from '../../context/ThemeContext';
+import { Button } from '@/components/ui/button';
 
 export default function ThemeToggle() {
     const { theme, toggleTheme } = useTheme();
 
     return (
-        <button
+        <Button
+            type="button"
             onClick={toggleTheme}
             className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:ring-2 hover:ring-primary-blue transition-all duration-300 flex items-center justify-center group"
             title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            variant="ghost"
+            size="icon"
         >
             {theme === 'light' ? (
                 <svg className="w-5 h-5 group-hover:text-amber-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -18,6 +22,6 @@ export default function ThemeToggle() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
                 </svg>
             )}
-        </button>
+        </Button>
     );
 }

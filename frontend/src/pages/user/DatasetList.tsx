@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { datasetService, type Dataset } from '../../lib/api/dataset';
+import { Button } from '@/components/ui/button';
 
 export default function DatasetList() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -65,14 +66,14 @@ export default function DatasetList() {
                     />
                 </div>
                 <div className="flex space-x-2">
-                    <button className="px-4 py-2 obsidian-card font-mono text-xs uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 flex items-center space-x-2">
+                    <Button type="button" variant="ghost" className="px-4 py-2 obsidian-card font-mono text-xs uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 flex items-center space-x-2">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                         <span>Filter</span>
-                    </button>
-                    <button className="px-4 py-2 obsidian-card font-mono text-xs uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 flex items-center space-x-2">
+                    </Button>
+                    <Button type="button" variant="ghost" className="px-4 py-2 obsidian-card font-mono text-xs uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 flex items-center space-x-2">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path></svg>
                         <span>Sort</span>
-                    </button>
+                    </Button>
                 </div>
             </div>
 
@@ -131,9 +132,9 @@ export default function DatasetList() {
                                                 <Link to="/user/chat" className="text-themed-muted hover:text-primary transition-colors" title="Chat">
                                                     <span className="material-symbols-outlined text-xl">forum</span>
                                                 </Link>
-                                                <button onClick={() => handleDelete(dataset.id)} className="text-themed-muted hover:text-red-500 transition-colors" title="Delete">
+                                                <Button type="button" variant="ghost" size="icon" onClick={() => handleDelete(dataset.id)} className="text-themed-muted hover:text-red-500 transition-colors" title="Delete">
                                                     <span className="material-symbols-outlined text-xl">delete</span>
-                                                </button>
+                                                </Button>
                                             </div>
                                         </td>
                                     </tr>

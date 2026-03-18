@@ -7,6 +7,7 @@ import {
     ZoomableGroup
 } from "react-simple-maps";
 import { scaleLinear } from "d3-scale";
+import { Button } from '@/components/ui/button';
 
 // ─── TopoJSON Sources ─────────────────────────────────────────────────────────
 const GEO_URLS = {
@@ -180,10 +181,10 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
 
             {/* Zoom controls */}
             <div className="absolute top-2 right-8 z-10 flex flex-col gap-0.5">
-                <button onClick={() => setZoom(z => Math.min(z * 1.4, cfg.maxZoom))}
-                    className="w-5 h-5 flex items-center justify-center bg-bg-card/50 dark:bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-all shadow-sm cursor-pointer">+</button>
-                <button onClick={() => setZoom(z => Math.max(z / 1.4, 1))}
-                    className="w-5 h-5 flex items-center justify-center bg-bg-card/50 dark:bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-all shadow-sm cursor-pointer">−</button>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setZoom(z => Math.min(z * 1.4, cfg.maxZoom))}
+                    className="w-5 h-5 flex items-center justify-center bg-bg-card/50 dark:bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-all shadow-sm cursor-pointer">+</Button>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setZoom(z => Math.max(z / 1.4, 1))}
+                    className="w-5 h-5 flex items-center justify-center bg-bg-card/50 dark:bg-black/50 backdrop-blur-md border border-border-main rounded-sm text-themed-muted text-xs hover:text-primary transition-all shadow-sm cursor-pointer">−</Button>
             </div>
 
             <ComposableMap

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { datasetService, uploadService } from '../../lib/api/dataset';
+import { Button } from '@/components/ui/button';
 
 export default function FileUpload() {
     const [file, setFile] = useState<File | null>(null);
@@ -115,12 +116,13 @@ export default function FileUpload() {
                             className="hidden"
                             onChange={(e) => e.target.files && handleFile(e.target.files[0])}
                         />
-                        <button
+                        <Button
+                            type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="px-8 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(255,105,51,0.2)]"
+                            className="px-8 py-3 bg-primary text-black font-mono text-xs uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(255,105,51,0.2)]"
                         >
                             Choose File
-                        </button>
+                        </Button>
                         <p className="font-mono text-[10px] text-themed-muted mt-8 uppercase tracking-widest">Supported formats: CSV, Excel (.xlsx) • Max size: 50MB</p>
                     </div>
                 )}
@@ -140,9 +142,9 @@ export default function FileUpload() {
                                 </div>
                             </div>
                             {!isUploading && !showSchema && (
-                                <button onClick={removeFile} className="text-themed-muted hover:text-red-500 transition-colors">
+                                <Button type="button" variant="ghost" size="icon" onClick={removeFile} className="text-themed-muted hover:text-red-500 transition-colors">
                                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                </button>
+                                </Button>
                             )}
                         </div>
 
@@ -171,12 +173,12 @@ export default function FileUpload() {
                                     <p className="font-mono text-xs text-themed-muted mb-10 uppercase tracking-widest text-center">Your dataset has been processed and is ready for analysis.</p>
 
                                     <div className="flex space-x-6 w-full max-w-sm">
-                                        <button onClick={() => navigate('/user/datasets')} className="flex-1 px-4 py-3 obsidian-card font-mono text-[10px] uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 text-center">
+                                        <Button type="button" variant="ghost" onClick={() => navigate('/user/datasets')} className="flex-1 px-4 py-3 obsidian-card font-mono text-[10px] uppercase tracking-widest text-themed-muted hover:text-primary transition-colors hover:border-primary/50 text-center">
                                             View Datasets
-                                        </button>
-                                        <button onClick={() => navigate('/user/chat')} className="flex-1 px-4 py-3 bg-primary text-black font-mono text-[10px] uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(255,105,51,0.2)] text-center">
+                                        </Button>
+                                        <Button type="button" onClick={() => navigate('/user/chat')} className="flex-1 px-4 py-3 bg-primary text-black font-mono text-[10px] uppercase tracking-widest font-bold hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(255,105,51,0.2)] text-center">
                                             Start Chatting →
-                                        </button>
+                                        </Button>
                                     </div>
                                 </div>
                             </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 
 export default function AdminSettings() {
     const [siteName, setSiteName] = useState('Vizzy');
@@ -48,24 +49,30 @@ export default function AdminSettings() {
                             <p className="font-medium text-navy">Enable User Registration</p>
                             <p className="text-sm text-gray-500">Allow new users to register</p>
                         </div>
-                        <button
+                        <Button
+                            type="button"
                             onClick={() => setEnableRegistration(!enableRegistration)}
                             className={`relative w-12 h-6 rounded-full transition ${enableRegistration ? 'bg-admin-purple' : 'bg-gray-300'}`}
+                            variant="ghost"
+                            size="icon"
                         >
                             <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition ${enableRegistration ? 'left-6' : 'left-0.5'}`}></span>
-                        </button>
+                        </Button>
                     </div>
                     <div className="flex items-center justify-between max-w-md">
                         <div>
                             <p className="font-medium text-navy">Maintenance Mode</p>
                             <p className="text-sm text-gray-500">Disable access for non-admins</p>
                         </div>
-                        <button
+                        <Button
+                            type="button"
                             onClick={() => setMaintenanceMode(!maintenanceMode)}
                             className={`relative w-12 h-6 rounded-full transition ${maintenanceMode ? 'bg-red-500' : 'bg-gray-300'}`}
+                            variant="ghost"
+                            size="icon"
                         >
                             <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition ${maintenanceMode ? 'left-6' : 'left-0.5'}`}></span>
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -79,18 +86,18 @@ export default function AdminSettings() {
                             <p className="font-medium text-navy">Clear All Cache</p>
                             <p className="text-sm text-gray-500">Remove all cached data</p>
                         </div>
-                        <button className="px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 transition">
+                        <Button type="button" variant="outline" className="px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 transition">
                             Clear Cache
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>
 
             {/* Save Button */}
             <div className="flex justify-end">
-                <button className="px-6 py-2 bg-admin-purple text-white rounded-lg hover:bg-admin-purple/90 transition">
+                <Button type="button" className="px-6 py-2 bg-admin-purple text-white rounded-lg hover:bg-admin-purple/90 transition">
                     Save Changes
-                </button>
+                </Button>
             </div>
         </div>
     );

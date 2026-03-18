@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../lib/store/authStore';
 import ThemeToggle from '../ui/ThemeToggle';
+import { Button } from '@/components/ui/button';
 
 export default function UserLayout() {
     const { logout } = useAuthStore();
@@ -43,15 +44,18 @@ export default function UserLayout() {
                 `}
             >
                 {/* Toggle Button */}
-                <button
+                <Button
+                    type="button"
                     onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="sidebar-toggle-btn absolute -right-3 top-1/2 -translate-y-1/2 rounded-sm p-1.5 shadow-md z-50 flex items-center justify-center transition-all duration-300 ease-in-out hover:scale-110"
+                    className="sidebar-toggle-btn absolute -right-3 top-1/2 -translate-y-1/2 rounded-sm p-1.5 shadow-md z-50 flex items-center justify-center transition-all duration-300 ease-in-out"
                     title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                    variant="ghost"
+                    size="icon"
                 >
                     <svg className={`w-4 h-4 transition-transform duration-500 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"></path>
                     </svg>
-                </button>
+                </Button>
 
                 <div className={`flex flex-col h-full transition-all duration-500 ${isCollapsed ? 'px-0 py-6' : 'p-6'}`}>
                     {/* Logo Section */}
@@ -143,7 +147,8 @@ export default function UserLayout() {
                             <ThemeToggle size="sm" />
                         </div>
                     )}
-                    <button
+                    <Button
+                        type="button"
                         onClick={handleLogout}
                         title={isCollapsed ? 'Logout' : ''}
                         className={`
@@ -151,12 +156,13 @@ export default function UserLayout() {
                             ${isCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3'}
                         `}
                         style={{ color: 'var(--text-muted)' }}
+                        variant="ghost"
                     >
                         <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
                         </svg>
                         <span className={spanClasses}>Logout</span>
-                    </button>
+                    </Button>
                 </div>
             </aside>
 

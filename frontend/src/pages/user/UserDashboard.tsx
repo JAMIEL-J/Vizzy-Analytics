@@ -12,6 +12,7 @@ import {
     RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import { ColumnClassificationPanel } from '../../components/dashboard/ColumnClassificationPanel';
+import { Button } from '@/components/ui/button';
 
 type CachedEntry<T> = {
     value: T;
@@ -20,6 +21,7 @@ type CachedEntry<T> = {
 
 const DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
 const DASHBOARD_SESSION_CACHE_KEY = 'vizzy.dashboard.analyticsCache.v1';
+const SHOW_CORRELATION_CHART = false;
 
 class BoundedCache<T> {
     private map = new Map<string, CachedEntry<T>>();
@@ -455,11 +457,11 @@ const ChartCard = ({ title, children, className, actions }: { title: string; chi
             {actions ? (
                 <div className="relative z-10">{actions}</div>
             ) : (
-                <button className="text-themed-muted hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                <Button type="button" variant="ghost" size="icon" className="text-themed-muted hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
                     </svg>
-                </button>
+                </Button>
             )}
         </div>
         <div className="flex-1 min-h-0 w-full flex flex-col justify-end">
@@ -547,19 +549,21 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
         if (!chart.outliers?.count) return null;
         return (
             <div className="flex justify-end mb-2 relative z-10 w-full">
-                <button
+                <Button
+                    type="button"
                     onClick={() => setShowOutliers(!showOutliers)}
                     className={`text-[10px] font-medium px-2 py-1 rounded border transition-colors flex items-center gap-1 ${isDark
                         ? (showOutliers ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20' : 'bg-gray-800 border-border-main text-themed-muted hover:bg-gray-700')
                         : (showOutliers ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' : 'bg-gray-50 border-gray-200 text-themed-muted hover:bg-gray-100')
                         }`}
                     title={showOutliers ? "Click to exclude extreme outliers" : "Click to include extreme outliers"}
+                    variant="ghost"
                 >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     {chart.outliers.count} {showOutliers ? 'outliers included' : 'outliers excluded'}
-                </button>
+                </Button>
             </div>
         );
     };
@@ -882,9 +886,11 @@ const FilterDropdown = ({
 
     return (
         <div className="relative" ref={ref}>
-            <button
+            <Button
+                type="button"
                 onClick={() => setOpen(o => !o)}
                 className="flex items-center gap-2 obsidian-card rounded-sm px-4 py-2.5 shadow-sm text-[15px] font-serif tracking-wide text-themed-main hover:border-primary/50 transition-colors focus:outline-none"
+                variant="ghost"
             >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
@@ -893,7 +899,7 @@ const FilterDropdown = ({
                 <svg className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                 </svg>
-            </button>
+            </Button>
 
             {open && (
                 <div className="absolute right-0 top-full mt-2 w-56 obsidian-card rounded-sm shadow-2xl z-50 overflow-hidden font-serif">
@@ -902,18 +908,20 @@ const FilterDropdown = ({
                             <p className="px-4 py-3 text-sm text-themed-muted">No datasets available</p>
                         ) : (
                             datasets.map(ds => (
-                                <button
+                                <Button
+                                    type="button"
                                     key={ds.id}
                                     onClick={() => { onDatasetChange(ds.id); setOpen(false); }}
                                     className={`w-full text-left px-4 py-2.5 text-xs uppercase tracking-widest transition-colors flex items-center gap-2 ${ds.id === selectedDatasetId
                                         ? 'bg-primary/10 text-primary font-bold'
                                         : 'text-themed-muted hover:bg-bg-hover hover:text-themed-main'}`}
+                                    variant="ghost"
                                 >
                                     <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                                     </svg>
                                     <span className="truncate">{ds.name}</span>
-                                </button>
+                                </Button>
                             ))
                         )}
                     </div>
@@ -999,12 +1007,14 @@ const MultiFilterPanel = ({
                         )}
                     </div>
                     {totalActive > 0 && (
-                        <button
+                        <Button
+                            type="button"
                             onClick={onClearAll}
                             className="text-xs text-themed-muted hover:text-red-400 transition-colors"
+                            variant="ghost"
                         >
                             Clear all
-                        </button>
+                        </Button>
                     )}
                 </div>
 
@@ -1027,7 +1037,8 @@ const MultiFilterPanel = ({
 
                                 {/* ── Column Picker button ── */}
                                 <div className="relative">
-                                    <button
+                                    <Button
+                                        type="button"
                                         onClick={() => {
                                             setOpenValues(null);
                                             setOpenPicker(isPickerOpen ? null : slotIdx);
@@ -1036,6 +1047,7 @@ const MultiFilterPanel = ({
                                             ? 'bg-bg-card border-white/20 text-themed-main'
                                             : 'bg-bg-card border-dashed border-border-main text-themed-muted hover:border-primary/50'
                                             }`}
+                                        variant="ghost"
                                     >
                                         <span className="truncate">
                                             {selectedCol ? toLabel(selectedCol) : `Filter ${slotIdx + 1}`}
@@ -1065,27 +1077,30 @@ const MultiFilterPanel = ({
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                                             </svg>
                                         </div>
-                                    </button>
+                                    </Button>
 
                                     {/* Column picker dropdown */}
                                     {isPickerOpen && (
                                         <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-bg-card rounded-sm shadow-2xl z-50 overflow-hidden">
                                             {/* Clear slot option */}
                                             {selectedCol && (
-                                                <button
+                                                <Button
+                                                    type="button"
                                                     onClick={() => {
                                                         onFilterChange(selectedCol, []);
                                                         onSlotChange(slotIdx, null);
                                                         setOpenPicker(null);
                                                     }}
                                                     className="w-full text-left px-3 py-2 text-[13px] font-serif text-themed-muted hover:text-red-400 hover:bg-bg-hover transition-colors border-b border-border-main"
+                                                    variant="ghost"
                                                 >
                                                     — No filter (clear slot)
-                                                </button>
+                                                </Button>
                                             )}
                                             <div className="max-h-48 overflow-y-auto py-1">
                                                 {availableCols.map(col => (
-                                                    <button
+                                                    <Button
+                                                        type="button"
                                                         key={col}
                                                         onClick={() => {
                                                             // Clear old column's values if switching
@@ -1099,9 +1114,10 @@ const MultiFilterPanel = ({
                                                             ? 'bg-primary/10 text-primary font-medium'
                                                             : 'text-themed-main hover:bg-bg-hover'
                                                             }`}
+                                                        variant="ghost"
                                                     >
                                                         {toLabel(col)}
-                                                    </button>
+                                                    </Button>
                                                 ))}
                                             </div>
                                         </div>
@@ -1111,7 +1127,8 @@ const MultiFilterPanel = ({
                                 {/* ── Value picker button (only when column is chosen) ── */}
                                 {selectedCol && (
                                     <div className="relative">
-                                        <button
+                                        <Button
+                                            type="button"
                                             onClick={() => {
                                                 setOpenPicker(null);
                                                 setOpenValues(isValuesOpen ? null : slotIdx);
@@ -1120,6 +1137,7 @@ const MultiFilterPanel = ({
                                                 ? 'bg-primary/10 border-primary/40 text-primary font-medium'
                                                 : 'bg-bg-card border-border-main text-themed-muted hover:border-primary/50'
                                                 }`}
+                                            variant="ghost"
                                         >
                                             <span className="truncate text-xs">
                                                 {slotValues.length === 0
@@ -1139,20 +1157,24 @@ const MultiFilterPanel = ({
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                                                 </svg>
                                             </div>
-                                        </button>
+                                        </Button>
 
                                         {/* Values dropdown */}
                                         {isValuesOpen && (
                                             <div className="absolute top-full left-0 mt-1 w-full min-w-[200px] bg-bg-card border border-border-main rounded-sm shadow-2xl z-50 overflow-hidden">
                                                 <div className="flex items-center justify-between px-3 py-2.5 border-b border-border-main bg-bg-card/50 backdrop-blur-sm">
-                                                    <button
+                                                    <Button
+                                                        type="button"
                                                         onClick={() => onFilterChange(selectedCol, [...geoFilters[selectedCol]])}
                                                         className="text-[12px] uppercase tracking-wider font-serif text-primary hover:text-primary/80 font-bold transition-colors"
-                                                    >Select all</button>
-                                                    <button
+                                                        variant="ghost"
+                                                    >Select all</Button>
+                                                    <Button
+                                                        type="button"
                                                         onClick={() => onFilterChange(selectedCol, [])}
                                                         className="text-[12px] uppercase tracking-wider font-serif text-themed-muted hover:text-red-400 font-bold transition-colors"
-                                                    >Clear</button>
+                                                        variant="ghost"
+                                                    >Clear</Button>
                                                 </div>
                                                 <div className="max-h-52 overflow-y-auto py-1">
                                                     {geoFilters[selectedCol].map(val => (
@@ -1720,6 +1742,7 @@ export default function UserDashboard() {
     };
 
     useEffect(() => {
+        if (!SHOW_CORRELATION_CHART) return;
         if (!selectedDatasetId) return;
         const cached = cacheRef.current.correlation.get(selectedDatasetId);
         if (cached && isFresh(cached.createdAt)) {
@@ -2167,20 +2190,26 @@ export default function UserDashboard() {
                     <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="radar">Radar</option>
                     <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="geo_map">Map</option>
                 </select>
-                <button
+                <Button
+                    type="button"
                     onClick={() => exportChartCSV(chart)}
                     className="p-1.5 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-bg-card dark:bg-black/50"
                     title="Export CSV"
+                    variant="ghost"
+                    size="icon"
                 >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                </button>
-                <button
+                </Button>
+                <Button
+                    type="button"
                     onClick={() => exportChartHTML(chart)}
                     className="p-1.5 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-bg-card dark:bg-black/50"
                     title="Export Interactive HTML"
+                    variant="ghost"
+                    size="icon"
                 >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-                </button>
+                </Button>
             </div>
         );
     };
@@ -2208,16 +2237,19 @@ export default function UserDashboard() {
                         />
 
                         {/* Refresh */}
-                        <button
+                        <Button
+                            type="button"
                             onClick={() => loadAnalytics(undefined, true)}
                             disabled={isLoading}
                             className="p-2.5 rounded-sm bg-transparent border border-border-main text-themed-muted hover:text-primary hover:border-primary/50 transition-all shadow-sm disabled:opacity-50"
                             title="Refresh data"
+                            variant="ghost"
+                            size="icon"
                         >
                             <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
-                        </button>
+                        </Button>
 
                         {/* Settings */}
                         <SettingsDropdown />
@@ -2269,24 +2301,28 @@ export default function UserDashboard() {
                     {/* ── Target Filter Tabs ── */}
                     {analytics?.target_values && analytics.target_values.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 mb-6">
-                            <button
+                            <Button
+                                type="button"
                                 onClick={() => setTargetValue('all')}
                                 className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === 'all'
                                     ? 'bg-primary text-black shadow-md shadow-primary/20'
                                     : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
+                                variant="ghost"
                             >
                                 All {analytics.target_column?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </button>
+                            </Button>
                             {analytics.target_values.map(val => (
-                                <button
+                                <Button
+                                    type="button"
                                     key={val}
                                     onClick={() => setTargetValue(val)}
                                     className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === val
                                         ? 'bg-primary text-black shadow-md shadow-primary/20'
                                         : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
+                                    variant="ghost"
                                 >
                                     {val.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </button>
+                                </Button>
                             ))}
                         </div>
                     )}
@@ -2372,15 +2408,17 @@ export default function UserDashboard() {
                             {/* Data Quality Report Panel */}
                             {analytics.data_quality && analytics.data_quality.length > 0 && (
                                 <div className="mb-6">
-                                    <button
+                                    <Button
+                                        type="button"
                                         onClick={() => setDataQualityOpen(!dataQualityOpen)}
                                         className="flex items-center gap-2 text-xs font-serif uppercase tracking-widest text-themed-muted hover:text-primary transition-colors mb-2"
+                                        variant="ghost"
                                     >
                                         <svg className={`w-3 h-3 transition-transform ${dataQualityOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                                         </svg>
                                         Data Quality Report ({analytics.data_quality.filter(d => d.null_pct > 0).length} columns with nulls)
-                                    </button>
+                                    </Button>
                                     {dataQualityOpen && (
                                         <div className="glass-panel rounded-sm p-4 overflow-x-auto">
                                             <table className="w-full text-xs font-mono">
@@ -2482,8 +2520,10 @@ export default function UserDashboard() {
 
                             {/* Chart Row 2 — 3 columns */}
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                                {/* Correlation heatmap */}
-                                <CorrelationHeatmapCard corr={corrMatrix} loading={corrLoading} isDark={isDark} />
+                                {/* Correlation heatmap (code retained, hidden by feature flag) */}
+                                {SHOW_CORRELATION_CHART && (
+                                    <CorrelationHeatmapCard corr={corrMatrix} loading={corrLoading} isDark={isDark} />
+                                )}
 
                                 {/* Remaining charts */}
                                 {chartArray.slice(3).map((chart) => (
