@@ -1,23 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    PieChart,
-    Pie,
-    Cell,
-    LineChart,
-    Line,
-    Legend,
-} from 'recharts';
 
 import { userApi, type UserProfileStats } from '../../lib/api/user';
-
-const COLORS = ['#ff6933', '#ff9e66', '#cc4c18', '#fd8d3c', '#a63603', '#ffcfb3'];
 
 export default function UserProfile() {
     const [profile, setProfile] = useState<UserProfileStats | null>(null);
@@ -51,16 +34,37 @@ export default function UserProfile() {
         ];
     }, [profile]);
 
-    const sourcePie = useMemo(() => {
+    const sourceRows = useMemo(() => {
         if (!profile) return [];
-        return Object.entries(profile.dataset_sources).map(([name, value]) => ({ name: name.toUpperCase(), value }));
+        return Object.entries(profile.dataset_sources)
+            .map(([name, value]) => ({ name: name.toUpperCase(), value }))
+            .sort((a, b) => b.value - a.value);
+    }, [profile]);
+
+    const topFeatures = useMemo(() => {
+        if (!profile) return [];
+        return [...profile.feature_usage]
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 8);
+    }, [profile]);
+
+    const monthlyRows = useMemo(() => {
+        if (!profile) return [];
+        return [...profile.monthly_activity].map((row) => {
+            const [y, m] = row.month.split('-');
+            const monthLabel = new Date(Number(y), Number(m) - 1, 1).toLocaleString('en-US', {
+                month: 'short',
+                year: 'numeric',
+            });
+            return { ...row, monthLabel };
+        });
     }, [profile]);
 
     return (
         <div className="p-6 md:p-8 max-w-[1400px] mx-auto w-full">
             <div className="mb-6">
                 <h1 className="text-2xl md:text-3xl font-serif tracking-wide text-themed-main">User Profile</h1>
-                <p className="text-sm text-themed-muted mt-1">Your usage analytics based on datasets, dashboards, chat, and analysis workflows.</p>
+                <p className="text-sm text-themed-muted mt-1">Clean activity summary across datasets, dashboards, chat, and analysis workflows.</p>
             </div>
 
             {loading && (
@@ -82,70 +86,81 @@ export default function UserProfile() {
                         ))}
                     </div>
 
-                    <div className="glass-panel rounded-sm p-4 border border-border-main mb-6 text-sm text-themed-muted">
-                        <p>
-                            Total Analysis Runs includes all orchestrated analysis executions recorded by the backend
-                            (dashboard runs, chart analyses, text-query analyses, and interpretive analyses).
-                        </p>
-                        <p className="mt-1">
-                            Saved Dashboards: <span className="text-themed-main font-semibold">{profile.totals.total_saved_dashboards.toLocaleString()}</span>
-                        </p>
-                    </div>
-
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-                        <div className="glass-panel rounded-sm p-4 border border-border-main xl:col-span-2">
-                            <h2 className="text-sm uppercase tracking-widest text-themed-muted mb-4">Monthly Activity</h2>
-                            <div className="h-72">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={profile.monthly_activity}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-main)" />
-                                        <XAxis dataKey="month" stroke="var(--text-muted)" tick={{ fontSize: 11 }} />
-                                        <YAxis stroke="var(--text-muted)" tick={{ fontSize: 11 }} />
-                                        <Tooltip />
-                                        <Legend />
-                                        <Line type="monotone" dataKey="uploads" stroke="#ff6933" strokeWidth={2.5} dot={false} />
-                                        <Line type="monotone" dataKey="generated_dashboards" stroke="#cc4c18" strokeWidth={2.5} dot={false} />
-                                        <Line type="monotone" dataKey="saved_dashboards" stroke="#ff9e66" strokeWidth={2.5} dot={false} />
-                                        <Line type="monotone" dataKey="analyses" stroke="#fd8d3c" strokeWidth={2.5} dot={false} />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                        <div className="glass-panel rounded-sm p-5 border border-border-main xl:col-span-2">
+                            <h2 className="text-sm uppercase tracking-widest text-themed-muted mb-4">Dashboard Tracking</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="rounded-sm border border-border-main bg-bg-card p-4">
+                                    <p className="text-xs uppercase tracking-widest text-themed-muted mb-2">Generated Dashboards</p>
+                                    <p className="text-3xl font-serif text-themed-main">{profile.totals.total_dashboards_generated.toLocaleString()}</p>
+                                    <p className="text-xs text-themed-muted mt-2">Recorded from dashboard analysis executions.</p>
+                                </div>
+                                <div className="rounded-sm border border-border-main bg-bg-card p-4">
+                                    <p className="text-xs uppercase tracking-widest text-themed-muted mb-2">Saved Dashboards</p>
+                                    <p className="text-3xl font-serif text-themed-main">{profile.totals.total_saved_dashboards.toLocaleString()}</p>
+                                    <p className="text-xs text-themed-muted mt-2">User-saved dashboard configurations.</p>
+                                </div>
                             </div>
+                            <p className="text-sm text-themed-muted mt-4">
+                                Total Analysis Runs includes dashboard, chart, text-query, and interpretive analysis executions.
+                            </p>
                         </div>
 
-                        <div className="glass-panel rounded-sm p-4 border border-border-main">
+                        <div className="glass-panel rounded-sm p-5 border border-border-main">
                             <h2 className="text-sm uppercase tracking-widest text-themed-muted mb-4">Dataset Sources</h2>
-                            <div className="h-72">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie data={sourcePie} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90}>
-                                            {sourcePie.map((entry, index) => (
-                                                <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip />
-                                        <Legend />
-                                    </PieChart>
-                                </ResponsiveContainer>
+                            <div className="space-y-2">
+                                {sourceRows.length === 0 && (
+                                    <p className="text-sm text-themed-muted">No source activity recorded.</p>
+                                )}
+                                {sourceRows.map((row) => (
+                                    <div key={row.name} className="flex items-center justify-between rounded-sm border border-border-main bg-bg-card px-3 py-2">
+                                        <span className="text-xs uppercase tracking-widest text-themed-muted">{row.name}</span>
+                                        <span className="font-semibold text-themed-main">{row.value.toLocaleString()}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
 
-                    <div className="glass-panel rounded-sm p-4 border border-border-main">
-                        <h2 className="text-sm uppercase tracking-widest text-themed-muted mb-4">Feature Usage Breakdown</h2>
-                        <div className="h-80">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={profile.feature_usage} layout="vertical" margin={{ left: 20, right: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-main)" />
-                                    <XAxis type="number" stroke="var(--text-muted)" tick={{ fontSize: 11 }} />
-                                    <YAxis type="category" dataKey="feature" width={130} stroke="var(--text-muted)" tick={{ fontSize: 11 }} />
-                                    <Tooltip />
-                                    <Bar dataKey="count" radius={[4, 4, 4, 4]}>
-                                        {profile.feature_usage.map((entry, index) => (
-                                            <Cell key={entry.feature} fill={COLORS[index % COLORS.length]} />
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <div className="glass-panel rounded-sm p-5 border border-border-main">
+                            <h2 className="text-sm uppercase tracking-widest text-themed-muted mb-4">Feature Usage</h2>
+                            <div className="space-y-2">
+                                {topFeatures.map((item) => (
+                                    <div key={item.feature} className="flex items-center justify-between rounded-sm border border-border-main bg-bg-card px-3 py-2.5">
+                                        <span className="text-sm text-themed-main">{item.feature}</span>
+                                        <span className="text-sm font-semibold text-themed-main">{item.count.toLocaleString()}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="glass-panel rounded-sm p-5 border border-border-main">
+                            <h2 className="text-sm uppercase tracking-widest text-themed-muted mb-4">Monthly Activity (Last 12 Months)</h2>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="text-left text-xs uppercase tracking-widest text-themed-muted border-b border-border-main">
+                                            <th className="py-2 pr-3">Month</th>
+                                            <th className="py-2 pr-3">Uploads</th>
+                                            <th className="py-2 pr-3">Generated</th>
+                                            <th className="py-2 pr-3">Saved</th>
+                                            <th className="py-2 pr-3">Analyses</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {monthlyRows.map((row) => (
+                                            <tr key={row.month} className="border-b border-border-main/60">
+                                                <td className="py-2 pr-3 text-themed-main">{row.monthLabel}</td>
+                                                <td className="py-2 pr-3 text-themed-main">{row.uploads.toLocaleString()}</td>
+                                                <td className="py-2 pr-3 text-themed-main">{row.generated_dashboards.toLocaleString()}</td>
+                                                <td className="py-2 pr-3 text-themed-main">{row.saved_dashboards.toLocaleString()}</td>
+                                                <td className="py-2 pr-3 text-themed-main">{row.analyses.toLocaleString()}</td>
+                                            </tr>
                                         ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </>

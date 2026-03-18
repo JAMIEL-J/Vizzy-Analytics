@@ -103,6 +103,12 @@ def get_inspection_report_for_version(
     """
     Retrieve the active inspection report for a dataset version.
     """
+    version = session.get(DatasetVersion, dataset_version_id)
+    if not version or not version.is_active:
+        raise ResourceNotFound("DatasetVersion", str(dataset_version_id))
+
+    _assert_version_access(version, user_id, role)
+
     return session.exec(
         select(InspectionReport).where(
             InspectionReport.dataset_version_id == dataset_version_id,

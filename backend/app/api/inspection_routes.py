@@ -90,6 +90,8 @@ def get_inspection_report(
             user_id=UUID(current_user.user_id),
             role=current_user.role,
         )
+        if report is None:
+            raise HTTPException(status_code=404, detail="Inspection report not found for this dataset version")
         return InspectionResponse.model_validate(report)
 
     except ResourceNotFound as e:

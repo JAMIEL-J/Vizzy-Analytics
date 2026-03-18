@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { datasetService } from '../../lib/api/dataset';
 import { analyticsService, correlationService, narrativeService, type DashboardAnalytics, type CorrelationMatrix } from '../../lib/api/dashboard';
@@ -1371,6 +1371,13 @@ export default function UserDashboard() {
 
     const previousDatasetIdRef = useRef<string>('');
 
+    const normalizedActiveFilters = useMemo(
+        () => Object.fromEntries(
+            Object.entries(active_filters || {}).filter(([, vals]) => Array.isArray(vals) && vals.length > 0)
+        ),
+        [active_filters]
+    );
+
     useEffect(() => { loadDatasets(); }, []);
 
     useEffect(() => {
@@ -1436,6 +1443,7 @@ export default function UserDashboard() {
     }, [analytics]);
 
     const abortControllerRef = useRef<AbortController | null>(null);
+    const kpiAbortControllerRef = useRef<AbortController | null>(null);
 
     // Debounce the analytics load
     useEffect(() => {
@@ -1458,19 +1466,14 @@ export default function UserDashboard() {
         return () => {
             clearTimeout(timer);
         };
-    }, [selectedDatasetId, target_value, classification_overrides, selected_domain, active_filters, chart_overrides]);
+    }, [selectedDatasetId, target_value, classification_overrides, selected_domain]);
 
     const buildDashboardCacheKey = () => {
-        const normalizedFilters = Object.fromEntries(
-            Object.entries(active_filters || {}).filter(([, vals]) => Array.isArray(vals) && vals.length > 0)
-        );
-
         return stableSerialize({
             datasetId: selectedDatasetId,
             targetValue: target_value || 'all',
             selectedDomain: selected_domain || 'auto',
-            filters: normalizedFilters,
-            chartOverrides: chart_overrides || {},
+            filters: normalizedActiveFilters,
             classificationOverrides: classification_overrides || {},
         });
     };
@@ -1519,8 +1522,8 @@ export default function UserDashboard() {
             const data = await analyticsService.getDashboardAnalytics(
                 selectedDatasetId,
                 target_value,
-                active_filters,
-                chart_overrides,
+                normalizedActiveFilters,
+                {},
                 classification_overrides,
                 selected_domain,
                 signal
@@ -1546,6 +1549,112 @@ export default function UserDashboard() {
             setIsLoading(false);
             setIsKPILoading(false);
         }
+    };
+
+    const loadKpisForInteractiveState = async (signal?: AbortSignal) => {
+        try {
+            setIsKPILoading(true);
+            const data = await analyticsService.getDashboardAnalytics(
+                selectedDatasetId,
+                target_value,
+                normalizedActiveFilters,
+                chart_overrides,
+                classification_overrides,
+                selected_domain,
+                signal
+            );
+
+            setAnalytics(prev => {
+                if (!prev) return data;
+                return {
+                    ...prev,
+                    kpis: data.kpis,
+                    target_column: data.target_column ?? prev.target_column,
+                    target_values: data.target_values ?? prev.target_values,
+                };
+            });
+        } catch (err: any) {
+            if (err?.name === 'AbortError') return;
+        } finally {
+            setIsKPILoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!selectedDatasetId) return;
+
+        const hasActiveFilters = Object.keys(normalizedActiveFilters).length > 0;
+        const hasChartOverrides = Object.keys(chart_overrides || {}).length > 0;
+
+        if (!hasActiveFilters && !hasChartOverrides) {
+            const baseKey = stableSerialize({
+                datasetId: selectedDatasetId,
+                targetValue: target_value || 'all',
+                selectedDomain: selected_domain || 'auto',
+                filters: {},
+                classificationOverrides: classification_overrides || {},
+            });
+            const baseCached = cacheRef.current.analytics.get(baseKey);
+            if (baseCached && isFresh(baseCached.createdAt)) {
+                setAnalytics(baseCached.value);
+            }
+            return;
+        }
+
+        if (kpiAbortControllerRef.current) {
+            kpiAbortControllerRef.current.abort();
+        }
+
+        const controller = new AbortController();
+        kpiAbortControllerRef.current = controller;
+
+        const timer = setTimeout(() => {
+            loadKpisForInteractiveState(controller.signal);
+        }, 260);
+
+        return () => {
+            clearTimeout(timer);
+        };
+    }, [selectedDatasetId, target_value, selected_domain, classification_overrides, normalizedActiveFilters, chart_overrides]);
+
+    const handleChartFilterClick = (col: string, val: string) => {
+        const rawCol = String(col || '').trim();
+        const rawVal = String(val || '').trim();
+        if (!rawVal) return;
+
+        const isGeneric = !rawCol || ['name', 'date', 'label'].includes(rawCol.toLowerCase());
+        let resolvedCol = rawCol;
+
+        if (isGeneric && analytics?.geo_filters) {
+            const candidates = Object.entries(analytics.geo_filters)
+                .filter(([, values]) => Array.isArray(values) && values.some(v => String(v).trim().toLowerCase() === rawVal.toLowerCase()))
+                .map(([key]) => key);
+
+            if (candidates.length === 1) {
+                resolvedCol = candidates[0];
+            } else if (candidates.length > 1) {
+                const slotPreferred = filterSlots.find(slot => !!slot && candidates.includes(slot));
+                resolvedCol = slotPreferred || candidates[0];
+            }
+        }
+
+        if (!resolvedCol || ['name', 'date', 'label'].includes(resolvedCol.toLowerCase())) return;
+
+        toggleFilter(resolvedCol, rawVal);
+
+        // Ensure chart-driven filter remains visible in the multi-filter slots.
+        setFilterSlots(prev => {
+            if (!resolvedCol || prev.includes(resolvedCol)) return prev;
+            const firstEmpty = prev.findIndex(slot => slot === null);
+            if (firstEmpty >= 0) {
+                const next = [...prev];
+                next[firstEmpty] = resolvedCol;
+                return next;
+            }
+            const next = [...prev];
+            next[0] = resolvedCol;
+            return next;
+        });
     };
 
     useEffect(() => {
@@ -1610,6 +1719,9 @@ export default function UserDashboard() {
     const chartArrayRaw = analytics?.charts ? Object.entries(analytics.charts).map(([id, val]) => ({
         id,
         ...(val as any),
+        dimension: (val as any).dimension ?? analytics?.chart_configs?.[id]?.dimension,
+        metric: (val as any).metric ?? analytics?.chart_configs?.[id]?.metric,
+        aggregation: (val as any).aggregation ?? analytics?.chart_configs?.[id]?.aggregation,
         data: chartData?.[id] || (val as any).data,
         data_without_outliers: chartData?.[id] || (val as any).data_without_outliers
     })) : [];
@@ -2298,7 +2410,7 @@ export default function UserDashboard() {
                                                     chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
                                                     chartColors={chartColors}
                                                     isDark={isDark}
-                                                    onFilterClick={(col, val) => toggleFilter(col, val)}
+                                                    onFilterClick={handleChartFilterClick}
                                                 />
                                             </div>
                                         </ChartCard>
@@ -2319,7 +2431,7 @@ export default function UserDashboard() {
                                                 chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
                                                 chartColors={chartColors}
                                                 isDark={isDark}
-                                                onFilterClick={(col, val) => toggleFilter(col, val)}
+                                                onFilterClick={handleChartFilterClick}
                                             />
                                         </div>
                                     </ChartCard>

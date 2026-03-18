@@ -8,6 +8,7 @@ Uses BI dashboard best practices to prioritize business-critical metrics.
 import logging
 from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass
+import warnings
 import pandas as pd
 from .domain_detector import DomainType
 from .column_filter import ColumnClassification, _clean_header
@@ -21,6 +22,16 @@ class AggregationData(list):
         self.data_without_outliers = data_without_outliers
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_to_datetime(series: pd.Series) -> pd.Series:
+    """Parse mixed date formats without noisy parser warnings."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        try:
+            return pd.to_datetime(series, errors='coerce', format='mixed', dayfirst=True)
+        except (TypeError, ValueError):
+            return pd.to_datetime(series, errors='coerce', dayfirst=True)
 
 
 # ============================================================================
@@ -590,7 +601,7 @@ def _get_time_trend(df: pd.DataFrame, date_col: str, value_col: str) -> List[Dic
     
     try:
         df_temp = df.copy()
-        df_temp[date_col] = pd.to_datetime(df_temp[date_col], errors='coerce')
+        df_temp[date_col] = _safe_to_datetime(df_temp[date_col])
         df_temp = df_temp.dropna(subset=[date_col])
         df_temp = df_temp.sort_values(date_col)
         
@@ -618,7 +629,7 @@ def _get_yoy_comparison(df: pd.DataFrame, date_col: str, value_col: str) -> List
         
     try:
         df_temp = df.dropna(subset=[date_col, value_col]).copy()
-        dates = pd.to_datetime(df_temp[date_col], errors='coerce')
+        dates = _safe_to_datetime(df_temp[date_col])
         valid_mask = dates.notna()
         df_temp = df_temp[valid_mask]
         dates = dates[valid_mask]
@@ -647,7 +658,7 @@ def _get_ytd_comparison(df: pd.DataFrame, date_col: str, value_col: str) -> List
         
     try:
         df_temp = df.dropna(subset=[date_col, value_col]).copy()
-        dates = pd.to_datetime(df_temp[date_col], errors='coerce')
+        dates = _safe_to_datetime(df_temp[date_col])
         valid_mask = dates.notna()
         df_temp = df_temp[valid_mask]
         dates = dates[valid_mask]
@@ -2279,7 +2290,7 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
         try:
             date_col = dates[0]
             df_temp = df.copy()
-            df_temp[date_col] = pd.to_datetime(df_temp[date_col], errors='coerce')
+            df_temp[date_col] = _safe_to_datetime(df_temp[date_col])
             df_temp = df_temp.dropna(subset=[date_col])
             
             date_range = (df_temp[date_col].max() - df_temp[date_col].min()).days
@@ -2363,7 +2374,7 @@ def _generate_templated_charts(df: pd.DataFrame, classification: ColumnClassific
             data = []
             try:
                 df_temp = df.copy()
-                df_temp[date_col] = pd.to_datetime(df_temp[date_col], errors='coerce')
+                df_temp[date_col] = _safe_to_datetime(df_temp[date_col])
                 df_temp = df_temp.dropna(subset=[date_col, col, low_bound, high_bound])
                 df_temp = df_temp.sort_values(date_col)
                 grouped = df_temp.groupby(pd.Grouper(key=date_col, freq='D')).mean().tail(30)
@@ -2469,7 +2480,7 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
     
     for col in classification.dates:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce')
+            df[col] = _safe_to_datetime(df[col])
 
     filtered_metrics = [m for m in classification.metrics if not _is_low_value_column(m)]
     filtered_dimensions = [d for d in classification.dimensions if not _is_low_value_column(d)]

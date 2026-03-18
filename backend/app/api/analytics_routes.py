@@ -16,8 +16,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import DBSession, AuthenticatedUser
+from app.core.exceptions import AuthorizationError
 from app.models.dataset import Dataset
 from app.models.analysis_contract import AnalysisContract
+from app.models.user import UserRole as ModelUserRole
 from app.services.dataset_version_service import get_latest_version
 from app.services.analysis_contract_service import create_analysis_contract
 from app.services.analysis_service import create_analysis_result
@@ -428,9 +430,13 @@ def get_dashboard_analytics(
             if primary_dim:
                 # Sample proportionally per group, then take top/random to fill budget
                 frac = max_raw_rows / total_len
-                df_raw = df.groupby(primary_dim, group_keys=False).apply(
-                    lambda x: x.sample(n=max(1, int(len(x) * frac)), random_state=42) if len(x) > 0 else x
-                )
+                sampled_parts = []
+                for _, group_df in df.groupby(primary_dim, sort=False):
+                    if len(group_df) == 0:
+                        continue
+                    sample_n = min(len(group_df), max(1, int(len(group_df) * frac)))
+                    sampled_parts.append(group_df.sample(n=sample_n, random_state=42))
+                df_raw = pd.concat(sampled_parts) if sampled_parts else df.head(0).copy()
                 # If we undersampled due to rounding, fill up with random sample from remainders
                 if len(df_raw) < max_raw_rows:
                     remaining_indices = df.index.difference(df_raw.index)
@@ -480,6 +486,9 @@ def get_dashboard_analytics(
         )
         if is_base_generation:
             try:
+                tracking_user_id = UUID(current_user.user_id)
+                tracking_role = ModelUserRole(current_user.role.value)
+
                 contract = session.exec(
                     select(AnalysisContract).where(
                         AnalysisContract.dataset_version_id == latest_version.id,
@@ -493,8 +502,8 @@ def get_dashboard_analytics(
                         dataset_version_id=latest_version.id,
                         allowed_metrics={"metrics": classification.metrics},
                         allowed_dimensions={"dimensions": classification.dimensions},
-                        user_id=current_user.id,
-                        role=current_user.role,
+                        user_id=tracking_user_id,
+                        role=tracking_role,
                         constraints={"source": "dashboard_page_auto"},
                     )
 
@@ -510,9 +519,12 @@ def get_dashboard_analytics(
                         "kpi_count": len(kpis or {}),
                         "chart_count": len(charts or {}),
                     },
-                    user_id=current_user.id,
-                    role=current_user.role,
+                    user_id=tracking_user_id,
+                    role=tracking_role,
                 )
+            except AuthorizationError:
+                # Tracking is best-effort; skip when user cannot write contract/result for this dataset.
+                pass
             except Exception as track_err:
                 print(f"Warning: dashboard generation tracking failed: {track_err}")
 

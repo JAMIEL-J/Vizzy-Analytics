@@ -7,11 +7,22 @@ Provides domain-specific KPIs with calculated metrics (rates, ratios, comparison
 import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+import warnings
 import pandas as pd
 from .domain_detector import DomainType
 from .column_filter import ColumnClassification
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_to_datetime(series: pd.Series) -> pd.Series:
+    """Parse mixed date formats without noisy parser warnings."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        try:
+            return pd.to_datetime(series, errors='coerce', format='mixed', dayfirst=True)
+        except (TypeError, ValueError):
+            return pd.to_datetime(series, errors='coerce', dayfirst=True)
 
 
 def _beautify_column_name(col: str) -> str:
@@ -176,7 +187,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
     if date_col and date_col in df.columns:
         try:
             # Safely coercing to datetime just for the bounding box
-            dates = pd.to_datetime(df[date_col], errors='coerce')
+            dates = _safe_to_datetime(df[date_col])
             if not dates.isna().all():
                 max_date = dates.max()
                 

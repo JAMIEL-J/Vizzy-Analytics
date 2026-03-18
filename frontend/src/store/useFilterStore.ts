@@ -38,7 +38,95 @@ const getRowValue = (row: any, key: string) => {
     // Case-insensitive fallback
     const lowerKey = key.toLowerCase();
     const actualKey = Object.keys(row).find(k => k.toLowerCase() === lowerKey);
-    return actualKey ? row[actualKey] : undefined;
+    if (actualKey) return row[actualKey];
+
+    // Normalized fallback: handles spaces/underscores/casing differences
+    const normalizeKey = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const targetNorm = normalizeKey(String(key));
+    const fuzzyKey = Object.keys(row).find(k => normalizeKey(k) === targetNorm);
+    return fuzzyKey ? row[fuzzyKey] : undefined;
+};
+
+const normalizeScalar = (value: any): string => {
+    if (value === null || value === undefined) return '';
+    return String(value).trim().toLowerCase();
+};
+
+const scalarMatches = (rowValue: any, filterValue: any): boolean => {
+    const rowRaw = String(rowValue);
+    const filterRaw = String(filterValue);
+    if (rowRaw === filterRaw) return true;
+
+    const rowNorm = normalizeScalar(rowValue);
+    const filterNorm = normalizeScalar(filterValue);
+    if (rowNorm === filterNorm) return true;
+
+    const rowNum = Number(rowNorm);
+    const filterNum = Number(filterNorm);
+    if (!Number.isNaN(rowNum) && !Number.isNaN(filterNum)) {
+        return rowNum === filterNum;
+    }
+
+    return false;
+};
+
+const inferDimensionFromChartRows = (rawData: any[], chartRows: any[]): string | null => {
+    if (!Array.isArray(rawData) || rawData.length === 0 || !Array.isArray(chartRows) || chartRows.length === 0) {
+        return null;
+    }
+
+    const labels = new Set(
+        chartRows
+            .map((r: any) => normalizeScalar(r?.name ?? r?.date ?? r?.label))
+            .filter(Boolean)
+    );
+
+    if (labels.size === 0) return null;
+
+    const sampleRow = rawData[0] || {};
+    const keys = Object.keys(sampleRow);
+    if (keys.length === 0) return null;
+
+    const maxScan = Math.min(rawData.length, 2500);
+    let bestKey: string | null = null;
+    let bestScore = 0;
+
+    for (const key of keys) {
+        let score = 0;
+        for (let i = 0; i < maxScan; i++) {
+            const rowVal = getRowValue(rawData[i], key);
+            if (rowVal === undefined || rowVal === null) continue;
+            if (labels.has(normalizeScalar(rowVal))) {
+                score++;
+            }
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestKey = key;
+        }
+    }
+
+    // Require at least a few matches to avoid false positives on short labels.
+    return bestScore >= 3 ? bestKey : null;
+};
+
+const areStringArraysEqual = (a: string[] = [], b: string[] = []) => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+};
+
+const normalizeFilters = (filters: Record<string, string[]>) => {
+    const normalized: Record<string, string[]> = {};
+    for (const [key, values] of Object.entries(filters || {})) {
+        if (Array.isArray(values) && values.length > 0) {
+            normalized[key] = values;
+        }
+    }
+    return normalized;
 };
 
 const applyFilters = (data: any[], filters: Record<string, string[]>, targetCol: string | null, targetVal: string) => {
@@ -50,13 +138,13 @@ const applyFilters = (data: any[], filters: Record<string, string[]>, targetCol:
     return data.filter(row => {
         // 1. Apply Target Tab Filter (e.g. Churned Users)
         if (targetCol && targetVal && targetVal.toLowerCase() !== 'all') {
-            const rowVal = String(getRowValue(row, targetCol)).toLowerCase();
+            const rowVal = normalizeScalar(getRowValue(row, targetCol));
             if (targetVal.toLowerCase() === 'yes' || targetVal.toLowerCase() === 'true' || targetVal === '1') {
                 if (!positiveKeywords.includes(rowVal)) return false;
             } else if (targetVal.toLowerCase() === 'no' || targetVal.toLowerCase() === 'false' || targetVal === '0') {
                 if (!negativeKeywords.includes(rowVal)) return false;
             } else {
-                if (rowVal !== targetVal.toLowerCase()) return false;
+                if (rowVal !== normalizeScalar(targetVal)) return false;
             }
         }
 
@@ -65,10 +153,7 @@ const applyFilters = (data: any[], filters: Record<string, string[]>, targetCol:
             if (!values || values.length === 0) return true;
             const rowVal = getRowValue(row, key);
             if (rowVal === undefined || rowVal === null) return false;
-
-            // Normalize both to strings for comparison (handles 100.0 vs "100.0" and "100" vs 100)
-            const rowValStr = String(rowVal);
-            return values.some(v => String(v) === rowValStr);
+            return values.some(v => scalarMatches(rowVal, v));
         });
     });
 };
@@ -125,17 +210,19 @@ const recomputeCharts = (
 
     for (const [slotId, config] of Object.entries(configsToProcess)) {
         const override = overrides[slotId] || {};
-        const aggregation = (override.aggregation || config.aggregation || 'SUM').toUpperCase();
-        const dimension = config.dimension;
+        const seedRows = (initialChartData?.[slotId] as any[]) || (existingCharts?.[slotId] as any[]) || [];
+        const dimension = config.dimension || inferDimensionFromChartRows(rawData, seedRows);
         const metric = config.metric;
+        const aggregation = (override.aggregation || config.aggregation || (metric ? 'SUM' : 'COUNT')).toUpperCase();
 
-        if (dimension && metric) {
+        if (dimension) {
             const chartType = (override.type || config.type || '').toLowerCase();
             const originalType = (config.type || '').toLowerCase();
             const isTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(chartType) && config.is_date;
             const originalWasTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(originalType) && config.is_date;
+            const isCountOnly = !metric;
             // PERFORMANCE OPTIMIZATION: Reuse high-fidelity backend data if no filters are active and analytics logic hasn't changed
-            const sameAgg = !override.aggregation || override.aggregation.toLowerCase() === (config.aggregation || 'sum').toLowerCase();
+            const sameAgg = !override.aggregation || override.aggregation.toLowerCase() === (config.aggregation || (isCountOnly ? 'count' : 'sum')).toLowerCase();
             const sameTrend = isTrend === originalWasTrend;
 
             if (hasNoFilters && initialChartData?.[slotId]) {
@@ -154,6 +241,25 @@ const recomputeCharts = (
                     charts[slotId] = existingCharts[slotId];
                     continue;
                 }
+            }
+
+            // Scatter charts need point-wise x/y data, not grouped name/value buckets.
+            if (chartType === 'scatter') {
+                if (!metric) {
+                    charts[slotId] = seedRows;
+                    continue;
+                }
+
+                const scatterPoints = filtered
+                    .map((row) => ({
+                        x: Number(getRowValue(row, dimension)),
+                        y: Number(getRowValue(row, metric)),
+                    }))
+                    .filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y));
+
+                // Keep payload bounded for rendering performance.
+                charts[slotId] = scatterPoints.length > 1200 ? scatterPoints.slice(0, 1200) : scatterPoints;
+                continue;
             }
 
             // 1. Calculate Date Binning if needed
@@ -210,7 +316,7 @@ const recomputeCharts = (
                 }
 
                 if (!acc[key]) acc[key] = [];
-                const metricVal = getRowValue(row, metric);
+                const metricVal = metric ? getRowValue(row, metric) : 1;
                 acc[key].push(aggregation === 'COUNT' ? 1 : metricVal);
                 return acc;
             }, {} as Record<string, any[]>);
@@ -224,6 +330,14 @@ const recomputeCharts = (
                 }
                 return item;
             });
+
+            // Map charts should keep full categorical coverage after filtering.
+            if (chartType === 'geo_map') {
+                chartData = chartData.filter((d) => d.name !== 'Unknown');
+                chartData.sort((a, b) => b.value - a.value);
+                charts[slotId] = chartData;
+                continue;
+            }
 
             const isFullData = chartType === 'scatter' || isTrend || config.granularity === 'year' || config.granularity === 'ytd';
 
@@ -302,7 +416,8 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
 
     setFilter: (column, value) => {
         const state = get();
-        const newFilters = { ...state.active_filters, [column]: [value] };
+        if (areStringArraysEqual(state.active_filters[column] || [], [value])) return;
+        const newFilters = normalizeFilters({ ...state.active_filters, [column]: [value] });
         set({
             active_filters: newFilters,
             chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
@@ -311,7 +426,8 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
 
     setFilterValues: (column, values) => {
         const state = get();
-        const newFilters = { ...state.active_filters, [column]: values };
+        if (areStringArraysEqual(state.active_filters[column] || [], values || [])) return;
+        const newFilters = normalizeFilters({ ...state.active_filters, [column]: values });
         set({
             active_filters: newFilters,
             chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
@@ -322,7 +438,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const state = get();
         const current = state.active_filters[column] || [];
         const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
-        const newFilters = { ...state.active_filters, [column]: next };
+        const newFilters = normalizeFilters({ ...state.active_filters, [column]: next });
         set({
             active_filters: newFilters,
             chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
@@ -332,7 +448,7 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
     removeFilter: (column, value) => {
         const state = get();
         const next = (state.active_filters[column] || []).filter(v => v !== value);
-        const newFilters = { ...state.active_filters, [column]: next };
+        const newFilters = normalizeFilters({ ...state.active_filters, [column]: next });
         set({
             active_filters: newFilters,
             chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
