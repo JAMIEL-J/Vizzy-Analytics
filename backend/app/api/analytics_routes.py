@@ -137,6 +137,40 @@ def _find_target_column(df: pd.DataFrame) -> Optional[str]:
     return None
 
 
+def _normalize_binary_target_values(target_col: str, values: List[str]) -> List[str]:
+    """Return semantically normalized binary target values when possible.
+
+    This keeps frontend target tabs aligned with chart labels.
+    """
+    if not target_col or not values:
+        return values
+
+    normalized_col = str(target_col).lower().replace('_', '').replace('-', '')
+    normalized_vals = [str(v).strip().lower() for v in values]
+    unique_vals = sorted(set(normalized_vals))
+
+    binary_like = set(unique_vals).issubset({
+        '0', '1', '0.0', '1.0', 'yes', 'no', 'true', 'false',
+        'churned', 'retained', 'exited', 'stayed', 'attrited', 'left', 'active', 'inactive'
+    }) and len(unique_vals) <= 2
+
+    if not binary_like:
+        return values
+
+    if 'exit' in normalized_col:
+        return ['Exited', 'Stayed']
+    if 'churn' in normalized_col:
+        return ['Churned', 'Retained']
+    if 'attrition' in normalized_col:
+        return ['Attrited', 'Retained']
+    if 'left' in normalized_col or 'leave' in normalized_col:
+        return ['Left', 'Stayed']
+    if 'cancel' in normalized_col:
+        return ['Cancelled', 'Active']
+
+    return values
+
+
 def _currency_symbol_from_code(code: Optional[str]) -> str:
     mapping = {
         "USD": "$",
@@ -272,6 +306,7 @@ def get_dashboard_analytics(
         target_values = []
         if target_col:
             target_values = [str(x) for x in df[target_col].dropna().unique()]
+            target_values = _normalize_binary_target_values(target_col, target_values)
         
         # Apply target filter if specified
         df_filtered = df.copy()

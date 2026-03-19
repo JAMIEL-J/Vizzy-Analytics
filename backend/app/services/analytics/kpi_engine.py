@@ -84,6 +84,38 @@ def _safe_mean(df: pd.DataFrame, col: str) -> float:
     return 0.0
 
 
+def _normalized_col(col: str) -> str:
+    return str(col).lower().replace("_", "").replace("-", "").strip()
+
+
+def _is_effectively_numeric(series: pd.Series) -> bool:
+    """Treat numeric-like string columns as numeric if enough values coerce."""
+    if pd.api.types.is_numeric_dtype(series):
+        return True
+    coerced = pd.to_numeric(series, errors='coerce')
+    return coerced.notna().mean() >= 0.5
+
+
+def _is_lifecycle_column(col: str) -> bool:
+    name = _normalized_col(col)
+    lifecycle_tokens = [
+        'age', 'tenure', 'month', 'months', 'year', 'years', 'duration',
+        'day', 'days', 'experience', 'seniority', 'vintage', 'accountage',
+        'yearsatcompany', 'totalworkingyears', 'lengthofstay'
+    ]
+    return any(tok in name for tok in lifecycle_tokens)
+
+
+def _is_financial_column(col: str) -> bool:
+    name = _normalized_col(col)
+    financial_tokens = [
+        'revenue', 'sales', 'amount', 'charge', 'charges', 'monthlycharge',
+        'billing', 'bill', 'income', 'salary', 'balance', 'limit', 'cost',
+        'fee', 'spend', 'payment', 'mrr', 'arr', 'arpu', 'ltv', 'clv'
+    ]
+    return any(tok in name for tok in financial_tokens)
+
+
 def _count_target_positive(df: pd.DataFrame, target_col: str) -> int:
     """Count positive cases in target column."""
     if not target_col or target_col not in df.columns:
@@ -525,15 +557,27 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
     # Find key columns using semantic hints
     target_col = classification.targets[0] if classification.targets else None
     
-    # Financial metrics - Churn can be telco (charges) or banking (balance/salary)
-    revenue_hints = ['monthlycharges', 'monthly_charges', 'charges', 'balance', 'salary', 'income', 'limit']
-    value_col = _find_column(df, revenue_hints, classification)
-    
-    # Secondary value metric (if primary is balance, pick salary as secondary etc)
-    secondary_value_hints = [h for h in revenue_hints if h != value_col]
-    secondary_value_col = _find_column(df, secondary_value_hints, classification)
-    
-    tenure_col = _find_column(df, ['tenure', 'months', 'yearsatcompany', 'experience'], classification)
+    # Build numeric candidate pool first, then apply strict semantic gates.
+    numeric_candidates: List[str] = []
+    for col in (classification.metrics + classification.dimensions):
+        if col in df.columns and _is_effectively_numeric(df[col]):
+            numeric_candidates.append(col)
+
+    # Financial metric must be explicitly finance-like and not lifecycle/demographic.
+    financial_candidates = [
+        c for c in numeric_candidates
+        if _is_financial_column(c) and not _is_lifecycle_column(c)
+    ]
+    value_col = financial_candidates[0] if financial_candidates else None
+
+    # Lifecycle metric (used for "at churn" average) prefers tenure/duration over age.
+    tenure_like = [
+        c for c in numeric_candidates
+        if any(tok in _normalized_col(c) for tok in ['tenure', 'month', 'duration', 'yearsatcompany', 'experience', 'seniority'])
+    ]
+    age_like = [c for c in numeric_candidates if 'age' in _normalized_col(c)]
+    lifecycle_col = (tenure_like[0] if tenure_like else (age_like[0] if age_like else None))
+
     contract_col = _find_column(df, ['contract', 'subscription_type', 'membership'], classification)
     
     # Churn Mask Detection (Handles strings "Yes", booleans True, and numeric 1/0)
@@ -551,7 +595,7 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
     # 1. Total Base
     kpis.append(KPI(
         key="total_base",
-        title="Total Customers" if 'tenure' in str(tenure_col).lower() else "Total Employees" if 'yearsatcompany' in str(tenure_col).lower() else "Total Base",
+        title="Total Customers" if 'tenure' in str(lifecycle_col).lower() else "Total Employees" if 'yearsatcompany' in str(lifecycle_col).lower() else "Total Base",
         value=total_customers,
         format="number",
         icon="users",
@@ -589,18 +633,19 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
             ))
 
     # 4. Average Tenure / Age
-    if tenure_col and churned_mask is not None:
-        avg_tenure_churned = pd.to_numeric(df.loc[churned_mask, tenure_col], errors='coerce').mean()
+    if lifecycle_col and churned_mask is not None:
+        avg_tenure_churned = pd.to_numeric(df.loc[churned_mask, lifecycle_col], errors='coerce').mean()
         if pd.notna(avg_tenure_churned):
+            is_age_metric = 'age' in _normalized_col(lifecycle_col)
             kpis.append(KPI(
                 key="tenure_at_churn",
-                title="Avg Tenure at Churn",
+                title="Avg Age at Churn" if is_age_metric else "Avg Tenure at Churn",
                 value=round(float(avg_tenure_churned), 1),
                 format="number",
                 icon="clock",
                 confidence="HIGH",
-                reason=f"Mean {tenure_col} for churned users",
-                subtitle=f"{round(float(avg_tenure_churned), 1)} months"
+                reason=f"Mean {lifecycle_col} for churned users",
+                subtitle=f"{round(float(avg_tenure_churned), 1)} years" if is_age_metric else f"{round(float(avg_tenure_churned), 1)} months"
             ))
 
     # 5. Domain Specifics (Banking Risk)
@@ -661,9 +706,9 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
             reason="ARPU / Churn Rate",
             subtitle="Customer Lifetime Value"
         ))
-    elif arpu > 0 and tenure_col:
+    elif arpu > 0 and lifecycle_col:
         # Fallback LTV estimate based on tenure if no churn detected
-        avg_tenure = _safe_mean(df, tenure_col)
+        avg_tenure = _safe_mean(df, lifecycle_col)
         ltv = arpu * avg_tenure
         kpis.append(KPI(
             key="ltv",

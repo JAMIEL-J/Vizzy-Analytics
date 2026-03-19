@@ -936,6 +936,24 @@ def _format_categorical_value(col: str, value: Any) -> str:
     return str(value)
 
 
+def _get_binary_target_labels(target_col: str) -> tuple[str, str]:
+    """Return (positive_label, negative_label) for binary target columns."""
+    col_name = str(target_col).lower().replace('_', '').replace('-', '')
+    if 'churn' in col_name:
+        return ('Churned', 'Retained')
+    if 'exit' in col_name:
+        return ('Exited', 'Stayed')
+    if 'attrition' in col_name:
+        return ('Attrited', 'Retained')
+    if 'left' in col_name or 'leave' in col_name:
+        return ('Left', 'Stayed')
+    if 'cancel' in col_name:
+        return ('Cancelled', 'Active')
+    if 'default' in col_name:
+        return ('Defaulted', 'Performing')
+    return ('Positive', 'Negative')
+
+
 
 # ---------------------------------------------------------------------------
 # New DA-Grade Chart Helpers
@@ -953,6 +971,8 @@ def _get_stacked_churn_counts(df, target_col, segment_col, limit=10):
         else:
             tmp['_pos'] = target_vals.isin(pos).astype(int)
         tmp['_neg'] = 1 - tmp['_pos']
+        pos_label, neg_label = _get_binary_target_labels(target_col)
+
         grp = tmp.groupby(segment_col)[['_pos', '_neg']].sum()
         grp = grp.sort_values('_pos', ascending=False).head(limit)
         result = []
@@ -981,9 +1001,10 @@ def _get_churned_vs_retained_avg(df, target_col, metric_col):
         avg_retained = tmp.loc[~mask, metric_col].mean()
         import pandas as pd
         if pd.notna(avg_churned) and pd.notna(avg_retained):
+            pos_label, neg_label = _get_binary_target_labels(target_col)
             return [
-                {'name': 'Churned', 'value': round(float(avg_churned), 2)},
-                {'name': 'Retained', 'value': round(float(avg_retained), 2)}
+                {'name': pos_label, 'value': round(float(avg_churned), 2)},
+                {'name': neg_label, 'value': round(float(avg_retained), 2)}
             ]
         return []
     except Exception:
@@ -1139,6 +1160,7 @@ def _generate_churn_charts(df, classification):
             break
 
     chart_titles = set()
+    pos_label, neg_label = _get_binary_target_labels(target_col)
 
     def add_chart(rec):
         if rec.title not in chart_titles:
@@ -1473,20 +1495,20 @@ def _generate_churn_charts(df, classification):
             add_chart(ChartRecommendation(
                 slot='', title=f'{label} Volume by {_beautify_column_name(primary_dim)}',
                 chart_type='stacked_bar', data=data, confidence='HIGH',
-                categories=['positive', 'negative'],
-                reason='Tier 6: Volume split — see raw count of churned vs retained per segment',
+                categories=[pos_label, neg_label],
+                reason=f'Tier 6: Volume split — raw count of {pos_label.lower()} vs {neg_label.lower()} per segment',
                 dimension=primary_dim, metric=target_col, aggregation='count'
             ))
 
-    # 17. Churned vs Retained — Avg Primary Metric Comparison
+    # 17. Positive vs Negative cohort — Avg Primary Metric Comparison
     if primary_value_metric:
         data = _get_churned_vs_retained_avg(df, target_col, primary_value_metric)
         if data:
             add_chart(ChartRecommendation(
                 slot='',
-                title=f'Avg {_beautify_column_name(primary_value_metric)}: Churned vs Retained',
+                title=f'Avg {_beautify_column_name(primary_value_metric)}: {pos_label} vs {neg_label}',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason='Tier 6: Price sensitivity — are churned customers paying more or less?',
+                reason=f'Tier 6: Price sensitivity — are {pos_label.lower()} users paying more or less?',
                 dimension=target_col, metric=primary_value_metric, aggregation='mean'
             ))
 
@@ -1516,15 +1538,15 @@ def _generate_churn_charts(df, classification):
                 dimension=cohort_metric, metric=target_col, aggregation='mean'
             ))
 
-    # 20. Churned vs Retained — Avg Lifecycle/Tenure Comparison
+    # 20. Positive vs Negative cohort — Avg Lifecycle/Tenure Comparison
     if lifecycle_col:
         data = _get_churned_vs_retained_avg(df, target_col, lifecycle_col)
         if data:
             add_chart(ChartRecommendation(
                 slot='',
-                title=f'Avg {_beautify_column_name(lifecycle_col)}: Churned vs Retained',
+                title=f'Avg {_beautify_column_name(lifecycle_col)}: {pos_label} vs {neg_label}',
                 chart_type='bar', data=data, confidence='HIGH',
-                reason='Tier 6: Do long-tenure customers churn less?',
+                reason=f'Tier 6: Do long-lifecycle {pos_label.lower()} users differ from {neg_label.lower()} users?',
                 dimension=target_col, metric=lifecycle_col, aggregation='mean'
             ))
 

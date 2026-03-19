@@ -52,6 +52,56 @@ const normalizeScalar = (value: any): string => {
     return String(value).trim().toLowerCase();
 };
 
+const normalizeKey = (value: string): string => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const POSITIVE_TARGET_VALUES = new Set([
+    '1', '1.0', 'yes', 'true', 'y', 'positive', 'churned', 'churn', 'exited', 'attrited', 'left', 'cancelled', 'canceled', 'defaulted', 'inactive'
+]);
+
+const NEGATIVE_TARGET_VALUES = new Set([
+    '0', '0.0', 'no', 'false', 'n', 'negative', 'retained', 'stayed', 'active', 'performing'
+]);
+
+const isPositiveTargetValue = (value: any): boolean => POSITIVE_TARGET_VALUES.has(normalizeScalar(value));
+
+const isNegativeTargetValue = (value: any): boolean => NEGATIVE_TARGET_VALUES.has(normalizeScalar(value));
+
+const toTargetBinary = (value: any): number => (isPositiveTargetValue(value) ? 1 : 0);
+
+const getTargetSemanticLabels = (targetColumn?: string | null): { positive: string; negative: string } => {
+    const key = normalizeKey(String(targetColumn || ''));
+
+    if (key.includes('churn')) return { positive: 'Churned', negative: 'Retained' };
+    if (key.includes('exit')) return { positive: 'Exited', negative: 'Stayed' };
+    if (key.includes('attrition')) return { positive: 'Attrited', negative: 'Retained' };
+    if (key.includes('left') || key.includes('leave')) return { positive: 'Left', negative: 'Stayed' };
+    if (key.includes('cancel')) return { positive: 'Cancelled', negative: 'Active' };
+    if (key.includes('default')) return { positive: 'Defaulted', negative: 'Performing' };
+
+    return { positive: 'Positive', negative: 'Negative' };
+};
+
+const formatTargetDisplayValue = (value: any, targetColumn?: string | null): string => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return 'Unknown';
+
+    if (!isPositiveTargetValue(raw) && !isNegativeTargetValue(raw)) return raw;
+
+    const labels = getTargetSemanticLabels(targetColumn);
+    return isPositiveTargetValue(raw) ? labels.positive : labels.negative;
+};
+
+const percentile = (values: number[], p: number): number => {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const idx = (sorted.length - 1) * p;
+    const lower = Math.floor(idx);
+    const upper = Math.ceil(idx);
+    if (lower === upper) return sorted[lower];
+    const weight = idx - lower;
+    return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+};
+
 const scalarMatches = (rowValue: any, filterValue: any): boolean => {
     const rowRaw = String(rowValue);
     const filterRaw = String(filterValue);
@@ -68,6 +118,48 @@ const scalarMatches = (rowValue: any, filterValue: any): boolean => {
     }
 
     return false;
+};
+
+type NumericRange = {
+    min: number;
+    max: number;
+};
+
+const parseRangeFilter = (value: string): NumericRange | null => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    // Pattern: "... 21-46" or "... 21–46" (supports negatives/decimals, commas, currency signs)
+    const dashMatch = raw.match(/(-?\d[\d,]*(?:\.\d+)?)\s*[\u2013\u2014\-]\s*(-?\d[\d,]*(?:\.\d+)?)/);
+    if (dashMatch) {
+        const min = Number(dashMatch[1].replace(/,/g, ''));
+        const max = Number(dashMatch[2].replace(/,/g, ''));
+        if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+            return { min, max };
+        }
+    }
+
+    // Pattern: "<= 46"
+    const lteMatch = raw.match(/<=\s*(-?\d[\d,]*(?:\.\d+)?)/);
+    if (lteMatch) {
+        const max = Number(lteMatch[1].replace(/,/g, ''));
+        if (Number.isFinite(max)) return { min: Number.NEGATIVE_INFINITY, max };
+    }
+
+    // Pattern: "> 46"
+    const gtMatch = raw.match(/>\s*(-?\d[\d,]*(?:\.\d+)?)/);
+    if (gtMatch) {
+        const min = Number(gtMatch[1].replace(/,/g, ''));
+        if (Number.isFinite(min)) return { min, max: Number.POSITIVE_INFINITY };
+    }
+
+    return null;
+};
+
+const numericInRange = (value: any, range: NumericRange): boolean => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return false;
+    return n >= range.min && n <= range.max;
 };
 
 const inferDimensionFromChartRows = (rawData: any[], chartRows: any[]): string | null => {
@@ -132,19 +224,18 @@ const normalizeFilters = (filters: Record<string, string[]>) => {
 const applyFilters = (data: any[], filters: Record<string, string[]>, targetCol: string | null, targetVal: string) => {
     if (!data) return [];
 
-    const positiveKeywords = ['yes', 'true', '1'];
-    const negativeKeywords = ['no', 'false', '0'];
+    const targetValNorm = normalizeScalar(targetVal);
 
     return data.filter(row => {
         // 1. Apply Target Tab Filter (e.g. Churned Users)
         if (targetCol && targetVal && targetVal.toLowerCase() !== 'all') {
             const rowVal = normalizeScalar(getRowValue(row, targetCol));
-            if (targetVal.toLowerCase() === 'yes' || targetVal.toLowerCase() === 'true' || targetVal === '1') {
-                if (!positiveKeywords.includes(rowVal)) return false;
-            } else if (targetVal.toLowerCase() === 'no' || targetVal.toLowerCase() === 'false' || targetVal === '0') {
-                if (!negativeKeywords.includes(rowVal)) return false;
+            if (POSITIVE_TARGET_VALUES.has(targetValNorm)) {
+                if (!isPositiveTargetValue(rowVal)) return false;
+            } else if (NEGATIVE_TARGET_VALUES.has(targetValNorm)) {
+                if (!isNegativeTargetValue(rowVal)) return false;
             } else {
-                if (rowVal !== normalizeScalar(targetVal)) return false;
+                if (rowVal !== targetValNorm) return false;
             }
         }
 
@@ -153,7 +244,24 @@ const applyFilters = (data: any[], filters: Record<string, string[]>, targetCol:
             if (!values || values.length === 0) return true;
             const rowVal = getRowValue(row, key);
             if (rowVal === undefined || rowVal === null) return false;
-            return values.some(v => scalarMatches(rowVal, v));
+            const isTargetFilterKey = !!(targetCol && normalizeKey(key) === normalizeKey(targetCol));
+
+            return values.some(v => {
+                if (scalarMatches(rowVal, v)) return true;
+
+                if (isTargetFilterKey) {
+                    const filterNorm = normalizeScalar(v);
+                    if (POSITIVE_TARGET_VALUES.has(filterNorm)) return isPositiveTargetValue(rowVal);
+                    if (NEGATIVE_TARGET_VALUES.has(filterNorm)) return isNegativeTargetValue(rowVal);
+
+                    const displayNorm = normalizeScalar(formatTargetDisplayValue(rowVal, targetCol));
+                    if (displayNorm === filterNorm) return true;
+                }
+
+                const parsed = parseRangeFilter(String(v));
+                if (!parsed) return false;
+                return numericInRange(rowVal, parsed);
+            });
         });
     });
 };
@@ -214,6 +322,128 @@ const recomputeCharts = (
         const dimension = config.dimension || inferDimensionFromChartRows(rawData, seedRows);
         const metric = config.metric;
         const aggregation = (override.aggregation || config.aggregation || (metric ? 'SUM' : 'COUNT')).toUpperCase();
+        const metricIsTarget = !!(metric && targetCol && normalizeKey(metric) === normalizeKey(targetCol));
+        const isRateChart = /rate|%/i.test(String(config.title || ''));
+        const isCohortChart = /cohort/i.test(String(config.title || ''));
+        const isRangeChart = /range/i.test(String(config.title || ''));
+
+        // Range charts should preserve backend-provided bins/labels instead of regrouping by raw metric values.
+        if (dimension && isRangeChart && seedRows.length > 0) {
+            const bins = seedRows
+                .map((r: any) => {
+                    const label = String(r?.name ?? '');
+                    const parsed = parseRangeFilter(label);
+                    if (!parsed) return null;
+                    return { label, ...parsed };
+                })
+                .filter((b): b is { label: string; min: number; max: number } => !!b);
+
+            if (bins.length > 0) {
+                const groupedRange: Record<string, any[]> = {};
+
+                for (const row of filtered) {
+                    const x = Number(getRowValue(row, dimension));
+                    if (!Number.isFinite(x)) continue;
+
+                    const match = bins.find((b) => numericInRange(x, { min: b.min, max: b.max }));
+                    if (!match) continue;
+
+                    if (!groupedRange[match.label]) groupedRange[match.label] = [];
+
+                    if (!metric) {
+                        groupedRange[match.label].push(1);
+                    } else {
+                        const m = getRowValue(row, metric);
+                        if (metricIsTarget) {
+                            groupedRange[match.label].push(toTargetBinary(m));
+                        } else {
+                            const n = Number(m);
+                            if (Number.isFinite(n)) groupedRange[match.label].push(n);
+                        }
+                    }
+                }
+
+                charts[slotId] = bins.map((b) => {
+                    const values = groupedRange[b.label] || [];
+                    let value = aggregateValues(values, aggregation, scalingFactor);
+                    if (metricIsTarget && (aggregation === 'MEAN' || aggregation === 'AVG' || isRateChart)) {
+                        value = value * 100;
+                    }
+                    return { name: b.label, value };
+                });
+                continue;
+            }
+        }
+
+        // Cohort charts should preserve stable bins based on the full raw dataset,
+        // then aggregate filtered rows into those fixed bins.
+        if (dimension && isCohortChart) {
+            const fullVals = (rawData || [])
+                .map(r => Number(getRowValue(r, dimension)))
+                .filter(v => Number.isFinite(v));
+
+            if (fullVals.length >= 10) {
+                const min = Math.min(...fullVals);
+                const max = Math.max(...fullVals);
+                const q25 = percentile(fullVals, 0.25);
+                const q50 = percentile(fullVals, 0.50);
+                const q75 = percentile(fullVals, 0.75);
+
+                const rawBins = [min - 1e-9, q25, q50, q75, max + 1e-9];
+                const bins = Array.from(new Set(rawBins)).sort((a, b) => a - b);
+                const cohortLabels = bins.length === 5
+                    ? [
+                        `Low ${dimension.replace(/_/g, ' ')} (<=${q25.toFixed(0)})`,
+                        `Mid-Low (<=${q50.toFixed(0)})`,
+                        `Mid-High (<=${q75.toFixed(0)})`,
+                        `High ${dimension.replace(/_/g, ' ')} (>${q75.toFixed(0)})`,
+                    ]
+                    : Array.from({ length: Math.max(1, bins.length - 1) }, (_, i) => `Group ${i + 1}`);
+
+                const bucket = (v: number): string | null => {
+                    for (let i = 0; i < bins.length - 1; i++) {
+                        const left = bins[i];
+                        const right = bins[i + 1];
+                        if (v > left && v <= right) return cohortLabels[i] || `Group ${i + 1}`;
+                    }
+                    return null;
+                };
+
+                const groupedCohort: Record<string, any[]> = {};
+                for (const row of filtered) {
+                    const x = Number(getRowValue(row, dimension));
+                    if (!Number.isFinite(x)) continue;
+                    const label = bucket(x);
+                    if (!label) continue;
+
+                    if (!groupedCohort[label]) groupedCohort[label] = [];
+
+                    if (!metric) {
+                        groupedCohort[label].push(1);
+                    } else {
+                        const m = getRowValue(row, metric);
+                        if (metricIsTarget) {
+                            groupedCohort[label].push(toTargetBinary(m));
+                        } else {
+                            const n = Number(m);
+                            if (Number.isFinite(n)) groupedCohort[label].push(n);
+                        }
+                    }
+                }
+
+                const rows = cohortLabels.map((name) => {
+                    const values = groupedCohort[name] || [];
+                    let value = aggregateValues(values, aggregation, scalingFactor);
+                    if (metricIsTarget && (aggregation === 'MEAN' || aggregation === 'AVG' || isRateChart)) {
+                        value = value * 100;
+                    }
+                    return { name, value };
+                });
+
+                charts[slotId] = rows;
+                continue;
+            }
+        }
 
         if (dimension) {
             const chartType = (override.type || config.type || '').toLowerCase();
@@ -259,6 +489,41 @@ const recomputeCharts = (
 
                 // Keep payload bounded for rendering performance.
                 charts[slotId] = scatterPoints.length > 1200 ? scatterPoints.slice(0, 1200) : scatterPoints;
+                continue;
+            }
+
+            // Stacked churn/target volume charts require { positive, negative } keys.
+            if (chartType === 'stacked_bar') {
+                const groupedStacked = filtered.reduce((acc, row) => {
+                    const dimVal = getRowValue(row, dimension);
+                    const key = dimVal === null || dimVal === undefined ? 'Unknown' : String(dimVal);
+
+                    if (!acc[key]) {
+                        acc[key] = { positive: 0, negative: 0 };
+                    }
+
+                    const metricSource = metric
+                        ? getRowValue(row, metric)
+                        : (targetCol ? getRowValue(row, targetCol) : undefined);
+
+                    const isPositive = isPositiveTargetValue(metricSource);
+                    if (isPositive) acc[key].positive += 1;
+                    else acc[key].negative += 1;
+
+                    return acc;
+                }, {} as Record<string, { positive: number; negative: number }>);
+
+                const rows = (Object.entries(groupedStacked) as Array<[string, { positive: number; negative: number }]>)
+                    .filter(([name]) => name !== 'Unknown')
+                    .map(([name, counts]) => ({
+                        name,
+                        positive: Math.round(counts.positive * scalingFactor),
+                        negative: Math.round(counts.negative * scalingFactor),
+                    }))
+                    .sort((a, b) => b.positive - a.positive)
+                    .slice(0, 10);
+
+                charts[slotId] = rows;
                 continue;
             }
 
@@ -312,17 +577,30 @@ const recomputeCharts = (
                         key = d.toISOString().split('T')[0];
                     }
                 } else {
-                    key = val === null || val === undefined ? 'Unknown' : String(val);
+                    if (val === null || val === undefined) {
+                        key = 'Unknown';
+                    } else if (targetCol && normalizeKey(dimension) === normalizeKey(targetCol)) {
+                        key = formatTargetDisplayValue(val, targetCol);
+                    } else {
+                        key = String(val);
+                    }
                 }
 
                 if (!acc[key]) acc[key] = [];
-                const metricVal = metric ? getRowValue(row, metric) : 1;
+                let metricVal: any = metric ? getRowValue(row, metric) : 1;
+                if (metric && metricIsTarget) {
+                    metricVal = toTargetBinary(metricVal);
+                }
                 acc[key].push(aggregation === 'COUNT' ? 1 : metricVal);
                 return acc;
             }, {} as Record<string, any[]>);
 
             let chartData = Object.entries(grouped).map(([name, values]) => {
-                const item: any = { value: aggregateValues(values as any[], aggregation, scalingFactor) };
+                let computed = aggregateValues(values as any[], aggregation, scalingFactor);
+                if (metricIsTarget && (aggregation === 'MEAN' || aggregation === 'AVG' || isRateChart)) {
+                    computed = computed * 100;
+                }
+                const item: any = { value: computed };
                 if (isTrend) {
                     item.date = name;
                 } else {

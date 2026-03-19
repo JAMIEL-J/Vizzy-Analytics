@@ -20,7 +20,8 @@ type CachedEntry<T> = {
 };
 
 const DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_SESSION_CACHE_KEY = 'vizzy.dashboard.analyticsCache.v1';
+const DASHBOARD_SESSION_CACHE_KEY = 'vizzy.dashboard.analyticsCache.v2';
+const DASHBOARD_CACHE_SCHEMA_VERSION = 'v2';
 const SHOW_CORRELATION_CHART = false;
 
 class BoundedCache<T> {
@@ -636,7 +637,13 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
                             <Legend iconType="circle" iconSize={8}
-                                formatter={(v: string) => <span className="text-xs text-themed-muted">{v === 'positive' ? 'Churned' : 'Retained'}</span>} />
+                                formatter={(v: string) => {
+                                    const categories = Array.isArray(chart?.categories) ? chart.categories : [];
+                                    const positiveLabel = categories[0] || 'Positive';
+                                    const negativeLabel = categories[1] || 'Negative';
+                                    const label = v === 'positive' ? positiveLabel : v === 'negative' ? negativeLabel : v;
+                                    return <span className="text-xs text-themed-muted">{label}</span>;
+                                }} />
                             <Bar dataKey="positive" stackId="a" fill="url(#stackedPos)" maxBarSize={40} name="positive" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                             <Bar dataKey="negative" stackId="a" fill="url(#stackedNeg)" maxBarSize={40} name="negative" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                         </BarChart>
@@ -944,6 +951,8 @@ const toLabel = (col: string) =>
 
 const MultiFilterPanel = ({
     geoFilters,
+    targetColumn,
+    targetValues,
     filterSlots,
     activeFilters,
     onSlotChange,
@@ -951,6 +960,8 @@ const MultiFilterPanel = ({
     onClearAll,
 }: {
     geoFilters: Record<string, string[]>;
+    targetColumn?: string | null;
+    targetValues?: string[];
     filterSlots: (string | null)[];
     activeFilters: Record<string, string[]>;
     onSlotChange: (slotIdx: number, col: string | null) => void;
@@ -963,7 +974,13 @@ const MultiFilterPanel = ({
     const [openValues, setOpenValues] = useState<number | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
 
-    const allCols = Object.keys(geoFilters);
+    const semanticTargetValues = (targetValues || []).map(v => formatTargetTabLabel(String(v), targetColumn || undefined));
+    const valueOptionsByCol: Record<string, string[]> = {
+        ...geoFilters,
+        ...(targetColumn ? { [targetColumn]: Array.from(new Set(semanticTargetValues)).filter(Boolean) } : {}),
+    };
+
+    const allCols = Object.keys(valueOptionsByCol);
     const totalActive = Object.values(activeFilters).reduce((n, v) => n + v.length, 0);
 
     // Close all dropdowns on outside click
@@ -1029,6 +1046,7 @@ const MultiFilterPanel = ({
                         const availableCols = allCols.filter(c => !takenByOthers.includes(c));
 
                         const slotValues = selectedCol ? (activeFilters[selectedCol] ?? []) : [];
+                        const selectedColOptions = selectedCol ? (valueOptionsByCol[selectedCol] || []) : [];
                         const isPickerOpen = openPicker === slotIdx;
                         const isValuesOpen = openValues === slotIdx;
 
@@ -1143,7 +1161,9 @@ const MultiFilterPanel = ({
                                                 {slotValues.length === 0
                                                     ? 'All values'
                                                     : slotValues.length === 1
-                                                        ? slotValues[0]
+                                                        ? (selectedCol === targetColumn
+                                                            ? formatTargetTabLabel(String(slotValues[0]), targetColumn || undefined)
+                                                            : slotValues[0])
                                                         : `${slotValues.length} selected`}
                                             </span>
                                             <div className="flex items-center gap-1 flex-shrink-0">
@@ -1165,7 +1185,7 @@ const MultiFilterPanel = ({
                                                 <div className="flex items-center justify-between px-3 py-2.5 border-b border-border-main bg-bg-card/50 backdrop-blur-sm">
                                                     <Button
                                                         type="button"
-                                                        onClick={() => onFilterChange(selectedCol, [...geoFilters[selectedCol]])}
+                                                        onClick={() => onFilterChange(selectedCol, [...selectedColOptions])}
                                                         className="text-[12px] uppercase tracking-wider font-serif text-primary hover:text-primary/80 font-bold transition-colors"
                                                         variant="ghost"
                                                     >Select all</Button>
@@ -1177,7 +1197,7 @@ const MultiFilterPanel = ({
                                                     >Clear</Button>
                                                 </div>
                                                 <div className="max-h-52 overflow-y-auto py-1">
-                                                    {geoFilters[selectedCol].map(val => (
+                                                    {selectedColOptions.map(val => (
                                                         <label
                                                             key={val}
                                                             className="flex items-center gap-2.5 px-3 py-2 hover:bg-bg-hover cursor-pointer transition-colors"
@@ -1188,7 +1208,9 @@ const MultiFilterPanel = ({
                                                                 onChange={() => toggleValue(selectedCol, val)}
                                                                 className="w-3.5 h-3.5 rounded accent-[#ff6933]"
                                                             />
-                                                            <span className="text-[14px] font-serif text-themed-main truncate">{val}</span>
+                                                            <span className="text-[14px] font-serif text-themed-main truncate">
+                                                                {selectedCol === targetColumn ? formatTargetTabLabel(String(val), targetColumn || undefined) : val}
+                                                            </span>
                                                         </label>
                                                     ))}
                                                 </div>
@@ -1391,6 +1413,49 @@ function getDashboardTitle(domain: string | undefined): string {
     return DOMAIN_TITLES[domain.toLowerCase()] ?? 'Analytics Overview';
 }
 
+function prettifyLabel(value: string): string {
+    return value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function getTargetSemanticLabels(targetColumn?: string): { positive: string; negative: string; all: string } {
+    const key = (targetColumn || '').toLowerCase().replace(/[_\s-]/g, '');
+
+    if (key.includes('churn')) return { positive: 'Churned', negative: 'Retained', all: 'All Customers' };
+    if (key.includes('exit')) return { positive: 'Exited', negative: 'Stayed', all: 'All Customers' };
+    if (key.includes('attrition')) return { positive: 'Attrited', negative: 'Retained', all: 'All Employees' };
+    if (key.includes('left') || key.includes('leave')) return { positive: 'Left', negative: 'Stayed', all: 'All Population' };
+    if (key.includes('cancel')) return { positive: 'Cancelled', negative: 'Active', all: 'All Customers' };
+
+    return { positive: 'Positive', negative: 'Negative', all: `All ${prettifyLabel(targetColumn || 'Target')}` };
+}
+
+function isBinaryTargetValue(value: string): boolean {
+    const v = value.toLowerCase().trim();
+    const known = new Set([
+        '0', '1', 'true', 'false', 'yes', 'no', 'y', 'n',
+        'retained', 'churned', 'exited', 'attrited', 'left', 'stayed', 'active', 'inactive'
+    ]);
+    return known.has(v);
+}
+
+function isPositiveBinaryValue(value: string): boolean {
+    const v = value.toLowerCase().trim();
+    const positive = new Set(['1', 'true', 'yes', 'y', 'churned', 'exited', 'attrited', 'left', 'inactive']);
+    return positive.has(v);
+}
+
+function toNormalized(value: string): string {
+    return String(value || '').trim().toLowerCase();
+}
+
+function formatTargetTabLabel(value: string, targetColumn?: string): string {
+    const raw = String(value);
+    if (!isBinaryTargetValue(raw)) return prettifyLabel(raw);
+
+    const labels = getTargetSemanticLabels(targetColumn);
+    return isPositiveBinaryValue(raw) ? labels.positive : labels.negative;
+}
+
 export default function UserDashboard() {
     const cacheRef = useRef<DashboardCacheBundle>(getDashboardCacheBundle());
     const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
@@ -1535,6 +1600,7 @@ export default function UserDashboard() {
 
     const buildDashboardCacheKey = () => {
         return stableSerialize({
+            schema: DASHBOARD_CACHE_SCHEMA_VERSION,
             datasetId: selectedDatasetId,
             targetValue: target_value || 'all',
             selectedDomain: selected_domain || 'auto',
@@ -1672,6 +1738,7 @@ export default function UserDashboard() {
 
         if (!hasActiveFilters && !hasChartOverrides) {
             const baseKey = stableSerialize({
+                schema: DASHBOARD_CACHE_SCHEMA_VERSION,
                 datasetId: selectedDatasetId,
                 targetValue: target_value || 'all',
                 selectedDomain: selected_domain || 'auto',
@@ -1724,7 +1791,37 @@ export default function UserDashboard() {
 
         if (!resolvedCol || ['name', 'date', 'label'].includes(resolvedCol.toLowerCase())) return;
 
-        toggleFilter(resolvedCol, rawVal);
+        let resolvedVal = rawVal;
+        const normalizedInput = toNormalized(rawVal);
+        const candidateValues = [
+            ...((analytics?.geo_filters?.[resolvedCol] || []).map(v => String(v))),
+            ...(resolvedCol === analytics?.target_column ? (analytics?.target_values || []).map(v => String(v)) : []),
+        ].filter(Boolean);
+
+        // 1) Direct raw-value match first
+        const direct = candidateValues.find(v => toNormalized(v) === normalizedInput);
+        if (direct) {
+            resolvedVal = direct;
+        } else if (resolvedCol === analytics?.target_column) {
+            // 2) Match semantic display label back to raw binary value
+            const bySemanticLabel = candidateValues.find(v => toNormalized(formatTargetTabLabel(String(v), analytics?.target_column)) === normalizedInput);
+            if (bySemanticLabel) {
+                resolvedVal = bySemanticLabel;
+            } else {
+                // 3) Fallback for generic binary words
+                const wantsPositive = ['churned', 'exited', 'attrited', 'left', 'yes', 'true', 'positive', '1', 'inactive'].includes(normalizedInput);
+                const wantsNegative = ['retained', 'stayed', 'active', 'no', 'false', 'negative', '0'].includes(normalizedInput);
+                if (wantsPositive || wantsNegative) {
+                    const binaryCandidate = candidateValues.find(v => {
+                        const isPos = isPositiveBinaryValue(String(v));
+                        return wantsPositive ? isPos : !isPos;
+                    });
+                    if (binaryCandidate) resolvedVal = binaryCandidate;
+                }
+            }
+        }
+
+        toggleFilter(resolvedCol, resolvedVal);
 
         // Ensure chart-driven filter remains visible in the multi-filter slots.
         setFilterSlots(prev => {
@@ -2301,6 +2398,12 @@ export default function UserDashboard() {
                     {/* ── Target Filter Tabs ── */}
                     {analytics?.target_values && analytics.target_values.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 mb-6">
+                            {(() => {
+                                const allBinary = analytics.target_values.length <= 2 && analytics.target_values.every(v => isBinaryTargetValue(String(v)));
+                                const allLabel = allBinary
+                                    ? getTargetSemanticLabels(analytics.target_column).all
+                                    : `All ${prettifyLabel(analytics.target_column || 'Target')}`;
+                                return (
                             <Button
                                 type="button"
                                 onClick={() => setTargetValue('all')}
@@ -2309,8 +2412,10 @@ export default function UserDashboard() {
                                     : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
                                 variant="ghost"
                             >
-                                All {analytics.target_column?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                {allLabel}
                             </Button>
+                                );
+                            })()}
                             {analytics.target_values.map(val => (
                                 <Button
                                     type="button"
@@ -2321,7 +2426,7 @@ export default function UserDashboard() {
                                         : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
                                     variant="ghost"
                                 >
-                                    {val.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                    {formatTargetTabLabel(String(val), analytics.target_column)}
                                 </Button>
                             ))}
                         </div>
@@ -2331,6 +2436,8 @@ export default function UserDashboard() {
                     {analytics?.geo_filters && Object.keys(analytics.geo_filters).length > 0 && (
                         <MultiFilterPanel
                             geoFilters={analytics.geo_filters}
+                            targetColumn={analytics.target_column}
+                            targetValues={analytics.target_values?.map(v => String(v)) || []}
                             filterSlots={filterSlots}
                             activeFilters={active_filters}
                             onSlotChange={(slotIdx, col) =>
