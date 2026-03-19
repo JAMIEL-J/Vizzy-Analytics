@@ -974,10 +974,26 @@ const MultiFilterPanel = ({
     const [openValues, setOpenValues] = useState<number | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
 
-    const semanticTargetValues = (targetValues || []).map(v => formatTargetTabLabel(String(v), targetColumn || undefined));
+    const targetRawToSemantic: Record<string, string> = {};
+    const targetSemanticToRaw: Record<string, string> = {};
+    for (const rawVal of (targetValues || [])) {
+        const raw = String(rawVal);
+        const semantic = formatTargetTabLabel(raw, targetColumn || undefined);
+        targetRawToSemantic[raw] = semantic;
+        if (!(semantic in targetSemanticToRaw)) {
+            targetSemanticToRaw[semantic] = raw;
+        }
+    }
+
+    const toRawTargetValue = (col: string, value: string): string => {
+        if (!targetColumn || col !== targetColumn) return value;
+        return targetSemanticToRaw[value] ?? value;
+    };
+
+    const targetRawValues = Array.from(new Set((targetValues || []).map(v => String(v)).filter(Boolean)));
     const valueOptionsByCol: Record<string, string[]> = {
         ...geoFilters,
-        ...(targetColumn ? { [targetColumn]: Array.from(new Set(semanticTargetValues)).filter(Boolean) } : {}),
+        ...(targetColumn ? { [targetColumn]: targetRawValues } : {}),
     };
 
     const allCols = Object.keys(valueOptionsByCol);
@@ -996,10 +1012,11 @@ const MultiFilterPanel = ({
     }, []);
 
     const toggleValue = (col: string, val: string) => {
-        const current = activeFilters[col] ?? [];
-        const next = current.includes(val)
-            ? current.filter(v => v !== val)
-            : [...current, val];
+        const rawVal = toRawTargetValue(col, val);
+        const current = (activeFilters[col] ?? []).map(v => toRawTargetValue(col, v));
+        const next = current.includes(rawVal)
+            ? current.filter(v => v !== rawVal)
+            : [...current, rawVal];
         onFilterChange(col, next);
     };
 
@@ -1045,7 +1062,9 @@ const MultiFilterPanel = ({
                             .filter(Boolean) as string[];
                         const availableCols = allCols.filter(c => !takenByOthers.includes(c));
 
-                        const slotValues = selectedCol ? (activeFilters[selectedCol] ?? []) : [];
+                        const slotValues = selectedCol
+                            ? (activeFilters[selectedCol] ?? []).map(v => toRawTargetValue(selectedCol, v))
+                            : [];
                         const selectedColOptions = selectedCol ? (valueOptionsByCol[selectedCol] || []) : [];
                         const isPickerOpen = openPicker === slotIdx;
                         const isValuesOpen = openValues === slotIdx;
@@ -1185,7 +1204,7 @@ const MultiFilterPanel = ({
                                                 <div className="flex items-center justify-between px-3 py-2.5 border-b border-border-main bg-bg-card/50 backdrop-blur-sm">
                                                     <Button
                                                         type="button"
-                                                        onClick={() => onFilterChange(selectedCol, [...selectedColOptions])}
+                                                        onClick={() => onFilterChange(selectedCol, selectedColOptions.map(v => toRawTargetValue(selectedCol, v)))}
                                                         className="text-[12px] uppercase tracking-wider font-serif text-primary hover:text-primary/80 font-bold transition-colors"
                                                         variant="ghost"
                                                     >Select all</Button>
@@ -1209,7 +1228,7 @@ const MultiFilterPanel = ({
                                                                 className="w-3.5 h-3.5 rounded accent-[#ff6933]"
                                                             />
                                                             <span className="text-[14px] font-serif text-themed-main truncate">
-                                                                {selectedCol === targetColumn ? formatTargetTabLabel(String(val), targetColumn || undefined) : val}
+                                                                {selectedCol === targetColumn ? (targetRawToSemantic[String(val)] || formatTargetTabLabel(String(val), targetColumn || undefined)) : val}
                                                             </span>
                                                         </label>
                                                     ))}
@@ -1418,12 +1437,14 @@ function prettifyLabel(value: string): string {
 }
 
 function getTargetSemanticLabels(targetColumn?: string): { positive: string; negative: string; all: string } {
-    const key = (targetColumn || '').toLowerCase().replace(/[_\s-]/g, '');
+    const rawKey = (targetColumn || '').toLowerCase();
+    const key = rawKey.replace(/[_\s-]/g, '');
+    const tokenizedKey = rawKey.replace(/[_-]/g, ' ');
 
     if (key.includes('churn')) return { positive: 'Churned', negative: 'Retained', all: 'All Customers' };
     if (key.includes('exit')) return { positive: 'Exited', negative: 'Stayed', all: 'All Customers' };
     if (key.includes('attrition')) return { positive: 'Attrited', negative: 'Retained', all: 'All Employees' };
-    if (key.includes('left') || key.includes('leave')) return { positive: 'Left', negative: 'Stayed', all: 'All Population' };
+    if (/\b(left|leave)\b/i.test(tokenizedKey)) return { positive: 'Left', negative: 'Stayed', all: 'All Population' };
     if (key.includes('cancel')) return { positive: 'Cancelled', negative: 'Active', all: 'All Customers' };
 
     return { positive: 'Positive', negative: 'Negative', all: `All ${prettifyLabel(targetColumn || 'Target')}` };

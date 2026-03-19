@@ -5,6 +5,7 @@ Provides domain-specific KPIs with calculated metrics (rates, ratios, comparison
 """
 
 import logging
+import re
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 import warnings
@@ -97,13 +98,29 @@ def _is_effectively_numeric(series: pd.Series) -> bool:
 
 
 def _is_lifecycle_column(col: str) -> bool:
-    name = _normalized_col(col)
-    lifecycle_tokens = [
-        'age', 'tenure', 'month', 'months', 'year', 'years', 'duration',
-        'day', 'days', 'experience', 'seniority', 'vintage', 'accountage',
-        'yearsatcompany', 'totalworkingyears', 'lengthofstay'
-    ]
-    return any(tok in name for tok in lifecycle_tokens)
+    normalized_words = re.sub(r'[^a-z0-9]+', ' ', str(col).lower()).strip()
+    compact_name = _normalized_col(col)
+
+    explicit_compound_fields = {
+        'accountage',
+        'yearsatcompany',
+        'totalworkingyears',
+        'lengthofstay',
+        'monthsofservice',
+        'monthstenure',
+        'tenuremonths',
+    }
+    if compact_name in explicit_compound_fields:
+        return True
+
+    # Word-boundary matching avoids false positives like "monthlycharges".
+    lifecycle_pattern = re.compile(
+        r'\b(age|tenure|duration|experience|seniority|vintage|months?|years?|days?)\b'
+    )
+    if lifecycle_pattern.search(normalized_words):
+        return True
+
+    return bool(re.search(r'\b(account age|length of stay)\b', normalized_words))
 
 
 def _is_financial_column(col: str) -> bool:
@@ -333,8 +350,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
                     confidence="HIGH",
                     reason="Total bottom-line from the complete previous year"
                 ))
-        except Exception:
-            pass
+        except Exception as e:
             logger.warning(f"Failed to append YTD/YoY cards: {e}")
     
     # 2. Sales Volume (Quantity)
@@ -636,16 +652,30 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
     if lifecycle_col and churned_mask is not None:
         avg_tenure_churned = pd.to_numeric(df.loc[churned_mask, lifecycle_col], errors='coerce').mean()
         if pd.notna(avg_tenure_churned):
-            is_age_metric = 'age' in _normalized_col(lifecycle_col)
+            normalized_lifecycle = _normalized_col(lifecycle_col)
+            is_age_metric = 'age' in normalized_lifecycle
+            is_year_metric = is_age_metric or any(tok in normalized_lifecycle for tok in ['year', 'years', 'yearsatcompany', 'totalworkingyears'])
+            is_month_metric = any(tok in normalized_lifecycle for tok in ['month', 'months', 'monthsofservice', 'monthstenure', 'tenuremonths'])
+
+            if is_year_metric:
+                unit = 'years'
+            elif is_month_metric:
+                unit = 'months'
+            else:
+                unit = 'units'
+
+            title_base = "Avg Age at Churn" if is_age_metric else "Avg Tenure at Churn"
+            title = title_base if unit == 'units' else f"{title_base} ({unit.title()})"
+            value_rounded = round(float(avg_tenure_churned), 1)
             kpis.append(KPI(
                 key="tenure_at_churn",
-                title="Avg Age at Churn" if is_age_metric else "Avg Tenure at Churn",
-                value=round(float(avg_tenure_churned), 1),
+                title=title,
+                value=value_rounded,
                 format="number",
                 icon="clock",
                 confidence="HIGH",
                 reason=f"Mean {lifecycle_col} for churned users",
-                subtitle=f"{round(float(avg_tenure_churned), 1)} years" if is_age_metric else f"{round(float(avg_tenure_churned), 1)} months"
+                subtitle=f"{value_rounded} {unit}"
             ))
 
     # 5. Domain Specifics (Banking Risk)

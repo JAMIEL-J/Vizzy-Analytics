@@ -66,7 +66,23 @@ const isPositiveTargetValue = (value: any): boolean => POSITIVE_TARGET_VALUES.ha
 
 const isNegativeTargetValue = (value: any): boolean => NEGATIVE_TARGET_VALUES.has(normalizeScalar(value));
 
-const toTargetBinary = (value: any): number => (isPositiveTargetValue(value) ? 1 : 0);
+const seenUnknownTargetValues = new Set<string>();
+
+const toTargetBinary = (value: any): number | null => {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (isPositiveTargetValue(value)) return 1;
+    if (isNegativeTargetValue(value)) return 0;
+
+    const raw = String(value);
+    if (!seenUnknownTargetValues.has(raw)) {
+        seenUnknownTargetValues.add(raw);
+        console.warn('[Dashboard] Unexpected target value for binary conversion:', raw);
+    }
+    return null;
+};
 
 const getTargetSemanticLabels = (targetColumn?: string | null): { positive: string; negative: string } => {
     const key = normalizeKey(String(targetColumn || ''));
@@ -123,6 +139,8 @@ const scalarMatches = (rowValue: any, filterValue: any): boolean => {
 type NumericRange = {
     min: number;
     max: number;
+    minInclusive: boolean;
+    maxInclusive: boolean;
 };
 
 const parseRangeFilter = (value: string): NumericRange | null => {
@@ -135,7 +153,16 @@ const parseRangeFilter = (value: string): NumericRange | null => {
         const min = Number(dashMatch[1].replace(/,/g, ''));
         const max = Number(dashMatch[2].replace(/,/g, ''));
         if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
-            return { min, max };
+            return { min, max, minInclusive: true, maxInclusive: true };
+        }
+    }
+
+    // Pattern: ">= 46"
+    const gteMatch = raw.match(/>=\s*(-?\d[\d,]*(?:\.\d+)?)/);
+    if (gteMatch) {
+        const min = Number(gteMatch[1].replace(/,/g, ''));
+        if (Number.isFinite(min)) {
+            return { min, max: Number.POSITIVE_INFINITY, minInclusive: true, maxInclusive: true };
         }
     }
 
@@ -143,14 +170,27 @@ const parseRangeFilter = (value: string): NumericRange | null => {
     const lteMatch = raw.match(/<=\s*(-?\d[\d,]*(?:\.\d+)?)/);
     if (lteMatch) {
         const max = Number(lteMatch[1].replace(/,/g, ''));
-        if (Number.isFinite(max)) return { min: Number.NEGATIVE_INFINITY, max };
+        if (Number.isFinite(max)) {
+            return { min: Number.NEGATIVE_INFINITY, max, minInclusive: true, maxInclusive: true };
+        }
+    }
+
+    // Pattern: "< 46"
+    const ltMatch = raw.match(/<\s*(-?\d[\d,]*(?:\.\d+)?)/);
+    if (ltMatch) {
+        const max = Number(ltMatch[1].replace(/,/g, ''));
+        if (Number.isFinite(max)) {
+            return { min: Number.NEGATIVE_INFINITY, max, minInclusive: true, maxInclusive: false };
+        }
     }
 
     // Pattern: "> 46"
     const gtMatch = raw.match(/>\s*(-?\d[\d,]*(?:\.\d+)?)/);
     if (gtMatch) {
         const min = Number(gtMatch[1].replace(/,/g, ''));
-        if (Number.isFinite(min)) return { min, max: Number.POSITIVE_INFINITY };
+        if (Number.isFinite(min)) {
+            return { min, max: Number.POSITIVE_INFINITY, minInclusive: false, maxInclusive: true };
+        }
     }
 
     return null;
@@ -159,7 +199,10 @@ const parseRangeFilter = (value: string): NumericRange | null => {
 const numericInRange = (value: any, range: NumericRange): boolean => {
     const n = Number(value);
     if (!Number.isFinite(n)) return false;
-    return n >= range.min && n <= range.max;
+
+    const lowerOk = range.minInclusive ? n >= range.min : n > range.min;
+    const upperOk = range.maxInclusive ? n <= range.max : n < range.max;
+    return lowerOk && upperOk;
 };
 
 const inferDimensionFromChartRows = (rawData: any[], chartRows: any[]): string | null => {
@@ -271,7 +314,10 @@ const aggregateValues = (values: any[], method: string, scalingFactor: number = 
     if (methodUpper === 'COUNT') return Math.round(values.length * scalingFactor);
 
     // Convert to numbers and strip NaNs
-    const nums = values.map(v => Number(v)).filter(v => !isNaN(v) && v !== null);
+    const nums = values
+        .filter(v => v !== null && v !== undefined && v !== '')
+        .map(v => Number(v))
+        .filter(v => Number.isFinite(v));
     if (!nums.length) return 0;
 
     // Averages/Means do not need scaling as the sample is an unbiased estimator
@@ -336,7 +382,7 @@ const recomputeCharts = (
                     if (!parsed) return null;
                     return { label, ...parsed };
                 })
-                .filter((b): b is { label: string; min: number; max: number } => !!b);
+                .filter((b): b is ({ label: string } & NumericRange) => !!b);
 
             if (bins.length > 0) {
                 const groupedRange: Record<string, any[]> = {};
@@ -345,7 +391,7 @@ const recomputeCharts = (
                     const x = Number(getRowValue(row, dimension));
                     if (!Number.isFinite(x)) continue;
 
-                    const match = bins.find((b) => numericInRange(x, { min: b.min, max: b.max }));
+                    const match = bins.find((b) => numericInRange(x, b));
                     if (!match) continue;
 
                     if (!groupedRange[match.label]) groupedRange[match.label] = [];
@@ -355,7 +401,8 @@ const recomputeCharts = (
                     } else {
                         const m = getRowValue(row, metric);
                         if (metricIsTarget) {
-                            groupedRange[match.label].push(toTargetBinary(m));
+                            const binary = toTargetBinary(m);
+                            if (binary !== null) groupedRange[match.label].push(binary);
                         } else {
                             const n = Number(m);
                             if (Number.isFinite(n)) groupedRange[match.label].push(n);
@@ -391,6 +438,38 @@ const recomputeCharts = (
 
                 const rawBins = [min - 1e-9, q25, q50, q75, max + 1e-9];
                 const bins = Array.from(new Set(rawBins)).sort((a, b) => a - b);
+
+                if (bins.length < 3) {
+                    const fallbackLabel = `All ${dimension.replace(/_/g, ' ')}`;
+                    const fallbackValues: any[] = [];
+
+                    for (const row of filtered) {
+                        const x = Number(getRowValue(row, dimension));
+                        if (!Number.isFinite(x)) continue;
+
+                        if (!metric) {
+                            fallbackValues.push(1);
+                        } else {
+                            const m = getRowValue(row, metric);
+                            if (metricIsTarget) {
+                                const binary = toTargetBinary(m);
+                                if (binary !== null) fallbackValues.push(binary);
+                            } else {
+                                const n = Number(m);
+                                if (Number.isFinite(n)) fallbackValues.push(n);
+                            }
+                        }
+                    }
+
+                    let fallbackValue = aggregateValues(fallbackValues, aggregation, scalingFactor);
+                    if (metricIsTarget && (aggregation === 'MEAN' || aggregation === 'AVG' || isRateChart)) {
+                        fallbackValue = fallbackValue * 100;
+                    }
+
+                    charts[slotId] = [{ name: fallbackLabel, value: fallbackValue }];
+                    continue;
+                }
+
                 const cohortLabels = bins.length === 5
                     ? [
                         `Low ${dimension.replace(/_/g, ' ')} (<=${q25.toFixed(0)})`,
@@ -423,7 +502,8 @@ const recomputeCharts = (
                     } else {
                         const m = getRowValue(row, metric);
                         if (metricIsTarget) {
-                            groupedCohort[label].push(toTargetBinary(m));
+                            const binary = toTargetBinary(m);
+                            if (binary !== null) groupedCohort[label].push(binary);
                         } else {
                             const n = Number(m);
                             if (Number.isFinite(n)) groupedCohort[label].push(n);
@@ -506,8 +586,16 @@ const recomputeCharts = (
                         ? getRowValue(row, metric)
                         : (targetCol ? getRowValue(row, targetCol) : undefined);
 
-                    const isPositive = isPositiveTargetValue(metricSource);
-                    if (isPositive) acc[key].positive += 1;
+                    if (metricSource === undefined || metricSource === null) {
+                        return acc;
+                    }
+
+                    const binary = toTargetBinary(metricSource);
+                    if (binary === null) {
+                        return acc;
+                    }
+
+                    if (binary === 1) acc[key].positive += 1;
                     else acc[key].negative += 1;
 
                     return acc;
@@ -590,6 +678,9 @@ const recomputeCharts = (
                 let metricVal: any = metric ? getRowValue(row, metric) : 1;
                 if (metric && metricIsTarget) {
                     metricVal = toTargetBinary(metricVal);
+                    if (metricVal === null) {
+                        return acc;
+                    }
                 }
                 acc[key].push(aggregation === 'COUNT' ? 1 : metricVal);
                 return acc;
