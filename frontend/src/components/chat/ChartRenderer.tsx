@@ -4,6 +4,7 @@ import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import { VIZZY_CHART_COLORS, VIZZY_THEME } from '../../theme/tokens';
 
 
 interface ChartRendererProps {
@@ -14,20 +15,8 @@ interface ChartRendererProps {
     variant?: 'default' | 'minimal';
 }
 
-// Brutalist color palette for distinct data points (All Orange)
-// Brutalist color palette for distinct data points (All Orange)
-const CHART_COLORS = [
-    '#ff6933', // Primary orange (Medium)
-    '#ffcfb3', // Very Light orange
-    '#8c2d04', // Very Dark orange
-    '#ff9e66', // Light orange
-    '#cc4c18', // Dark orange
-    '#ffe6d9', // Palest orange
-    '#e6550d', // Bright medium-dark orange
-    '#591a02', // Extremely dark orange
-    '#fd8d3c', // Yellow-orange
-    '#a63603', // Deep rust
-];
+// Indigo/Cyan palette aligned with redesigned UI theme
+const CHART_COLORS = [...VIZZY_CHART_COLORS];
 interface CustomTooltipProps {
     active?: boolean;
     payload?: any[];
@@ -58,7 +47,7 @@ const CustomTooltip = ({ active, payload, label, currency, isCurrency, isPercent
         }
 
         return (
-            <div className="rounded-sm px-4 py-3 border border-white/10 backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(255,105,51,0.1)] text-white font-mono z-[9999]">
+            <div className="rounded-sm px-4 py-3 border border-white/10 backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(108,99,255,0.15)] text-white font-mono z-[9999]">
                 {label && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-white/10 opacity-70 leading-tight">{label}</p>}
                 <div className="mb-0">
                     <p className="text-[10px] opacity-50 uppercase tracking-widest mb-0.5">Value</p>
@@ -265,10 +254,10 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                         <Line
                             type="monotone"
                             dataKey="value"
-                            stroke="#ff6933"
+                            stroke={VIZZY_THEME.primary}
                             strokeWidth={3}
                             dot={false}
-                            activeDot={{ r: 6, strokeWidth: 0, fill: '#ff8f66' }}
+                            activeDot={{ r: 6, strokeWidth: 0, fill: VIZZY_THEME.secondary }}
                         />
                     </LineChart>
                 </ResponsiveContainer>
@@ -307,7 +296,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             dataKey="value"
                         >
                             {chartData.map((_: any, index: number) => (
-                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} strokeWidth={2} stroke="#111111" />
+                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} strokeWidth={2} stroke="#0a0b0f" />
                             ))}
                         </Pie>
                         <Tooltip content={<CustomTooltip currency={effectiveCurrency} isCurrency={isCurrencyChart} isPercentage={isPercentage} />} />
@@ -331,9 +320,9 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
         const headers = data.data?.columns || Object.keys(rows[0]);
 
         return (
-            <div className="overflow-x-auto rounded-sm border border-white/10 shadow-[0_0_15px_rgba(255,105,51,0.05)] mt-4 glass-panel scrollbar-hide">
+            <div className="overflow-x-auto rounded-xl border border-transparent dark:border-white/5 shadow-sm dark:shadow-none mt-4 bg-surface-container-lowest dark:bg-surface-container/80 scrollbar-hide">
                 <table className="min-w-full text-sm text-left text-gray-400 font-mono">
-                    <thead className="text-[10px] tracking-widest text-[#ff6933] uppercase bg-black/50 border-b border-white/10">
+                    <thead className="text-[10px] tracking-widest text-primary uppercase bg-black/50 border-b border-white/10">
                         <tr>
                             {headers.map((h: string) => <th key={h} className="px-4 py-3 font-bold">{h.replace('_', ' ')}</th>)}
                         </tr>
@@ -374,7 +363,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                     const colSpan = widget.type === 'kpi' ? 'col-span-1' : 'col-span-1 md:col-span-2';
 
                     return (
-                        <div key={index} className={`${colSpan} obsidian-card p-4 rounded-sm border border-white/10 shadow-[0_0_15px_rgba(255,105,51,0.05)] hover:border-white/20 transition-all duration-300`}>
+                        <div key={index} className={`${colSpan} bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md p-4 rounded-xl border border-transparent dark:border-white/5 shadow-sm dark:shadow-none transition-all duration-300`}>
                             <h4 className="text-[10px] tracking-widest uppercase font-bold text-gray-700 dark:text-gray-400 mb-3 border-b border-white/10 pb-2">{widget.title}</h4>
                             <ChartRenderer
                                 type={widget.type}

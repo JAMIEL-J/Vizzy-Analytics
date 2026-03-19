@@ -4,6 +4,23 @@ import { useAuthStore } from '../../lib/store/authStore';
 import ThemeToggle from '../ui/ThemeToggle';
 import { Button } from '@/components/ui/button';
 
+type NavItem = {
+    path: string;
+    label: string;
+    icon: string;
+};
+
+const NAV_ITEMS: NavItem[] = [
+    { path: '/user/dashboard', label: 'Analytics', icon: 'analytics' },
+    { path: '/user/datasets', label: 'Datasets', icon: 'database' },
+    { path: '/user/upload', label: 'Upload', icon: 'upload' },
+    { path: '/user/chat', label: 'Chat', icon: 'chat' },
+    { path: '/user/cleaning', label: 'Cleaning', icon: 'cleaning_services' },
+    { path: '/user/connect-db', label: 'Database', icon: 'storage' },
+    { path: '/user/downloads', label: 'Downloads', icon: 'download' },
+    { path: '/user/profile', label: 'Profile', icon: 'person' },
+];
+
 export default function UserLayout() {
     const { logout } = useAuthStore();
     const navigate = useNavigate();
@@ -19,59 +36,55 @@ export default function UserLayout() {
         }
     };
 
-    const linkClasses = (path: string) => `
-        flex items-center rounded-sm transition-all duration-300 ease-in-out font-serif text-[15px] tracking-wide
-        ${isCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3'}
-        ${location.pathname === path
-            ? 'bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(255,105,51,0.1)]'
-            : 'hover:bg-primary/5 hover:text-primary border border-transparent'}
-    `;
+    const linkClasses = (path: string) => {
+        const active = location.pathname === path;
+        return `
+            flex items-center rounded-md transition-all duration-300 ease-in-out text-sm tracking-wide
+            ${isCollapsed ? 'justify-center p-3' : 'px-3 py-2.5 gap-3'}
+            ${active
+                ? 'bg-primary/10 text-primary border-r-2 border-primary'
+                : 'text-themed-muted hover:bg-primary/5 hover:text-themed-main'}
+        `;
+    };
 
     const spanClasses = `transition-all duration-500 ease-in-out origin-left whitespace-nowrap overflow-hidden ${isCollapsed ? 'max-w-0 opacity-0 scale-95 ml-0' : 'max-w-48 opacity-100 scale-100 ml-0'}`;
 
     const isActive = (path: string) => location.pathname === path;
 
+    const pageTitle = (() => {
+        const item = NAV_ITEMS.find((nav) => isActive(nav.path));
+        return item?.label ?? 'Workspace';
+    })();
+
+    const topNavContext = isActive('/user/chat')
+        ? ['Chat Analytics', 'Beta']
+        : isActive('/user/datasets')
+            ? ['Datasets', 'Management']
+            : [pageTitle, 'Overview'];
+
     return (
         <div
-            className="flex h-screen overflow-hidden font-serif selection:bg-primary selection:text-black transition-colors duration-300"
+            className="flex h-screen overflow-hidden font-serif selection:bg-primary selection:text-white transition-colors duration-300"
             style={{ background: 'var(--bg-main)', color: 'var(--text-main)' }}
         >
             {/* Sidebar */}
             <aside
                 className={`
-                    sidebar-themed flex flex-col h-full transition-all duration-500 ease-in-out z-30 relative overflow-hidden
-                    ${isCollapsed ? 'w-20' : 'w-72'}
+                    sidebar-themed flex flex-col h-screen transition-all duration-500 ease-in-out z-30 relative overflow-hidden border-r border-border-main/30 bg-bg-card
+                    ${isCollapsed ? 'w-20' : 'w-64'}
                 `}
             >
-                {/* Toggle Button */}
-                <Button
-                    type="button"
-                    onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="sidebar-toggle-btn absolute -right-3 top-1/2 -translate-y-1/2 rounded-sm p-1.5 shadow-md z-50 flex items-center justify-center transition-all duration-300 ease-in-out"
-                    title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-                    variant="ghost"
-                    size="icon"
-                >
-                    <svg className={`w-4 h-4 transition-transform duration-500 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"></path>
-                    </svg>
-                </Button>
-
-                <div className={`flex flex-col h-full transition-all duration-500 ${isCollapsed ? 'px-0 py-6' : 'p-6'}`}>
+                <div className={`flex-1 flex flex-col min-h-0 transition-all duration-500 ${isCollapsed ? 'px-0 py-6' : 'p-6'}`}>
                     {/* Logo Section */}
-                    <div className={`flex items-center mb-10 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+                    <div className={`flex items-center mb-8 shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
                         <div className="flex items-center">
-                            <div className="w-10 h-10 border border-primary/20 bg-primary/5 rounded-sm flex items-center justify-center text-primary shadow-[0_0_15px_rgba(255,105,51,0.1)]">
-                                <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                                </svg>
+                            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-white shadow-[0_0_15px_rgba(108,99,255,0.2)]">
+                                <span className="material-symbols-outlined text-[18px] leading-none">analytics</span>
                             </div>
-                            <span
-                                className={`text-[22px] font-serif tracking-widest ml-4 transition-all duration-500 ease-in-out origin-left whitespace-nowrap overflow-hidden ${isCollapsed ? 'max-w-0 opacity-0' : 'max-w-48 opacity-100'}`}
-                                style={{ color: 'var(--text-main)' }}
-                            >
-                                Vizzy
-                            </span>
+                            <div className={`ml-3 transition-all duration-500 ease-in-out origin-left whitespace-nowrap overflow-hidden ${isCollapsed ? 'max-w-0 opacity-0' : 'max-w-48 opacity-100'}`}>
+                                <p className="text-lg font-semibold tracking-wide leading-none text-themed-main">Vizzy</p>
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-themed-muted mt-1">Data Curator</p>
+                            </div>
                         </div>
                         {/* Theme toggle inline when expanded */}
                         {!isCollapsed && (
@@ -80,87 +93,54 @@ export default function UserLayout() {
                     </div>
 
                     {/* Navigation - Scrollable */}
-                    <nav className={`flex-1 overflow-y-auto min-h-0 space-y-2 scrollbar-hide hover:scrollbar-default ${isCollapsed ? 'px-3' : 'px-0'}`}>
-                        <Link to="/user/dashboard" title={isCollapsed ? 'My Analytics' : ''} className={linkClasses('/user/dashboard')} style={{ color: isActive('/user/dashboard') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
-                            </svg>
-                            <span className={spanClasses}>My Analytics</span>
-                        </Link>
-
-                        <Link to="/user/datasets" title={isCollapsed ? 'Datasets' : ''} className={linkClasses('/user/datasets')} style={{ color: isActive('/user/datasets') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21 3.582 4 8 4s8-1.79 8-4"></path>
-                            </svg>
-                            <span className={spanClasses}>Datasets</span>
-                        </Link>
-
-                        <Link to="/user/upload" title={isCollapsed ? 'Upload Data' : ''} className={linkClasses('/user/upload')} style={{ color: isActive('/user/upload') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                            </svg>
-                            <span className={spanClasses}>Upload Data</span>
-                        </Link>
-
-                        <Link to="/user/chat" title={isCollapsed ? 'Chat Analytics' : ''} className={linkClasses('/user/chat')} style={{ color: isActive('/user/chat') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
-                            </svg>
-                            <span className={spanClasses}>Chat Analytics</span>
-                        </Link>
-
-                        <Link to="/user/cleaning" title={isCollapsed ? 'Data Cleaning' : ''} className={linkClasses('/user/cleaning')} style={{ color: isActive('/user/cleaning') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
-                            </svg>
-                            <span className={spanClasses}>Data Cleaning</span>
-                        </Link>
-
-                        <Link to="/user/connect-db" title={isCollapsed ? 'Connect DB' : ''} className={linkClasses('/user/connect-db')} style={{ color: isActive('/user/connect-db') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21 3.582 4 8 4s8-1.79 8-4"></path>
-                            </svg>
-                            <span className={spanClasses}>Connect DB</span>
-                        </Link>
-
-                        <Link to="/user/downloads" title={isCollapsed ? 'Downloads' : ''} className={linkClasses('/user/downloads')} style={{ color: isActive('/user/downloads') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                            </svg>
-                            <span className={spanClasses}>Downloads</span>
-                        </Link>
-
-                        <Link to="/user/profile" title={isCollapsed ? 'Profile' : ''} className={linkClasses('/user/profile')} style={{ color: isActive('/user/profile') ? undefined : 'var(--text-sidebar)' }}>
-                            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.121 17.804A9 9 0 1118.88 17.8M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            <span className={spanClasses}>Profile</span>
-                        </Link>
+                    <nav className={`flex-1 overflow-y-auto min-h-0 space-y-1.5 scrollbar-hide hover:scrollbar-default ${isCollapsed ? 'px-3' : 'px-0'}`}>
+                        {NAV_ITEMS.map((item) => (
+                            <Link
+                                key={item.path}
+                                to={item.path}
+                                title={isCollapsed ? item.label : ''}
+                                className={linkClasses(item.path)}
+                                style={{ color: isActive(item.path) ? undefined : 'var(--text-sidebar)' }}
+                            >
+                                <span className="material-symbols-outlined text-[19px] leading-none flex-shrink-0">{item.icon}</span>
+                                <span className={spanClasses}>{item.label}</span>
+                            </Link>
+                        ))}
                     </nav>
                 </div>
 
                 {/* Bottom: theme toggle (collapsed) + logout */}
-                <div className={`shrink-0 transition-all duration-500 ${isCollapsed ? 'px-3 py-6' : 'p-6'}`} style={{ borderTop: '1px solid var(--border-sidebar)' }}>
+                <div className={`shrink-0 transition-all duration-500 border-t border-border-main/20 ${isCollapsed ? 'px-2 py-4' : 'px-4 py-4'} space-y-1`}>
+                    <Button
+                        type="button"
+                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        className={`w-full flex items-center justify-start rounded-md text-sm text-themed-muted hover:bg-primary/5 hover:text-primary transition-all ${isCollapsed ? 'px-0 justify-center h-10' : 'px-3 py-2.5'}`}
+                        variant="ghost"
+                        title={isCollapsed ? 'Expand' : 'Collapse'}
+                    >
+                        <span className="material-symbols-outlined text-[19px] leading-none shrink-0" style={{ marginRight: isCollapsed ? '0' : '12px' }}>{isCollapsed ? 'menu' : 'menu_open'}</span>
+                        <span className={spanClasses}>{isCollapsed ? 'Expand' : 'Collapse'}</span>
+                    </Button>
+
                     {/* Theme toggle when sidebar is collapsed */}
                     {isCollapsed && (
-                        <div className="flex justify-center mb-3">
+                        <div className="flex justify-center py-2">
                             <ThemeToggle size="sm" />
                         </div>
                     )}
+                    
                     <Button
                         type="button"
                         onClick={handleLogout}
                         title={isCollapsed ? 'Logout' : ''}
                         className={`
-                            flex items-center rounded-sm hover:bg-red-500/10 hover:text-red-500 border border-transparent hover:border-red-500/20 transition-all duration-300 ease-in-out font-serif text-[15px] tracking-wide w-full
-                            ${isCollapsed ? 'justify-center p-3' : 'px-4 py-3 gap-3'}
+                            flex items-center justify-start rounded-md hover:bg-red-500/10 hover:text-red-500 border border-transparent transition-all duration-300 text-sm w-full
+                            ${isCollapsed ? 'px-0 justify-center h-10' : 'px-3 py-2.5'}
                         `}
                         style={{ color: 'var(--text-muted)' }}
                         variant="ghost"
                     >
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                        </svg>
+                        <span className="material-symbols-outlined text-[19px] leading-none shrink-0" style={{ marginRight: isCollapsed ? '0' : '12px' }}>logout</span>
                         <span className={spanClasses}>Logout</span>
                     </Button>
                 </div>
@@ -168,6 +148,30 @@ export default function UserLayout() {
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
+                <header className="h-16 shrink-0 px-6 border-b border-border-main/30 bg-bg-main/80 backdrop-blur-md flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-lg font-semibold tracking-wide text-themed-main">{topNavContext[0]}</h1>
+                        <span className="text-themed-muted text-xs uppercase tracking-[0.16em]">{topNavContext[1]}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="relative hidden lg:block">
+                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-themed-muted text-[16px] leading-none">search</span>
+                            <input
+                                type="text"
+                                placeholder="Search datasets..."
+                                className="bg-bg-card border border-border-main/30 rounded-full py-1.5 pl-9 pr-4 text-xs text-themed-main w-64 focus:ring-2 focus:ring-primary/20 outline-none"
+                            />
+                        </div>
+                        <button type="button" className="text-themed-muted hover:text-primary transition-colors relative">
+                            <span className="material-symbols-outlined text-[20px] leading-none">notifications</span>
+                            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
+                        </button>
+                        <div className="w-8 h-8 rounded-full bg-bg-card border border-border-main/40 flex items-center justify-center text-themed-main text-xs font-bold">
+                            V
+                        </div>
+                    </div>
+                </header>
+
                 <main
                     className="flex-1 flex flex-col overflow-y-auto custom-scrollbar relative z-10 w-full h-full transition-colors duration-300"
                     style={{ background: 'var(--bg-main)' }}

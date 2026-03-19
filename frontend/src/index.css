@@ -21,11 +21,36 @@
     --color-accent-cyan: #00c2ff;
     --color-accent-orange: #ff6b35;
     --color-admin-purple: #7c3aed;
-    --color-primary: #ff6933;
+    --color-primary: var(--accent-primary);
+    --color-on-primary: #ffffff;
     --color-background-light: #f8f6f5;
     --color-background-dark: #0a0a0a;
     --color-obsidian: #111111;
     --color-marble: #1a1a1a;
+    
+    /* Template Specific Colors */
+    --color-background: var(--bg-main);
+    --color-surface: var(--bg-card);
+    --color-surface-container-highest: var(--surface-container-highest);
+    --color-surface-container-high: var(--surface-container-high);
+    --color-surface-container: var(--surface-container);
+    --color-surface-container-low: var(--surface-container-low);
+    --color-surface-container-lowest: var(--surface-container-lowest);
+    
+    --color-on-surface: var(--on-surface);
+    --color-on-surface-variant: var(--on-surface-variant);
+    
+    --color-outline: var(--outline);
+    --color-outline-variant: var(--outline-variant);
+    
+    --color-secondary: var(--secondary);
+    --color-on-secondary: var(--on-secondary);
+    --color-secondary-container: var(--secondary-container);
+    --color-on-secondary-container: var(--on-secondary-container);
+
+    --font-headline: "Plus Jakarta Sans", "Space Grotesk", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --font-label: "Inter", sans-serif;
     --font-display: "Aptos", "Segoe UI", "Inter", system-ui, sans-serif;
     --font-mono: "DM Sans", "Inter", "Segoe UI", system-ui, sans-serif;
 }
@@ -85,23 +110,40 @@
     -moz-osx-font-smoothing: grayscale;
 
     /* ── Light Theme (Default) ── */
-    --bg-main: #f4f4f5;
-    --bg-card: #ffffff;
-    --bg-sidebar: #ffffff;
-    --bg-sidebar-hover: rgba(255, 105, 51, 0.06);
-    --bg-header: #ffffff;
-    --bg-input: #f9fafb;
-    --bg-input-dark: #f9fafb;
-    --bg-badge: rgba(255, 105, 51, 0.08);
+    --bg-main: #f9f9ff;
+    --bg-card: #f9f9ff;
+    --bg-sidebar: #f1f3ff;
+    --bg-sidebar-hover: rgba(53, 37, 205, 0.08);
+    --bg-header: #f9f9ff;
+    --bg-input: #ffffff;
+    --bg-input-dark: #ffffff;
+    --bg-badge: rgba(53, 37, 205, 0.1);
 
-    --text-main: #111111;
-    --text-muted: #6b7280;
-    --text-sidebar: #374151;
-    --text-link: #111111;
+    --text-main: #141b2c;
+    --text-muted: #464555;
+    --text-sidebar: #464555;
+    --text-link: #141b2c;
 
-    --border-main: #e5e7eb;
-    --border-sidebar: #e5e7eb;
-    --border-subtle: rgba(0, 0, 0, 0.08);
+    --border-main: #c7c4d8;
+    --border-sidebar: #e2e8f0;
+    --border-subtle: rgba(20, 27, 44, 0.08);
+    --accent-primary: #3525cd;
+
+    /* Template Specific Variables (Light) */
+    --surface-container-highest: #dbe2f9;
+    --surface-container-high: #e0e8ff;
+    --surface-container: #e9edff;
+    --surface-container-low: #f1f3ff;
+    --surface-container-lowest: #ffffff;
+    --on-surface: #141b2c;
+    --on-surface-variant: #464555;
+    --outline: #777587;
+    --outline-variant: #c7c4d8;
+    
+    --secondary: #006c49;
+    --on-secondary: #ffffff;
+    --secondary-container: #6cf8bb;
+    --on-secondary-container: #00714d;
 
     /* Landing-specific */
     --landing-bg: #f4f4f5;
@@ -121,23 +163,40 @@
 
 .dark {
     /* ── Dark Theme ── */
-    --bg-main: #050505;
-    --bg-card: #0a0a0a;
-    --bg-sidebar: #000000;
-    --bg-sidebar-hover: rgba(255, 255, 255, 0.05);
-    --bg-header: #0a0a0a;
-    --bg-input: #000000;
-    --bg-input-dark: #000000;
-    --bg-badge: rgba(255, 105, 51, 0.15);
+    --bg-main: #0A0B0F;
+    --bg-card: #111318;
+    --bg-sidebar: #15181E;
+    --bg-sidebar-hover: rgba(108, 99, 255, 0.14);
+    --bg-header: #111318;
+    --bg-input: #111318;
+    --bg-input-dark: #111318;
+    --bg-badge: rgba(108, 99, 255, 0.2);
 
-    --text-main: #ffffff;
-    --text-muted: #6b7280;
-    --text-sidebar: #9ca3af;
-    --text-link: #ffffff;
+    --text-main: #F0F2FF;
+    --text-muted: #94A3B8;
+    --text-sidebar: #94A3B8;
+    --text-link: #F0F2FF;
 
-    --border-main: #1a1a1a;
-    --border-sidebar: rgba(255, 255, 255, 0.08);
-    --border-subtle: rgba(255, 255, 255, 0.05);
+    --border-main: #1E293B;
+    --border-sidebar: #1E293B;
+    --border-subtle: rgba(240, 242, 255, 0.08);
+    --accent-primary: #6C63FF;
+
+    /* Template Specific Variables (Dark) */
+    --surface-container-highest: #222630;
+    --surface-container-high: #1D212A;
+    --surface-container: #1A1D24;
+    --surface-container-low: #15181E;
+    --surface-container-lowest: #0A0B0F;
+    --on-surface: #F0F2FF;
+    --on-surface-variant: #94A3B8;
+    --outline: #334155;
+    --outline-variant: #1E293B;
+    
+    --secondary: #00E0A3;
+    --on-secondary: #000000;
+    --secondary-container: rgba(0, 224, 163, 0.15);
+    --on-secondary-container: #00E0A3;
 
     /* Landing-specific */
     --landing-bg: #050505;
@@ -153,6 +212,21 @@
     --landing-footer-text: #4b5563;
     --landing-cta-bg: #050505;
     --landing-how-bg: #050505;
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fade-in-up 0.5s ease-out forwards;
 }
 
 /* ── Global Base ── */
@@ -210,15 +284,15 @@ body {
 }
 
 .obsidian-card:hover {
-    box-shadow: 0 4px 24px rgba(255, 105, 51, 0.06);
+    box-shadow: 0 4px 24px rgba(108, 99, 255, 0.12);
 }
 
 .laser-text {
-    text-shadow: 0 0 10px rgba(255, 105, 51, 0.5);
+    text-shadow: 0 0 10px rgba(108, 99, 255, 0.45);
 }
 
 .laser-beam {
-    background: linear-gradient(90deg, transparent, #ff6933, transparent);
+    background: linear-gradient(90deg, transparent, #6c63ff, transparent);
     opacity: 0.8;
     filter: blur(4px);
 }
@@ -254,9 +328,9 @@ body {
 }
 
 .theme-toggle-btn:hover {
-    border-color: #ff6933;
-    color: #ff6933;
-    background: rgba(255, 105, 51, 0.06);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
 }
 
 /* ============================================================
@@ -276,8 +350,8 @@ body {
 }
 
 .sidebar-toggle-btn:hover {
-    color: #ff6933;
-    border-color: rgba(255, 105, 51, 0.4);
+    color: var(--accent-primary);
+    border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
 }
 
 .sidebar-link-text {
@@ -300,9 +374,9 @@ body {
 }
 
 .form-input-themed:focus {
-    border-color: #ff6933;
+    border-color: var(--accent-primary);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 105, 51, 0.15);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 18%, transparent);
 }
 
 .form-input-themed::placeholder {

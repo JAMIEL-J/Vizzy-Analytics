@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { ColumnClassificationPanel } from '../../components/dashboard/ColumnClassificationPanel';
 import { Button } from '@/components/ui/button';
+import { VIZZY_CHART_COLORS, VIZZY_THEME } from '../../theme/tokens';
 
 type CachedEntry<T> = {
     value: T;
@@ -153,49 +154,7 @@ const setSessionCachedAnalytics = (cacheKey: string, value: DashboardAnalytics) 
 
 // ─── Color Palettes ──────────────────────────────────────────────────────────
 
-const KPI_COLORS = [
-    {
-        border: 'dark:border-[#ff6933]/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(255,105,51,0.2)]',
-        iconGrad: 'from-[#ff6b35] to-[#ff6933]',
-        iconShadow: 'shadow-[#ff6933]/30',
-        arc: 'bg-[#ff6933]/5 dark:bg-[#ff6933]/10',
-    },
-    {
-        border: 'dark:border-[#ff8f66]/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(255,143,102,0.2)]',
-        iconGrad: 'from-[#ff9f7a] to-[#ff8f66]',
-        iconShadow: 'shadow-[#ff8f66]/30',
-        arc: 'bg-[#ff8f66]/5 dark:bg-[#ff8f66]/10',
-    },
-    {
-        border: 'dark:border-[#cc5429]/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(204,84,41,0.2)]',
-        iconGrad: 'from-[#e06536] to-[#cc5429]',
-        iconShadow: 'shadow-[#cc5429]/30',
-        arc: 'bg-[#cc5429]/5 dark:bg-[#cc5429]/10',
-    },
-    {
-        border: 'dark:border-[#ffa885]/30',
-        shadow: 'dark:shadow-[0_0_15px_rgba(255,168,133,0.2)]',
-        iconGrad: 'from-[#ffb899] to-[#ffa885]',
-        iconShadow: 'shadow-[#ffa885]/30',
-        arc: 'bg-[#ffa885]/5 dark:bg-[#ffa885]/10',
-    },
-];
-
-const CHART_COLORS = [
-    '#ff6933', // Primary orange (Medium)
-    '#ffcfb3', // Very Light orange
-    '#8c2d04', // Very Dark orange
-    '#ff9e66', // Light orange
-    '#cc4c18', // Dark orange
-    '#ffe6d9', // Palest orange
-    '#e6550d', // Bright medium-dark orange
-    '#591a02', // Extremely dark orange
-    '#fd8d3c', // Yellow-orange
-    '#a63603', // Deep rust
-];
+const CHART_COLORS = [...VIZZY_CHART_COLORS];
 
 // (static heatmap grid removed - now driven by real data)
 
@@ -294,11 +253,11 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLab
                 {fp.label && <p className="text-[10px] opacity-60 mb-2 pb-2 border-b border-border-main font-bold uppercase tracking-widest">{fp.label}</p>}
                 <div className="space-y-1.5">
                     <p className="text-sm flex items-center justify-between gap-4">
-                        <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-sm bg-[#ff6933] inline-block" /><span className="opacity-70 text-[10px] tracking-widest uppercase">{fp.xLabel}:</span></span>
+                        <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-sm inline-block" style={{ backgroundColor: VIZZY_THEME.primary }} /><span className="opacity-70 text-[10px] tracking-widest uppercase">{fp.xLabel}:</span></span>
                         <span className="font-bold text-primary">{fmtS(fp.x, fp.xLabel)}</span>
                     </p>
                     <p className="text-sm flex items-center justify-between gap-4">
-                        <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-sm bg-[#cc5429] inline-block" /><span className="opacity-70 text-[10px] tracking-widest uppercase">{fp.yLabel}:</span></span>
+                        <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-sm inline-block" style={{ backgroundColor: VIZZY_THEME.secondary }} /><span className="opacity-70 text-[10px] tracking-widest uppercase">{fp.yLabel}:</span></span>
                         <span className="font-bold text-primary">{fmtS(fp.y, fp.yLabel)}</span>
                     </p>
                 </div>
@@ -367,7 +326,7 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLab
                     return (
                         <div key={i} className="flex items-center justify-between gap-6">
                             <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-sm inline-block shadow-[0_0_5px_currentColor]" style={{ background: p.color || p.fill || '#ff6933' }} />
+                                <span className="w-1.5 h-1.5 rounded-sm inline-block shadow-[0_0_5px_currentColor]" style={{ background: p.color || p.fill || '#6c63ff' }} />
                                 <span className="text-[10px] tracking-widest uppercase opacity-70 whitespace-nowrap">{p.name}:</span>
                             </div>
                             <span className="text-sm font-bold tabular-nums text-themed-main group-hover:text-primary transition-colors">
@@ -387,8 +346,7 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLab
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-const KPICard = ({ title, value, icon, index, trend, trend_label, subtitle }: { title: string; value: string; icon?: string; index: number; trend?: number; trend_label?: string; subtitle?: string }) => {
-    const c = KPI_COLORS[index % KPI_COLORS.length];
+const KPICard = ({ title, value, icon, trend, trend_label, subtitle }: { title: string; value: string; icon?: string; trend?: number; trend_label?: string; subtitle?: string }) => {
     const iconEl = KPI_ICON_SVG[icon || 'default'] ?? KPI_ICON_SVG.default;
 
     // Trend logic
@@ -398,52 +356,49 @@ const KPICard = ({ title, value, icon, index, trend, trend_label, subtitle }: { 
 
     // Adjust logic if "down is good" (like Churn Rate) based on title heuristics
     const reverseLogic = title.toLowerCase().includes('churn') || title.toLowerCase().includes('bounce');
-    const colorClass = isNeutral ? 'text-themed-muted bg-gray-100 dark:bg-gray-800' :
-        (isPositive && !reverseLogic) || (isNegative && reverseLogic) ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10' :
-            'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10';
+    const colorClass = isNeutral ? 'text-on-surface-variant bg-surface-container-high' :
+        (isPositive && !reverseLogic) || (isNegative && reverseLogic) ? 'text-secondary dark:text-primary bg-secondary/10 dark:bg-primary/10' :
+            'text-error bg-error/10';
 
 
     return (
-        <div className={`obsidian-card p-5 rounded-sm relative overflow-hidden group flex flex-col justify-between hover:shadow-[0_0_20px_rgba(255,105,51,0.2)] transition-shadow duration-300 ${c.border.replace('dark:', '')}`}>
-            {/* Decorative arc */}
-            <div className={`absolute top-0 right-0 w-16 h-16 ${c.arc} rounded-bl-full -mr-4 -mt-4 transition-all group-hover:scale-110`} />
+        <div className={`bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md p-6 rounded-xl relative overflow-hidden group flex flex-col justify-between hover:bg-surface-container-low transition-all shadow-sm dark:shadow-none border border-transparent dark:border-white/5`}>
+            {/* Decorative arc (remade simpler) */}
+            <div className={`absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-bl-[4rem] -mr-4 -mt-4 transition-all group-hover:scale-110`} />
 
-            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${c.iconGrad} flex items-center justify-center text-themed-main mb-3 shadow-lg ${c.iconShadow}`}>
-                {iconEl}
+            <div className="flex justify-between items-start mb-4 relative z-10">
+                <span className="p-2 bg-primary/5 dark:bg-primary/10 text-primary rounded-lg group-hover:bg-primary group-hover:text-white transition-colors">
+                    {iconEl}
+                </span>
+
+                {trend !== undefined && (
+                    <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${colorClass}`}>
+                        {isPositive && <span className="material-symbols-outlined text-xs">trending_up</span>}
+                        {isNegative && <span className="material-symbols-outlined text-xs">trending_down</span>}
+                        {isNeutral && <span className="material-symbols-outlined text-xs">trending_flat</span>}
+                        <span>{Math.abs(trend)}%</span>
+                    </div>
+                )}
             </div>
 
             <div className="flex flex-col gap-1 z-10">
-                <p className="font-serif text-xs text-themed-muted tracking-wide">{title}</p>
+                <p className="text-[10px] sm:text-xs font-label uppercase tracking-wider text-on-surface-variant font-bold">{title}</p>
                 <div className="flex items-baseline justify-between mt-1">
-                    <h3 className="text-3xl font-light text-themed-main tracking-tight">{value}</h3>
-
-                    {trend !== undefined && (
-                        <div className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${colorClass}`}>
-                            {isPositive && (
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
-                            )}
-                            {isNegative && (
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
-                            )}
-                            <span>{Math.abs(trend)}%</span>
-                        </div>
-                    )}
+                    <h3 className="text-2xl font-bold text-on-surface font-headline">{value}</h3>
                 </div>
 
                 {trend_label && trend !== undefined && (
-                    <p className="text-[10px] text-themed-muted font-medium text-right mt-0.5">{trend_label}</p>
+                    <p className="text-[10px] text-on-surface-variant font-medium text-right mt-0.5">{trend_label}</p>
                 )}
 
                 {subtitle && (
-                    <p className="text-[10px] text-themed-muted dark:text-themed-muted font-medium mt-1.5 flex items-center gap-1">
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1.5 flex items-center gap-1">
                         <svg className="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         {subtitle}
                     </p>
                 )}
-
-
             </div>
         </div>
     );
@@ -452,17 +407,17 @@ const KPICard = ({ title, value, icon, index, trend, trend_label, subtitle }: { 
 // ─── Chart Card Wrapper ───────────────────────────────────────────────────────
 
 const ChartCard = ({ title, children, className, actions }: { title: string; children: React.ReactNode; className?: string; actions?: React.ReactNode }) => (
-    <div className={`glass-panel p-6 rounded-sm relative group transition-colors duration-300 h-full flex flex-col ${className || ''}`}>
-        <div className="flex justify-between items-start mb-5 flex-shrink-0">
-            <h3 className="font-serif text-[18px] tracking-wide text-primary border-l-2 border-primary pl-3">{title}</h3>
+    <div className={`bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md p-6 rounded-xl shadow-sm dark:shadow-none border border-transparent dark:border-white/5 relative group transition-colors duration-300 h-full flex flex-col ${className || ''}`}>
+        <div className="flex justify-between items-center mb-6 flex-shrink-0">
+            <h4 className="text-lg font-headline font-semibold text-on-surface">{title}</h4>
             {actions ? (
-                <div className="relative z-10">{actions}</div>
+                <div className="relative z-10 flex gap-2 items-center">{actions}</div>
             ) : (
-                <Button type="button" variant="ghost" size="icon" className="text-themed-muted hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
-                    </svg>
-                </Button>
+                <div className="flex gap-2 relative z-10">
+                    <button className="p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-on-surface-variant">refresh</span></button>
+                    <button className="p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-on-surface-variant">ios_share</span></button>
+                    <button className="p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-on-surface-variant">more_vert</span></button>
+                </div>
             )}
         </div>
         <div className="flex-1 min-h-0 w-full flex flex-col justify-end">
@@ -578,8 +533,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
                             <defs>
                                 <linearGradient id="barDark" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#ff8f66" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#ff6933" stopOpacity={0.7} />
+                                    <stop offset="0%" stopColor={CHART_COLORS[1]} stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor={CHART_COLORS[0]} stopOpacity={0.7} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
@@ -601,8 +556,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 5 }}>
                             <defs>
                                 <linearGradient id="hbarDark" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor="#ff8f66" />
-                                    <stop offset="100%" stopColor="#cc5429" />
+                                    <stop offset="0%" stopColor={CHART_COLORS[1]} />
+                                    <stop offset="100%" stopColor={CHART_COLORS[5]} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} horizontal={false} />
@@ -624,12 +579,12 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
                             <defs>
                                 <linearGradient id="stackedPos" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#ff6933" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#ff6933" stopOpacity={0.6} />
+                                    <stop offset="0%" stopColor="#6c63ff" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#6c63ff" stopOpacity={0.6} />
                                 </linearGradient>
                                 <linearGradient id="stackedNeg" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#cc5429" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#cc5429" stopOpacity={0.6} />
+                                    <stop offset="0%" stopColor="#00d4aa" stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor="#00d4aa" stopOpacity={0.6} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
@@ -732,8 +687,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
                             <defs>
                                 <linearGradient id="areaDark" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#ff8f66" stopOpacity={0.35} />
-                                    <stop offset="100%" stopColor="#ff8f66" stopOpacity={0.02} />
+                                    <stop offset="0%" stopColor={CHART_COLORS[2]} stopOpacity={0.35} />
+                                    <stop offset="100%" stopColor={CHART_COLORS[2]} stopOpacity={0.02} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
@@ -745,9 +700,9 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                 }} tick={{ ...textStyle }} />
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                            <Area type="monotone" dataKey="value" stroke="#ff8f66" strokeWidth={2.5}
+                            <Area type="monotone" dataKey="value" stroke={CHART_COLORS[2]} strokeWidth={2.5}
                                 fill="url(#areaDark)" dot={false}
-                                activeDot={{ r: 5, fill: '#ff8f66', stroke: '#111111', onClick: (e: any) => handleSliceClick(e?.payload || e) }}
+                                activeDot={{ r: 5, fill: '#00d4aa', stroke: '#111318', onClick: (e: any) => handleSliceClick(e?.payload || e) }}
                                 onClick={handleSliceClick}
                                 cursor={onFilterClick ? 'pointer' : 'default'} />
                         </AreaChart>
@@ -848,7 +803,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <PolarGrid stroke={chartColors.grid} />
                             <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: chartColors.text }} />
                             <PolarRadiusAxis tick={{ fontSize: 9, fill: chartColors.axis }} />
-                            <Radar dataKey="value" stroke="#ff6933" fill="#ff6933" fillOpacity={0.35} onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
+                            <Radar dataKey="value" stroke="#6c63ff" fill="#6c63ff" fillOpacity={0.35} onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
                         </RadarChart>
                     </ResponsiveContainer>
@@ -896,7 +851,7 @@ const FilterDropdown = ({
             <Button
                 type="button"
                 onClick={() => setOpen(o => !o)}
-                className="flex items-center gap-2 obsidian-card rounded-sm px-4 py-2.5 shadow-sm text-[15px] font-serif tracking-wide text-themed-main hover:border-primary/50 transition-colors focus:outline-none"
+                className="flex items-center gap-2 bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl px-4 py-2.5 shadow-sm text-[15px] font-sans tracking-wide text-on-surface hover:bg-surface-container-low transition-colors focus:outline-none"
                 variant="ghost"
             >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -909,10 +864,10 @@ const FilterDropdown = ({
             </Button>
 
             {open && (
-                <div className="absolute right-0 top-full mt-2 w-56 obsidian-card rounded-sm shadow-2xl z-50 overflow-hidden font-serif">
+                <div className="absolute right-0 top-full mt-2 w-56 bg-surface-container-lowest dark:bg-surface-container/90 dark:backdrop-blur-xl border border-transparent dark:border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden font-sans">
                     <div className="py-1">
                         {datasets.length === 0 ? (
-                            <p className="px-4 py-3 text-sm text-themed-muted">No datasets available</p>
+                            <p className="px-4 py-3 text-sm text-on-surface-variant">No datasets available</p>
                         ) : (
                             datasets.map(ds => (
                                 <Button
@@ -1025,7 +980,7 @@ const MultiFilterPanel = ({
     return (
         <div ref={panelRef} className="mb-6 relative z-30">
             {/* Panel card */}
-            <div className="glass-panel rounded-sm shadow-sm p-4">
+            <div className="bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl shadow-sm p-4">
 
                 {/* Header row */}
                 <div className="flex items-center justify-between mb-3">
@@ -1035,7 +990,7 @@ const MultiFilterPanel = ({
                         </svg>
                         <span className="text-sm font-serif tracking-wide text-themed-muted uppercase">Filters</span>
                         {totalActive > 0 && (
-                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-sm bg-primary text-black text-[11px] font-bold">
+                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-sm bg-primary text-white text-[11px] font-bold">
                                 {totalActive} active
                             </span>
                         )}
@@ -1187,7 +1142,7 @@ const MultiFilterPanel = ({
                                             </span>
                                             <div className="flex items-center gap-1 flex-shrink-0">
                                                 {slotValues.length > 0 && (
-                                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-black text-[9px] font-bold">
+                                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-white text-[9px] font-bold">
                                                         {slotValues.length}
                                                     </span>
                                                 )}
@@ -1225,7 +1180,7 @@ const MultiFilterPanel = ({
                                                                 type="checkbox"
                                                                 checked={slotValues.includes(val)}
                                                                 onChange={() => toggleValue(selectedCol, val)}
-                                                                className="w-3.5 h-3.5 rounded accent-[#ff6933]"
+                                                                className="w-3.5 h-3.5 rounded accent-primary"
                                                             />
                                                             <span className="text-[14px] font-serif text-themed-main truncate">
                                                                 {selectedCol === targetColumn ? (targetRawToSemantic[String(val)] || formatTargetTabLabel(String(val), targetColumn || undefined)) : val}
@@ -2001,14 +1956,14 @@ export default function UserDashboard() {
     <style>
         body { background-color: #0e1015; color: #f3f4f6; font-family: 'Inter', sans-serif; margin: 0; }
         .glass-panel { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .accent-bar { width: 3px; height: 24px; background-color: #FF6933; }
+        .accent-bar { width: 3px; height: 24px; background-color: #6C63FF; }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-6">
     <div class="w-full max-w-4xl glass-panel p-8 rounded-xl shadow-2xl">
         <div class="flex items-center gap-3 mb-8">
             <div class="accent-bar"></div>
-            <h1 class="text-2xl font-light tracking-tight uppercase text-[#FF6933] font-['Outfit']">${safeTitle}</h1>
+            <h1 class="text-2xl font-light tracking-tight uppercase text-[#6C63FF] font-['Outfit']">${safeTitle}</h1>
         </div>
         
         <div id="vizzyChart" style="width: 100%; height: 500px;" class="rounded-lg overflow-hidden border border-white/5"></div>
@@ -2028,7 +1983,7 @@ export default function UserDashboard() {
       function drawRegionsMap() {
         var data = google.visualization.arrayToDataTable(${safeJSON(mapData)});
         var options = {
-            colorAxis: {colors: ['#2A2D35', '#FF6933']},
+            colorAxis: {colors: ['#2A2D35', '#6C63FF']},
             backgroundColor: 'transparent',
             datalessRegionColor: '#16181D',
             defaultColor: '#1a1d24',
@@ -2071,8 +2026,8 @@ export default function UserDashboard() {
                         {
                             label: ${safeJSON(chart.title || 'Scatter')},
                             data: ${safeJSON(data.map((d: any) => ({ x: Number(d.x) || 0, y: Number(d.y) || 0 })))},
-                            backgroundColor: '#FF6933',
-                            borderColor: '#FF6933',
+                            backgroundColor: '#6C63FF',
+                            borderColor: '#6C63FF',
                             pointRadius: 6,
                             pointHoverRadius: 8
                         }
@@ -2091,8 +2046,8 @@ export default function UserDashboard() {
                         key: 'value',
                         groups: [${safeJSON(labelKey)}],
                         backgroundColor: (ctx) => {
-                            const colors = ["#FF6933", "#FF8B5B", "#FFAE83", "#FFD0AB", "#FFB199", "#FF9270"];
-                            return colors[ctx.dataIndex % colors.length] || '#FF6933';
+                            const colors = ${JSON.stringify(CHART_COLORS)};
+                            return colors[ctx.dataIndex % colors.length] || '#6C63FF';
                         },
                         labels: { display: true, color: '#0e1015', font: { family: 'Inter', weight: 600 } },
                         borderWidth: 1,
@@ -2100,7 +2055,7 @@ export default function UserDashboard() {
                     }]`;
                 } else if (currentType === 'stacked_bar' || currentType === 'stacked') {
                     const categories = chart.categories || ['positive', 'negative'];
-                    const colors = ['#FF6933', '#CC5429', '#E6A23C', '#F56C6C', '#67C23A'];
+                    const colors = CHART_COLORS;
                     const ds = categories.map((cat: string, i: number) => ({
                         label: cat,
                         data: data.map((d: any) => Number(d[cat]) || 0),
@@ -2123,10 +2078,10 @@ export default function UserDashboard() {
                     const isPie = ['pie', 'doughnut'].includes(chartJsType);
 
                     let bgStr = isPie
-                        ? '["#FF6933", "#FF8B5B", "#FFAE83", "#FFD0AB", "#FFF2D3", "#FFB199", "#FF9270"]'
-                        : (isRadar ? '"rgba(255, 105, 51, 0.4)"' : '"rgba(255, 105, 51, 0.8)"');
+                        ? JSON.stringify(CHART_COLORS)
+                        : (isRadar ? '"rgba(108, 99, 255, 0.4)"' : '"rgba(108, 99, 255, 0.8)"');
 
-                    let borderColorStr = isPie ? '"#0e1015"' : '"#FF6933"';
+                    let borderColorStr = isPie ? '"#0e1015"' : `"${CHART_COLORS[0]}"`;
                     let fillStr = (currentType === 'area' || isRadar) ? 'true' : 'false';
 
                     datasetsStr = `[{
@@ -2173,7 +2128,7 @@ export default function UserDashboard() {
     <style>
         body { background-color: #0e1015; color: #f3f4f6; font-family: 'Inter', sans-serif; margin:0; padding:0; }
         .glass-panel { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .accent-bar { width: 3px; height: 24px; background-color: #FF6933; }
+        .accent-bar { width: 3px; height: 24px; background-color: #6C63FF; }
         canvas { width: 100% !important; height: 100% !important; max-height: 500px; }
     </style>
 </head>
@@ -2181,7 +2136,7 @@ export default function UserDashboard() {
     <div class="w-full max-w-4xl glass-panel p-8 rounded-xl shadow-2xl">
         <div class="flex items-center gap-3 mb-8">
             <div class="accent-bar"></div>
-            <h1 class="text-2xl font-light tracking-tight uppercase text-[#FF6933] font-['Outfit']">${safeTitle}</h1>
+            <h1 class="text-2xl font-light tracking-tight uppercase text-[#6C63FF] font-['Outfit']">${safeTitle}</h1>
         </div>
         
         <div class="relative w-full overflow-hidden" style="height: 500px;">
@@ -2228,7 +2183,7 @@ export default function UserDashboard() {
                             },
                             tooltip: {
                                 backgroundColor: '#16181D',
-                                titleColor: '#FF6933',
+                                titleColor: '#6C63FF',
                                 bodyColor: '#fff',
                                 borderColor: 'rgba(255,255,255,0.1)',
                                 borderWidth: 1,
@@ -2284,56 +2239,52 @@ export default function UserDashboard() {
                     <select
                         value={currentAgg === 'avg' ? 'mean' : currentAgg}
                         onChange={(e) => setChartOverride(chart.id, { aggregation: e.target.value })}
-                        className="text-[12px] font-serif px-2 py-1 rounded-sm border border-border-main outline-none transition-colors bg-bg-card dark:bg-black/50 text-themed-muted hover:border-primary/40 focus:border-primary cursor-pointer"
+                        className="text-[12px] font-sans px-2 py-1 rounded-lg border border-transparent outline-none transition-colors bg-surface-container-low dark:bg-white/5 text-on-surface-variant hover:bg-surface-container cursor-pointer"
                         title="Aggregation Method"
                     >
-                        <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="sum">Sum</option>
-                        <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="mean">Average</option>
+                        <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="sum">Sum</option>
+                        <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="mean">Average</option>
                     </select>
                 )}
                 <select
                     value={currentType}
                     onChange={(e) => setChartOverride(chart.id, { type: e.target.value })}
-                    className="text-[12px] font-serif px-2 py-1 rounded-sm border border-border-main outline-none transition-colors bg-bg-card dark:bg-black/50 text-themed-main hover:border-primary/40 focus:border-primary cursor-pointer"
+                    className="text-[12px] font-sans px-2 py-1 rounded-lg border border-transparent outline-none transition-colors bg-surface-container-low dark:bg-white/5 text-on-surface-variant hover:bg-surface-container cursor-pointer"
                     title="Chart Type"
                 >
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="bar">Bar</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="hbar">H-Bar</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="line">Line</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="area">Area</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="pie">Pie</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="donut">Donut</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="scatter">Scatter</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="treemap">Treemap</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="radar">Radar</option>
-                    <option className="bg-bg-card dark:bg-[#16181D] text-themed-main" value="geo_map">Map</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="bar">Bar</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="hbar">H-Bar</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="line">Line</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="area">Area</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="pie">Pie</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="donut">Donut</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="scatter">Scatter</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="treemap">Treemap</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="radar">Radar</option>
+                    <option className="bg-surface-container-lowest dark:bg-[#16181D] text-on-surface" value="geo_map">Map</option>
                 </select>
-                <Button
+                <button
                     type="button"
                     onClick={() => exportChartCSV(chart)}
-                    className="p-1.5 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-bg-card dark:bg-black/50"
+                    className="flex p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"
                     title="Export CSV"
-                    variant="ghost"
-                    size="icon"
                 >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                </Button>
-                <Button
+                    <span className="material-symbols-outlined text-sm text-on-surface-variant">download</span>
+                </button>
+                <button
                     type="button"
                     onClick={() => exportChartHTML(chart)}
-                    className="p-1.5 rounded-sm border border-border-main text-themed-muted hover:text-primary hover:border-primary/40 transition-colors bg-bg-card dark:bg-black/50"
+                    className="flex p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"
                     title="Export Interactive HTML"
-                    variant="ghost"
-                    size="icon"
                 >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-                </Button>
+                    <span className="material-symbols-outlined text-sm text-on-surface-variant">ios_share</span>
+                </button>
             </div>
         );
     };
 
     return (
-        <div id="dashboard-root" className="min-h-screen bg-bg-main text-themed-main font-display antialiased selection:bg-primary selection:text-black relative">
+        <div id="dashboard-root" className="min-h-screen bg-bg-main text-themed-main font-display antialiased selection:bg-primary selection:text-white relative">
             <div className="grain-overlay z-0"></div>
             <div className="flex flex-col min-h-screen relative z-10">
 
@@ -2373,7 +2324,7 @@ export default function UserDashboard() {
                         <SettingsDropdown />
 
                         {/* Avatar */}
-                        <div className="w-9 h-9 rounded-sm bg-primary border-b-2 border-[#b5461c] flex items-center justify-center text-black text-xs font-bold shadow-md flex-shrink-0">
+                        <div className="w-9 h-9 rounded-sm bg-primary border-b-2 border-[#4f46e5] flex items-center justify-center text-white text-xs font-bold shadow-md flex-shrink-0">
                             VX
                         </div>
                     </div>
@@ -2429,7 +2380,7 @@ export default function UserDashboard() {
                                 type="button"
                                 onClick={() => setTargetValue('all')}
                                 className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === 'all'
-                                    ? 'bg-primary text-black shadow-md shadow-primary/20'
+                                    ? 'bg-primary text-white shadow-md shadow-primary/20'
                                     : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
                                 variant="ghost"
                             >
@@ -2443,7 +2394,7 @@ export default function UserDashboard() {
                                     key={val}
                                     onClick={() => setTargetValue(val)}
                                     className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === val
-                                        ? 'bg-primary text-black shadow-md shadow-primary/20'
+                                        ? 'bg-primary text-white shadow-md shadow-primary/20'
                                         : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
                                     variant="ghost"
                                 >
@@ -2548,7 +2499,7 @@ export default function UserDashboard() {
                                         Data Quality Report ({analytics.data_quality.filter(d => d.null_pct > 0).length} columns with nulls)
                                     </Button>
                                     {dataQualityOpen && (
-                                        <div className="glass-panel rounded-sm p-4 overflow-x-auto">
+                                        <div className="bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl p-4 overflow-x-auto">
                                             <table className="w-full text-xs font-mono">
                                                 <thead>
                                                     <tr className="text-themed-muted border-b border-border-main">
@@ -2585,7 +2536,7 @@ export default function UserDashboard() {
                             )}
 
                             {/* Insight Narrative Card */}
-                            <div className="mb-6 glass-panel rounded-sm p-5 border-l-2 border-primary">
+                            <div className="mb-6 bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl p-5 border-l-4 border-l-primary">
                                 <div className="flex items-center gap-2 mb-3">
                                     <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -2614,13 +2565,12 @@ export default function UserDashboard() {
 
                             {/* KPI Grid — Dynamic Columns */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] xl:grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-5 mb-7">
-                                {kpiEntries.map(([key, kpi], i) => (
+                                {kpiEntries.map(([key, kpi]) => (
                                     <KPICard
                                         key={key}
                                         title={kpi.title}
                                         value={isKPILoading ? "..." : formatValue(kpi.value, kpi.format)}
                                         icon={kpi.icon || 'default'}
-                                        index={i}
                                         trend={kpi.trend}
                                         trend_label={kpi.trend_label}
                                         subtitle={(Object.values(active_filters).some(f => f.length > 0) || target_value !== 'all') ? "Filtered View" : kpi.subtitle}

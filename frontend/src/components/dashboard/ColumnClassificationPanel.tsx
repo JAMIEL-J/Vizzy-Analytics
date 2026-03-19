@@ -37,7 +37,7 @@ export const ColumnClassificationPanel: React.FC<ColumnClassificationPanelProps>
     allCols.sort((a, b) => a.name.localeCompare(b.name));
 
     return (
-        <div className="mb-6 rounded-sm border border-border-main overflow-hidden glass-panel relative z-10">
+        <div className="mb-6 rounded-xl border border-transparent dark:border-white/5 overflow-hidden bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md relative z-10">
             <Button
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}

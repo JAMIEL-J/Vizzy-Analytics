@@ -8,6 +8,7 @@ import {
 } from "react-simple-maps";
 import { scaleLinear } from "d3-scale";
 import { Button } from '@/components/ui/button';
+import { VIZZY_THEME } from '../../theme/tokens';
 
 // ─── TopoJSON Sources ─────────────────────────────────────────────────────────
 const GEO_URLS = {
@@ -98,11 +99,11 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
         data.length > 0 ? Math.max(...data.map(d => d.value)) : 1,
         [data]);
 
-    // Choropleth scale: dark base → orange primary
+    // Choropleth scale: dark base → indigo primary
     const colorScale = useMemo(() =>
         scaleLinear<string>()
             .domain([0, maxValue * 0.1, maxValue])
-            .range(isDark ? ["#111111", "#cc5429", "#ff6933"] : ["#f1f5f9", "#ffa17a", "#ff6933"])
+            .range(isDark ? ["#111318", VIZZY_THEME.primaryDark, VIZZY_THEME.primary] : ["#f1f3ff", "#9f99ff", VIZZY_THEME.primary])
             .clamp(true),
         [maxValue, isDark]);
 
@@ -166,7 +167,7 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
     const matchedCount = useMemo(() => [...dataLookup.keys()].length, [dataLookup]);
 
     return (
-        <div className="relative w-full h-[220px] overflow-hidden rounded-sm glass-panel border border-border-main shadow-[0_0_15px_rgba(255,105,51,0.05)] transition-colors duration-300">
+        <div className="relative w-full h-[220px] overflow-hidden rounded-xl bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 shadow-sm dark:shadow-none transition-colors duration-300">
             {/* Top badge */}
             <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-bg-card/50 dark:bg-black/50 backdrop-blur-md px-2 py-0.5 border border-border-main rounded-sm shadow-sm transition-colors">
                 <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,14 +214,14 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
                                                 transition: "fill 0.2s ease, stroke 0.2s ease",
                                             },
                                             hover: {
-                                                fill: d ? "#ff6933" : (isDark ? "#2a2a2a" : "#e2e8f0"),
+                                                fill: d ? VIZZY_THEME.primary : (isDark ? "#2a2a2a" : "#e2e8f0"),
                                                 outline: "none",
-                                                stroke: isDark ? "#ffffff30" : "#ff6933",
+                                                stroke: isDark ? "#ffffff30" : VIZZY_THEME.primary,
                                                 strokeWidth: 0.5,
                                                 cursor: "pointer",
                                             },
                                             pressed: {
-                                                fill: "#cc5429",
+                                                fill: VIZZY_THEME.primaryDark,
                                                 outline: "none",
                                             }
                                         }}
@@ -253,7 +254,7 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
                             tooltipContent.multiMetrics.map((m, idx) => (
                                 <div key={m.label} className="flex items-center justify-between gap-6">
                                     <div className="flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full inline-block ${idx === 0 ? 'bg-[#818CF8]' : idx === 1 ? 'bg-[#F472B6]' : 'bg-[#34D399]'}`} />
+                                        <span className={`w-2 h-2 rounded-full inline-block ${idx === 0 ? 'bg-[#818CF8]' : idx === 1 ? 'bg-[#00D4AA]' : 'bg-[#8BE6D1]'}`} />
                                         <span className="text-xs opacity-70 whitespace-nowrap">{m.label}:</span>
                                     </div>
                                     <span className="text-sm font-bold tabular-nums">{m.formatted}</span>
@@ -280,8 +281,8 @@ const GeoMapCard: React.FC<GeoMapCardProps> = ({ data, mapType = 'world', chartT
                 <span className="text-[8px] text-themed-muted uppercase tracking-widest">Low</span>
                 <div className="w-14 h-1 rounded-sm opacity-80" style={{
                     background: isDark 
-                        ? 'linear-gradient(to right, #111111, #cc5429, #ff6933)'
-                        : 'linear-gradient(to right, #f1f5f9, #ffa17a, #ff6933)'
+                        ? `linear-gradient(to right, #111318, ${VIZZY_THEME.primaryDark}, ${VIZZY_THEME.primary})`
+                        : `linear-gradient(to right, #f1f3ff, #9f99ff, ${VIZZY_THEME.primary})`
                 }} />
                 <span className="text-[8px] text-primary font-bold transition-colors uppercase tracking-widest">Peak</span>
             </div>

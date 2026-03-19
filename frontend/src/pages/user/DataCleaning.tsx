@@ -5,7 +5,6 @@ import type { InspectionReport } from '../../services/cleaningService';
 import { HealthDashboard } from '../../components/cleaning/HealthDashboard';
 import { RecommendationList } from '../../components/cleaning/RecommendationList';
 import { toast } from 'react-hot-toast';
-import { Button } from '@/components/ui/button';
 
 export default function DataCleaning() {
     const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -34,10 +33,6 @@ export default function DataCleaning() {
         try {
             const data = await datasetService.listDatasets();
             setDatasets(data);
-            if (data.length > 0) {
-                // Determine which dataset to select initially? Maybe none to let user choose.
-                // setSelectedDatasetId(data[0].id);
-            }
         } catch (error) {
             console.error('Failed to load datasets:', error);
             toast.error('Failed to load datasets');
@@ -45,20 +40,17 @@ export default function DataCleaning() {
     };
 
     const loadInspection = async (id: string, forceRescan = false) => {
-        // Find the dataset to get the current version ID
         const dataset = datasets.find(d => d.id === id);
         if (!dataset || !dataset.current_version_id) {
             console.error('Dataset or version not found for ID:', id);
-            // Optionally toast or set error state
             return;
         }
 
         const versionId = dataset.current_version_id;
-
         setIsLoading(true);
         setInspection(null);
+        
         try {
-            // First try to get existing inspection
             if (!forceRescan) {
                 try {
                     const existing = await cleaningService.getInspection(versionId);
@@ -66,11 +58,10 @@ export default function DataCleaning() {
                     setIsLoading(false);
                     return;
                 } catch (e) {
-                    // If 404, flow to runInspection
+                    // Flow to runInspection
                 }
             }
 
-            // Run new inspection
             const newReport = await cleaningService.runInspection(versionId);
             setInspection(newReport);
         } catch (error) {
@@ -103,7 +94,6 @@ export default function DataCleaning() {
 
         setIsProcessing(true);
         try {
-            // 1. Construct proposed_actions from user selections
             const actions: Record<string, any> = {
                 fill_missing: [],
                 drop_rows: [],
@@ -136,32 +126,27 @@ export default function DataCleaning() {
                 }
             }
 
-            // 2. Create Plan (or fetch existing if 409)
             let plan;
             try {
                 plan = await cleaningService.createPlan(versionId, actions);
             } catch (err: any) {
                 if (err?.response?.status === 409) {
-                    // Plan already exists — fetch it
                     plan = await cleaningService.getPlan(versionId);
                 } else {
                     throw err;
                 }
             }
 
-            // 3. Approve Plan (skip if already approved)
             if (!plan.approved) {
                 plan = await cleaningService.approvePlan(versionId, plan.id);
             }
 
-            // 4. Execute Plan (apply fixes and save cleaned data)
             const result = await cleaningService.executePlan(versionId, plan.id);
 
             toast.success(
                 `Cleaned successfully! ${result.rows_before} → ${result.rows_after} rows`
             );
 
-            // 5. Refresh to show updated state
             window.location.reload();
 
         } catch (error) {
@@ -173,73 +158,82 @@ export default function DataCleaning() {
     };
 
     return (
-        <div className="flex-1 overflow-y-auto p-8 text-themed-main font-display antialiased relative selection:bg-primary selection:text-black h-full">
-            <div className="grain-overlay z-0"></div>
-            <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">
-                <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                        <div className="w-10 h-10 border border-primary/20 bg-primary/5 text-primary rounded-sm flex items-center justify-center shadow-[0_0_15px_rgba(255,105,51,0.1)]">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.691.31a2 2 0 01-1.611 0l-.691-.31a6 6 0 00-3.86-.517l-2.387.477a2 2 0 00-1.022.547l-.34.34a2 2 0 000 2.828l1.245 1.245A2 2 0 004.547 21H19.45a2 2 0 001.042-.293l1.245-1.245a2 2 0 000-2.828l-.34-.34z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative selection:bg-primary selection:text-white">
+            <div className="flex-1 overflow-y-auto p-8 pb-32 bg-background">
+                <div className="max-w-7xl mx-auto space-y-8">
+                    
+                    {/* Header Controls */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-surface-container-lowest dark:bg-surface rounded-xl p-6 shadow-sm border border-outline-variant/10 dark:border-outline-variant">
+                        <div>
+                            <h2 className="text-xl font-bold text-on-surface font-headline flex items-center gap-3">
+                                <span className="material-symbols-outlined text-primary text-2xl">cleaning_services</span>
+                                Data Cleaning Studio
+                            </h2>
+                            <p className="text-on-surface-variant text-sm mt-1">Select a dataset to analyze integrity and implement automated corrections.</p>
                         </div>
-                        <h1 className="text-2xl font-light uppercase tracking-widest text-themed-main">Data Cleaning Studio</h1>
+                        <div className="flex items-center gap-3 w-full md:w-auto">
+                            <div className="relative flex-1 md:w-64">
+                                <select
+                                    value={selectedDatasetId}
+                                    onChange={(e) => setSelectedDatasetId(e.target.value)}
+                                    className="w-full pl-10 pr-10 py-2.5 bg-surface-container-low dark:bg-surface-container border border-outline-variant/50 dark:border-outline-variant rounded-lg text-sm text-on-surface focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer"
+                                    disabled={isLoading || isProcessing}
+                                >
+                                    <option value="">Select Target Dataset...</option>
+                                    {datasets.map(ds => (
+                                        <option key={ds.id} value={ds.id}>{ds.name}</option>
+                                    ))}
+                                </select>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary material-symbols-outlined text-[18px]">dataset</span>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant material-symbols-outlined text-[18px] pointer-events-none">expand_content</span>
+                            </div>
+                            {selectedDatasetId && (
+                                <button
+                                    onClick={() => loadInspection(selectedDatasetId, true)}
+                                    disabled={isLoading || isProcessing}
+                                    className="px-4 py-2.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+                                >
+                                    <span className={`material-symbols-outlined text-[18px] ${isLoading ? 'animate-spin' : ''}`}>sync</span>
+                                    {isLoading ? 'Scanning...' : 'Rescan'}
+                                </button>
+                            )}
+                        </div>
                     </div>
-                    <p className="text-themed-muted font-mono text-xs tracking-wider mt-1">Analyze dataset integrity and implement automated corrections.</p>
-                </div>
 
-                <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
-                    <div className="relative w-full sm:w-64 group">
-                        <select
-                            value={selectedDatasetId}
-                            onChange={(e) => setSelectedDatasetId(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 bg-black/50 border border-border-main rounded-sm font-mono text-sm tracking-widest uppercase text-themed-main appearance-none focus:border-primary/50 outline-none transition-all cursor-pointer shadow-sm"
-                            disabled={isLoading || isProcessing}
-                        >
-                            <option value="">Select Target Dataset</option>
-                            {datasets.map(ds => (
-                                <option key={ds.id} value={ds.id}>{ds.name}</option>
-                            ))}
-                        </select>
-                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-primary">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2 2 2 2 2h12s2 0 2-2V7s0-2-2-2H6C4 5 4 7 4 7z M4 11h16 M4 15h16"></path></svg>
+                    {!selectedDatasetId ? (
+                        <div className="py-24 text-center border-2 border-dashed border-outline-variant/30 dark:border-outline-variant rounded-2xl bg-surface-container-low/30 dark:bg-surface/50">
+                            <span className="material-symbols-outlined text-5xl text-outline-variant mb-4">analytics</span>
+                            <h3 className="text-lg font-bold text-on-surface font-headline mb-2">No Dataset Selected</h3>
+                            <p className="text-on-surface-variant text-sm max-w-sm mx-auto">Please choose a dataset from the dropdown above to run a quality inspection and view automated cleaning recommendations.</p>
                         </div>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-primary pointer-events-none">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </div>
-                    </div>
-
-                    {selectedDatasetId && (
-                        <Button
-                            type="button"
-                            onClick={() => loadInspection(selectedDatasetId, true)}
-                            className="w-full sm:w-auto px-6 py-3 obsidian-card font-mono text-xs uppercase tracking-widest text-primary font-bold hover:bg-primary/90 hover:text-black transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,105,51,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={isLoading || isProcessing}
-                            variant="ghost"
-                        >
-                            <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                            Refresh Analysis
-                        </Button>
-                    )}
-                </div>
-            </header>
-
-            {selectedDatasetId ? (
-                <div className="relative z-10 w-full">
-                    {isLoading ? (
-                        <div className="flex flex-col items-center justify-center py-20 text-themed-muted">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-                            <p className="font-mono text-xs tracking-widest uppercase">Analyzing dataset quality...</p>
+                    ) : isLoading ? (
+                        <div className="py-24 text-center">
+                            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+                            <p className="text-on-surface-variant font-medium">Running deep quality inspection...</p>
                         </div>
                     ) : inspection ? (
-                        <div className="animate-fade-in-up w-full max-w-7xl mx-auto">
-                            {/* Health Dashboard */}
-                            <HealthDashboard
-                                healthScore={inspection.issues_detected?.health_score || 100}
-                                riskLevel={inspection.risk_level}
-                            />
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fade-in-up">
+                            {/* Health Dashboard (Left Panel) */}
+                            <div className="lg:col-span-5 space-y-8">
+                                <HealthDashboard
+                                    healthScore={inspection.issues_detected?.health_score || 100}
+                                    riskLevel={inspection.risk_level}
+                                    issues={inspection.issues_detected || {}}
+                                />
 
-                            {/* Recommendations */}
-                            <div className="mb-6 w-full">
-                                <h2 className="text-lg font-light tracking-widest uppercase text-themed-main mb-4">Detected Issues & Recommendations</h2>
+                                <section className="bg-surface-container-low dark:bg-surface-container rounded-xl p-6 border border-outline-variant/10 dark:border-outline-variant">
+                                    <h4 className="text-sm font-bold font-headline mb-4 flex items-center gap-2 text-on-surface">
+                                        <span className="material-symbols-outlined text-primary text-lg" data-icon="info">info</span>
+                                        Curator Insights
+                                    </h4>
+                                    <p className="text-sm text-on-surface-variant leading-relaxed">
+                                        Automated scan found potential quality regressions. We've listed tailored optimization strategies in the recommendations panel to restore data integrity.
+                                    </p>
+                                </section>
+                            </div>
+
+                            {/* Recommendations (Right Panel) */}
+                            <div className="lg:col-span-7 space-y-4">
                                 <RecommendationList
                                     recommendations={inspection.issues_detected?.recommendations || []}
                                     onSelectionChange={(ids, strategies) => {
@@ -248,63 +242,58 @@ export default function DataCleaning() {
                                     }}
                                 />
                             </div>
-
-                            {/* Actions Sticky Bar */}
-                            {(inspection.issues_detected?.recommendations?.length || 0) > 0 && (
-                                <div className="sticky bottom-0 left-0 right-0 p-6 glass-panel border-t border-border-main flex justify-end items-center gap-4 z-20 -mx-8 -mb-8 mt-12 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] transition-colors">
-                                    <div className="flex flex-col items-end mr-4">
-                                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-themed-muted">Selected Actions</span>
-                                        <span className="text-themed-main font-mono text-xs">{selectedRecIds.length} recommendations</span>
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        onClick={handleExecuteCleaning}
-                                        disabled={isProcessing || selectedRecIds.length === 0}
-                                        className={`px-10 py-3.5 rounded-sm font-mono text-xs uppercase tracking-widest font-bold text-black transition-colors flex items-center gap-3 ${isProcessing || selectedRecIds.length === 0
-                                            ? 'bg-gray-700 cursor-not-allowed text-themed-muted'
-                                            : 'bg-primary hover:bg-primary/90 shadow-[0_0_15px_rgba(255,105,51,0.2)]'
-                                            }`}
-                                    >
-                                        {isProcessing ? (
-                                            <>
-                                                <svg className="animate-spin h-5 w-5 text-current" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                                <span>Executing...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"></path></svg>
-                                                <span>Apply {selectedRecIds.length} Corrections</span>
-                                            </>
-                                        )}
-                                    </Button>
-                                </div>
-                            )}
                         </div>
                     ) : (
-                        <div className="bg-red-500/10 p-6 rounded-sm border border-red-500/20 text-center font-mono text-xs tracking-widest text-red-500">
-                            Failed to load inspection results. Please try re-scanning.
+                        <div className="py-12 text-center text-error bg-error-container/20 rounded-xl border border-error/30">
+                            Failed to load inspection results.
                         </div>
                     )}
                 </div>
-            ) : (
-                <div className="relative z-10 text-center py-20 bg-black/50 rounded-sm border border-dashed border-white/20 text-themed-muted transition-colors w-full">
-                    <svg className="w-12 h-12 mx-auto mb-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <p className="font-mono text-xs uppercase tracking-widest text-themed-muted">Select a dataset to begin cleaning</p>
+            </div>
+
+            {/* Sticky Execution Bar */}
+            {inspection && (inspection.issues_detected?.recommendations?.length || 0) > 0 && (
+                <div className="fixed bottom-8 left-0 lg:left-64 right-8 z-50 pointer-events-none">
+                    <div className="max-w-7xl mx-auto flex justify-center">
+                        <div className="bg-inverse-surface dark:bg-surface-container-high text-inverse-on-surface dark:text-on-surface px-6 py-4 rounded-2xl shadow-2xl flex flex-col md:flex-row items-center gap-4 md:gap-8 pointer-events-auto border border-white/10 dark:border-outline-variant backdrop-blur-md">
+                            <div className="flex items-center gap-4">
+                                <div className="flex -space-x-2">
+                                    <div className="w-8 h-8 rounded-full bg-primary border-2 border-inverse-surface dark:border-surface-container-high flex items-center justify-center text-[10px] font-bold text-white z-10">
+                                        {selectedRecIds.length}
+                                    </div>
+                                    <div className="w-8 h-8 rounded-full bg-surface-container border-2 border-inverse-surface dark:border-surface-container-high flex items-center justify-center text-[10px] font-bold text-on-surface-variant">
+                                        {inspection.issues_detected?.recommendations?.length || 0}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-inverse-on-surface dark:text-on-surface">{selectedRecIds.length} Issues Selected</p>
+                                    <p className="text-[10px] opacity-70 uppercase font-medium">Ready to optimize dataset</p>
+                                </div>
+                            </div>
+                            <div className="hidden md:block h-8 w-px bg-white/10 dark:bg-outline-variant"></div>
+                            <div className="flex items-center gap-3 w-full md:w-auto">
+                                <button 
+                                    className="flex-1 md:flex-none px-4 py-2 text-sm font-bold hover:bg-white/5 dark:hover:bg-surface-variant rounded-xl transition-colors uppercase tracking-wide text-inverse-on-surface dark:text-on-surface"
+                                    onClick={() => setSelectedRecIds([])}
+                                    disabled={selectedRecIds.length === 0}
+                                >
+                                    Clear
+                                </button>
+                                <button 
+                                    className="flex-1 md:flex-none bg-primary hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20 uppercase tracking-wide"
+                                    onClick={handleExecuteCleaning}
+                                    disabled={isProcessing || selectedRecIds.length === 0}
+                                >
+                                    {isProcessing ? 'Executing...' : 'Apply Corrections'}
+                                    <span className={`material-symbols-outlined text-sm ${isProcessing ? 'animate-spin' : ''}`} data-icon="auto_fix_high">
+                                        {isProcessing ? 'sync' : 'auto_fix_high'}
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
-        </div>
+        </main>
     );
 }
-
-// Add simple style if not present
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes fade-in-up {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .animate-fade-in-up {
-    animation: fade-in-up 0.5s ease-out forwards;
-  }
-`;
-document.head.appendChild(style);

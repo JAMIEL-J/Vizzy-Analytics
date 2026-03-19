@@ -31,7 +31,7 @@ export const KPICard: React.FC<KPICardProps> = ({
         : value;
 
     const containerClasses = variant === 'default'
-        ? "obsidian-card rounded-sm p-6 border border-white/5 shadow-[0_0_20px_rgba(255,105,51,0.02)] min-w-[200px] flex flex-col justify-between h-full relative overflow-hidden group hover:border-primary/30 transition-all duration-300"
+        ? "bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md rounded-xl p-6 border border-transparent dark:border-white/5 shadow-sm dark:shadow-none min-w-[200px] flex flex-col justify-between h-full relative overflow-hidden group transition-all duration-300"
         : "flex flex-col justify-between h-full relative overflow-hidden group"; // Minimal: no border/shadow/bg/padding (handled by parent)
 
     return (
