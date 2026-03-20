@@ -1,6 +1,7 @@
 // User types
 export interface User {
     id: string;
+    name?: string;
     email: string;
     role: 'USER' | 'ADMIN';
     is_active: boolean;
@@ -57,6 +58,7 @@ export interface LoginRequest {
 }
 
 export interface RegisterRequest {
+    name: string;
     email: string;
     password: string;
 }

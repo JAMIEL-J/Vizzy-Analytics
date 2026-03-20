@@ -27,6 +27,8 @@ logger = get_logger(__name__)
 
 class LLMProvider(str, Enum):
     """Available LLM providers."""
+    GROQ_DASHBOARD_NARRATIVE = "groq_dashboard_narrative"
+    GROQ_CHAT_INSIGHT = "groq_chat_insight"
     GROQ_NARRATIVE = "groq_narrative"
     GROQ_CHAT = "groq_chat"
 
@@ -99,7 +101,9 @@ class LLMClient:
         Send completion request using Groq with internal fallback based on purpose.
         
         Purpose 'sql' or 'chat' uses Account 2 (Kimi K2).
-        Purpose 'narrative' (default) uses Account 1 (Llama 3.3).
+        Purpose 'dashboard_narrative' uses the dashboard Llama config.
+        Purpose 'chat_insight' uses the chat-insight Llama config.
+        Purpose 'narrative' (default) maps to dashboard narrative for backward compatibility.
         """
         temp = temperature if temperature is not None else self.settings.temperature
         tokens = max_tokens if max_tokens is not None else self.settings.max_tokens
@@ -108,13 +112,19 @@ class LLMClient:
             # SQL Priority: Kimi K2 -> Llama 3.3 (Fallback)
             providers = [
                 (LLMProvider.GROQ_CHAT, self._call_groq_chat),
-                (LLMProvider.GROQ_NARRATIVE, self._call_groq_narrative),
+                (LLMProvider.GROQ_DASHBOARD_NARRATIVE, self._call_groq_dashboard_narrative),
+            ]
+        elif purpose == "chat_insight":
+            # Chat insight priority: dedicated chat-insight Llama -> dashboard Llama (Fallback)
+            providers = [
+                (LLMProvider.GROQ_CHAT_INSIGHT, self._call_groq_chat_insight),
+                (LLMProvider.GROQ_DASHBOARD_NARRATIVE, self._call_groq_dashboard_narrative),
             ]
         else:
-            # Narrative Priority: Llama 3.3 -> Kimi K2 (Fallback)
+            # Dashboard narrative priority: dashboard Llama -> chat-insight Llama (Fallback)
             providers = [
-                (LLMProvider.GROQ_NARRATIVE, self._call_groq_narrative),
-                (LLMProvider.GROQ_CHAT, self._call_groq_chat),
+                (LLMProvider.GROQ_DASHBOARD_NARRATIVE, self._call_groq_dashboard_narrative),
+                (LLMProvider.GROQ_CHAT_INSIGHT, self._call_groq_chat_insight),
             ]
 
         last_error: Optional[Exception] = None
@@ -182,14 +192,33 @@ class LLMClient:
             usage=data.get("usage"),
         )
 
-    async def _call_groq_narrative(self, **kwargs) -> LLMResponse:
-        """Call Account 1 (Llama)."""
+    async def _call_groq_dashboard_narrative(self, **kwargs) -> LLMResponse:
+        """Call the dashboard narrative Llama config."""
+        dashboard_key = self.settings.groq_dashboard_api_key.get_secret_value()
+        final_key = dashboard_key if dashboard_key else self.settings.groq_api_key.get_secret_value()
+
         return await self._call_groq_internal(
-            api_key_str=self.settings.groq_api_key.get_secret_value(),
-            model=self.settings.groq_model,
-            provider=LLMProvider.GROQ_NARRATIVE,
+            api_key_str=final_key,
+            model=self.settings.groq_dashboard_model or self.settings.groq_model,
+            provider=LLMProvider.GROQ_DASHBOARD_NARRATIVE,
             **kwargs,
         )
+
+    async def _call_groq_chat_insight(self, **kwargs) -> LLMResponse:
+        """Call the chat insight Llama config."""
+        insight_key = self.settings.groq_chat_insight_api_key.get_secret_value()
+        final_key = insight_key if insight_key else self.settings.groq_api_key.get_secret_value()
+
+        return await self._call_groq_internal(
+            api_key_str=final_key,
+            model=self.settings.groq_chat_insight_model or self.settings.groq_model,
+            provider=LLMProvider.GROQ_CHAT_INSIGHT,
+            **kwargs,
+        )
+
+    async def _call_groq_narrative(self, **kwargs) -> LLMResponse:
+        """Backward-compatible alias for dashboard narrative."""
+        return await self._call_groq_dashboard_narrative(**kwargs)
 
     async def _call_groq_chat(self, **kwargs) -> LLMResponse:
         """Call Account 2 (Kimi K2)."""

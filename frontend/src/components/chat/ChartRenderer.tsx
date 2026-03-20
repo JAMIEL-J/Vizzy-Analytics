@@ -63,6 +63,14 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
     const gridColor = '#ffffff10';
     const axisColor = '#6b7280';
     const cursorFill = 'rgba(255,255,255,0.05)';
+    const STANDARD_BAR_COLOR = VIZZY_THEME.primary;
+
+    const getBarColorByIndex = (index: number, totalBars: number) => {
+        if (totalBars >= 3 && totalBars <= 5) {
+            return CHART_COLORS[index % CHART_COLORS.length];
+        }
+        return STANDARD_BAR_COLOR;
+    };
 
     // ── Explicit Formatting Hints (from Phase 1 Coercion) ──
     const columnMetadata = data.column_metadata || data.data?.column_metadata || {};
@@ -202,9 +210,9 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             tickFormatter={(value: any) => formatYAxisValue(Number(value))}
                         />
                         <Tooltip content={<CustomTooltip currency={effectiveCurrency} isCurrency={isCurrencyChart} isPercentage={isPercentage} />} cursor={{ fill: cursorFill }} />
-                        <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40}>
+                        <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40} fill={STANDARD_BAR_COLOR}>
                             {chartData.map((_: any, index: number) => (
-                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                                <Cell key={`cell-${index}`} fill={getBarColorByIndex(index, chartData.length)} />
                             ))}
                         </Bar>
                     </BarChart>

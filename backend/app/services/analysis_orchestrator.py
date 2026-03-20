@@ -146,6 +146,18 @@ def _format_number(value: float) -> str:
     return str(value)
 
 
+def _is_financial_label(text: str) -> bool:
+    """Detect labels that likely represent financial metrics."""
+    label = str(text or "").lower()
+    return any(
+        kw in label
+        for kw in [
+            "revenue", "profit", "income", "earnings", "cost", "expense",
+            "price", "charges", "payment", "budget", "fee", "sales"
+        ]
+    )
+
+
 def _extract_points_from_text(text: str, max_points: int = 8) -> List[str]:
     """Extract bullet-like points from free text deterministically."""
     raw = (text or "").strip()
@@ -180,6 +192,8 @@ def _diagnostic_points_from_results(diagnostics: List[Dict[str, Any]], max_point
         rows = diag.get("data") or []
         dim = diag.get("dimension") or "category"
         title = diag.get("title") or f"Breakdown by {dim}"
+        use_currency = _is_financial_label(title)
+        currency_symbol = "$"
         if not rows:
             continue
 
@@ -187,15 +201,33 @@ def _diagnostic_points_from_results(diagnostics: List[Dict[str, Any]], max_point
         top_dim = top.get(dim, "Unknown")
         top_val = top.get("value", 0)
         top_fmt = _format_number(float(top_val)) if isinstance(top_val, (int, float)) else str(top_val)
+        if use_currency and isinstance(top_val, (int, float)):
+            top_fmt = f"{currency_symbol}{top_fmt}"
+
+        numeric_vals = [float(r.get("value", 0)) for r in rows if isinstance(r.get("value"), (int, float))]
+        total_val = sum(numeric_vals) if numeric_vals else 0.0
+        top_share = (float(top_val) / total_val * 100.0) if total_val and isinstance(top_val, (int, float)) else None
 
         if len(rows) > 1 and isinstance(rows[1].get("value"), (int, float)) and isinstance(top_val, (int, float)):
             second = rows[1]
             second_dim = second.get(dim, "Unknown")
             second_val = second.get("value", 0)
             second_fmt = _format_number(float(second_val)) if isinstance(second_val, (int, float)) else str(second_val)
-            points.append(f"{title}: {top_dim} leads at {top_fmt}, followed by {second_dim} at {second_fmt}.")
+            if use_currency and isinstance(second_val, (int, float)):
+                second_fmt = f"{currency_symbol}{second_fmt}"
+
+            pct_diff_text = ""
+            if second_val:
+                pct_diff = ((float(top_val) - float(second_val)) / abs(float(second_val))) * 100.0
+                pct_diff_text = f", which is {pct_diff:+.1f}% vs {second_dim}"
+
+            share_text = f" and contributes {top_share:.1f}% of the shown total" if top_share is not None else ""
+            points.append(
+                f"{title}: {top_dim} leads at {top_fmt}, followed by {second_dim} at {second_fmt}{pct_diff_text}{share_text}."
+            )
         else:
-            points.append(f"{title}: {top_dim} is highest at {top_fmt}.")
+            share_text = f" and contributes {top_share:.1f}% of the shown total" if top_share is not None else ""
+            points.append(f"{title}: {top_dim} is highest at {top_fmt}{share_text}.")
 
         if len(points) >= max_points:
             break
@@ -232,7 +264,7 @@ def _format_explanation_as_points(
             if sp and sp not in points:
                 points.append(sp)
 
-    return "\n".join(f"- {p}" for p in points[:max_points])
+    return "\n\n".join(f"{idx + 1}. {p}" for idx, p in enumerate(points[:max_points]))
 
 
 def _calculate_pop_change(df: pd.DataFrame, metric: str, date_col: str) -> Optional[Dict[str, Any]]:
@@ -509,28 +541,60 @@ async def run_analysis_orchestration(
         diagnostics = battery_result.get("diagnostics", [])
 
         if diagnostics:
-            synthesis_prompt = f"""You are a senior data analyst. Based on the following diagnostic breakdowns,
-write a concise explanation answering the user's question.
+            synthesis_prompt = f"""User question: {query}
+
+Based on the following diagnostic breakdowns, write a concise explanation answering the user's question.
 
 {battery_result['synthesis_context']}
 
-Rules:
-- Start with a direct answer in the first point
-- Provide 6 to 8 points
-- Cover multiple drivers, not just one segment
-- Include at least 5 numeric facts from the diagnostics
-- CRITICAL: You MUST use proper Markdown list formatting. EVERY point MUST begin with a markdown bullet ('- ' or '1. ').
-- CRITICAL: Add a newline between each point for readability.
-- Keep each point to one clear sentence."""
+Strict output format (must follow exactly):
+1. <point one>
 
+2. <point two>
+
+3. <point three>
+
+4. <point four>
+
+5. <point five>
+
+6. <point six>
+
+Rules:
+- Return 6 to 8 numbered points.
+- Start with a direct answer in point 1.
+- Use one sentence per point.
+- Include numeric evidence in every point.
+- Cover multiple drivers, not just one segment.
+- For revenue/profit/cost values, include currency symbols.
+- Include percentages for share/change wherever possible.
+- If a percentage is not computable, explicitly state percentage not available.
+- Do not output headings, prose paragraphs, markdown bullets, or code fences.
+- Keep the response as numbered points only."""
+
+            llm_label = "Unknown"
             try:
                 llm_client = get_llm_client()
                 synthesis_response = await llm_client.complete(
-                    system_prompt="You are a data analyst writing a brief diagnostic summary.",
+                    system_prompt=(
+                        "You are a strict financial analytics formatter. "
+                        "Always return numbered points with a blank line between each point. "
+                        "Never return paragraphs. Never use bullet symbols."
+                    ),
                     user_prompt=synthesis_prompt,
                     temperature=0.0,
                     max_tokens=512,
+                    purpose="chat_insight",
                 )
+                llm_model = getattr(synthesis_response, "model", None)
+                model_name = str(llm_model or "").lower()
+                if "kimi" in model_name:
+                    llm_label = "Kimi"
+                elif "llama" in model_name:
+                    llm_label = "Llama"
+                else:
+                    llm_label = str(llm_model) if llm_model else "Unknown"
+
                 supplemental_points = _diagnostic_points_from_results(diagnostics, max_points=8)
                 synthesis_text = _format_explanation_as_points(
                     synthesis_response.content,
@@ -540,6 +604,7 @@ Rules:
                 )
             except Exception as e:
                 logger.warning(f"LLM synthesis failed: {e}")
+                llm_label = "Unavailable"
                 supplemental_points = _diagnostic_points_from_results(diagnostics, max_points=8)
                 synthesis_text = _format_explanation_as_points(
                     battery_result["synthesis_context"],

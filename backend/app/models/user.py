@@ -7,6 +7,7 @@ Restrictions: No auth logic, no password hashing, no API concerns
 """
 
 from enum import Enum
+from typing import Optional
 
 from sqlmodel import Field
 
@@ -31,6 +32,7 @@ class User(BaseModel, table=True):
         nullable=False,
         max_length=255,
     )
+    name: Optional[str] = Field(default=None, max_length=120)
     hashed_password: str = Field(nullable=False)
     role: UserRole = Field(default=UserRole.USER, nullable=False)
     is_active: bool = Field(default=True, nullable=False)

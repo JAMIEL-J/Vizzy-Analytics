@@ -18,6 +18,7 @@ export interface MonthlyActivityItem {
 export interface UserProfileStats {
     user: {
         id: string;
+        name?: string | null;
         email: string;
         role: 'user' | 'admin' | string;
         is_active: boolean;
@@ -49,6 +50,11 @@ export interface UserProfileStats {
 export const userApi = {
     getProfileStats: async () => {
         const response = await apiClient.get<UserProfileStats>('/users/me/profile');
+        return response.data;
+    },
+
+    updateMyProfile: async (payload: { name?: string; email?: string }) => {
+        const response = await apiClient.patch<UserProfileStats['user']>('/users/me', payload);
         return response.data;
     },
 };

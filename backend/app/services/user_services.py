@@ -22,6 +22,7 @@ def create_user(
     session: Session,
     email: str,
     hashed_password: str,
+    name: Optional[str] = None,
     role: UserRole = UserRole.USER,
 ) -> User:
     """
@@ -41,6 +42,7 @@ def create_user(
 
     user = User(
         email=email,
+        name=name.strip() if name else None,
         hashed_password=hashed_password,
         role=role,
         is_active=True,
@@ -53,7 +55,7 @@ def create_user(
     record_audit_event(
         event_type="USER_CREATED",
         user_id=str(user.id),
-        metadata={"email": email, "role": role.value},
+        metadata={"email": email, "name": user.name, "role": role.value},
     )
 
     return user
@@ -69,6 +71,50 @@ def get_user_by_email(
     return session.exec(
         select(User).where(User.email == email)
     ).first()
+
+
+def update_user_profile(
+    session: Session,
+    user_id: UUID,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+) -> User:
+    """Update current user profile fields (name/email)."""
+    user = session.get(User, user_id)
+    if not user:
+        raise ResourceNotFound("User", str(user_id))
+
+    if email is not None:
+        normalized_email = email.strip().lower()
+        if not normalized_email:
+            raise InvalidOperation(
+                operation="update_user_profile",
+                reason="Email cannot be empty",
+            )
+        if normalized_email != user.email:
+            existing = session.exec(select(User).where(User.email == normalized_email)).first()
+            if existing and existing.id != user.id:
+                raise InvalidOperation(
+                    operation="update_user_profile",
+                    reason="Email already registered",
+                )
+            user.email = normalized_email
+
+    if name is not None:
+        normalized_name = name.strip()
+        user.name = normalized_name or None
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    record_audit_event(
+        event_type="USER_PROFILE_UPDATED",
+        user_id=str(user.id),
+        metadata={"email": user.email, "name": user.name},
+    )
+
+    return user
 
 
 def activate_user(
@@ -419,6 +465,7 @@ def get_user_profile_stats(
         "user": {
             "id": user.id,
             "email": user.email,
+            "name": user.name,
             "role": user.role,
             "is_active": user.is_active,
             "created_at": user.created_at,

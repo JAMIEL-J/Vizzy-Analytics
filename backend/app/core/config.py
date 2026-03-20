@@ -96,10 +96,18 @@ class LLMSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Account 1: Groq (Narrative)
+    # Account 1: Groq (Dashboard narrative / executive brief)
     groq_api_key: SecretStr = Field(default=SecretStr(""))
     groq_model: str = Field(default="llama-3.3-70b-versatile")
     groq_fallback_model: str = Field(default="llama-3.1-70b-versatile")
+
+    # Account 1B: Groq (Chat insight narration - why/explain)
+    groq_chat_insight_api_key: SecretStr = Field(default=SecretStr(""))
+    groq_chat_insight_model: str = Field(default="llama-3.3-70b-versatile")
+
+    # Dedicated dashboard narration override (optional, defaults to Account 1)
+    groq_dashboard_api_key: SecretStr = Field(default=SecretStr(""))
+    groq_dashboard_model: str = Field(default="llama-3.3-70b-versatile")
 
     # Account 2: Groq (Chat/SQL - Kimi K2)
     groq_chat_api_key: SecretStr = Field(default=SecretStr(""))

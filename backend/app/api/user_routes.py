@@ -32,6 +32,7 @@ router = APIRouter()
 class UserCreateRequest(BaseModel):
     """Request schema for user registration."""
 
+    name: Optional[str] = Field(None, min_length=1, max_length=120, description="Display name")
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., min_length=8, description="User password (min 8 chars)")
     role: Optional[UserRole] = Field(
@@ -43,6 +44,7 @@ class UserCreateRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     """Request schema for updating user profile."""
 
+    name: Optional[str] = Field(None, min_length=1, max_length=120, description="Display name")
     email: Optional[EmailStr] = Field(None, description="New email address")
 
 
@@ -58,6 +60,7 @@ class UserResponse(BaseModel):
 
     id: UUID
     email: str
+    name: Optional[str] = None
     role: UserRole
     is_active: bool
 
@@ -131,6 +134,7 @@ def create_user(
 
         user = user_services.create_user(
             session=session,
+            name=request.name,
             email=request.email,
             hashed_password=hashed_password,
             role=request.role or UserRole.USER,
@@ -169,6 +173,38 @@ def get_current_user_profile(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=e.message,
+        )
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    summary="Update current user profile",
+    description="Update authenticated user's name and/or email.",
+)
+def update_current_user_profile(
+    request: UserUpdateRequest,
+    session: DBSession,
+    current_user: AuthenticatedUser,
+) -> UserResponse:
+    """Update currently authenticated user profile details."""
+    try:
+        user = user_services.update_user_profile(
+            session=session,
+            user_id=UUID(current_user.user_id),
+            name=request.name,
+            email=request.email,
+        )
+        return UserResponse.model_validate(user)
+    except ResourceNotFound as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=e.message,
+        )
+    except InvalidOperation as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=e.reason,
         )
 
 

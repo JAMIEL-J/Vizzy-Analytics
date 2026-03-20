@@ -66,13 +66,13 @@ export const chatService = {
     },
 
     // Send a message
-    sendMessage: async (sessionId: string, content: string) => {
+    sendMessage: async (sessionId: string, content: string, signal?: AbortSignal) => {
         const response = await apiClient.post<{
             user_message: ChatMessage;
             assistant_message: ChatMessage
         }>(`/chat/sessions/${sessionId}/messages`, {
             content
-        });
+        }, { signal });
         return response.data;
     }
 };

@@ -9,6 +9,7 @@ Restrictions: No business logic, no API concerns
 from pathlib import Path
 from sqlmodel import SQLModel, Session, create_engine
 from typing import Generator
+from sqlalchemy import inspect, text
 
 from app.core.config import get_settings
 
@@ -46,6 +47,48 @@ def init_db() -> None:
     In production, use Alembic migrations instead.
     """
     SQLModel.metadata.create_all(engine)
+    _ensure_users_name_column()
+
+
+def _ensure_users_name_column() -> None:
+    """Best-effort schema patch for legacy DBs missing users.name."""
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("users")}
+    if "name" in columns:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN name VARCHAR(120)"))
+
+        if settings.database.is_sqlite:
+            conn.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET name = CASE
+                        WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1)
+                        ELSE email
+                    END
+                    WHERE name IS NULL
+                    """
+                )
+            )
+        else:
+            conn.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET name = CASE
+                        WHEN position('@' in email) > 0 THEN split_part(email, '@', 1)
+                        ELSE email
+                    END
+                    WHERE name IS NULL
+                    """
+                )
+            )
 
 
 def get_session() -> Generator[Session, None, None]:

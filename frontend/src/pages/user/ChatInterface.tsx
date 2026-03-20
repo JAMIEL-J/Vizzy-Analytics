@@ -6,6 +6,7 @@ import { datasetService, type Dataset } from '../../lib/api/dataset';
 import ChartRenderer from '../../components/chat/ChartRenderer';
 import { ShiningText } from '../../components/ui/shining-text';
 import { Button } from '@/components/ui/button';
+import { AIInput } from '@/components/ui/ai-input';
 
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -28,9 +29,30 @@ const buildClarifiedQuery = (originalQuery: string, term: string, selectedColumn
     return `${source}. Use column ${selectedColumn}.`;
 };
 
+const isInsightMessage = (msg: ChatMessage) => {
+    const contentType = msg.output_data?.type;
+    return msg.intent_type === 'interpretive' || contentType === 'interpretive_text' || contentType === 'interpretive';
+};
+
+const renderInsightPoints = (content: string) => {
+    const lines = (content || '')
+        .split(/\n+/)
+        .map((line) => line.replace(/^\s*(?:-\s*|\d+[.)]\s*)/, '').trim())
+        .filter(Boolean);
+
+    return (
+        <ol className="list-decimal pl-5 space-y-3">
+            {lines.map((line, idx) => (
+                <li key={idx} className="pl-1">
+                    {line}
+                </li>
+            ))}
+        </ol>
+    );
+};
+
 export default function ChatInterface() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [inputValue, setInputValue] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [datasets, setDatasets] = useState<Dataset[]>([]);
     const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
@@ -44,6 +66,7 @@ export default function ChatInterface() {
 
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -202,16 +225,23 @@ export default function ChatInterface() {
         };
 
         setMessages(prev => [...prev, userMsg]);
-        setInputValue('');
         setIsTyping(true);
 
+        // Create new AbortController for this request
+        abortControllerRef.current = new AbortController();
+
         try {
-            const response = await chatService.sendMessage(sessionId, text);
+            const response = await chatService.sendMessage(sessionId, text, abortControllerRef.current.signal);
             setMessages(prev => {
                 const filtered = prev.filter(m => m.id !== tempId);
                 return [...filtered, response.user_message, response.assistant_message];
             });
-        } catch (error) {
+        } catch (error: any) {
+            // Don't show error if request was aborted
+            if (error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+                console.log('Request was stopped by user');
+                return;
+            }
             console.error('Failed to send message:', error);
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
@@ -221,6 +251,13 @@ export default function ChatInterface() {
                 intent_type: 'error'
             }]);
         } finally {
+            setIsTyping(false);
+        }
+    };
+
+    const handleStop = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
             setIsTyping(false);
         }
     };
@@ -407,7 +444,13 @@ export default function ChatInterface() {
                                         )}
                                         <div className={`px-5 py-4 ${msg.role === 'user' ? 'bg-primary text-white rounded-xl shadow-sm' : 'bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl text-on-surface'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
                                             <div className="text-sm leading-relaxed">
-                                                {['analysis', 'visualization', 'dashboard', 'text_query', 'clarification'].includes(msg.intent_type || '') ? (
+                                                {isInsightMessage(msg) ? (
+                                                    <div className="space-y-4 w-full">
+                                                        <div className="markdown-content text-themed-main">
+                                                            {renderInsightPoints(msg.content)}
+                                                        </div>
+                                                    </div>
+                                                ) : ['analysis', 'visualization', 'dashboard', 'text_query', 'clarification'].includes(msg.intent_type || '') ? (
                                                     <div className="space-y-4 w-full">
                                                         <div className="markdown-content text-themed-main">
                                                             <ReactMarkdown
@@ -692,47 +735,18 @@ export default function ChatInterface() {
                 {/* Input Area */}
                 <div className="bg-gradient-to-t from-bg-main via-bg-main/95 to-transparent p-6 flex-shrink-0 transition-colors duration-500 z-10 w-full relative">
                     <div className="max-w-4xl mx-auto">
-                        <div className="flex items-end space-x-3 bg-bg-card border border-border-main rounded-2xl p-2 pl-4">
-                            <div className="flex-1">
-                                <textarea
-                                    value={inputValue}
-                                    onChange={(e) => setInputValue(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleSendMessage(inputValue);
-                                        }
-                                    }}
-                                    rows={1}
-                                    placeholder="TYPE YOUR QUERY [ENTER]"
-                                    disabled={!selectedDatasetId}
-                                    className="w-full py-3 bg-transparent font-body text-sm tracking-wide text-themed-main placeholder:text-themed-muted focus:border-primary/50 resize-none outline-none disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                                ></textarea>
-                            </div>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="text-themed-muted hover:text-primary transition-colors"
-                            >
-                                <span className="material-symbols-outlined text-[18px] leading-none">attach_file</span>
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="text-themed-muted hover:text-primary transition-colors"
-                            >
-                                <span className="material-symbols-outlined text-[18px] leading-none">mic</span>
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={() => handleSendMessage(inputValue)}
-                                disabled={!inputValue.trim() || isTyping || !selectedDatasetId}
-                                className="w-12 h-12 bg-primary text-white rounded-xl flex items-center justify-center shadow-md hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <span className="material-symbols-outlined text-[18px] leading-none">send</span>
-                            </Button>
+                        <div className="px-2">
+                            <AIInput
+                                id="chat-analytics-input"
+                                placeholder={selectedDatasetId ? 'Ask vizzy to analyze the Data' : 'Select a dataset to start chatting'}
+                                minHeight={52}
+                                maxHeight={180}
+                                disabled={!selectedDatasetId}
+                                isLoading={isTyping}
+                                onSubmit={(value) => handleSendMessage(value)}
+                                onStop={handleStop}
+                                className="py-2"
+                            />
                         </div>
                         {!selectedDatasetId && <p className="text-xs text-red-500 mt-2">Please select a dataset to start chatting</p>}
                         <p className="text-[10px] text-themed-muted mt-2 text-center">Vizzy can make mistakes. Check important info.</p>

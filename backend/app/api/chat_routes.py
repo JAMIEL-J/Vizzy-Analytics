@@ -243,7 +243,7 @@ def _ensure_point_style(text: str, min_points: int = 6, max_points: int = 8) -> 
                 extracted.append(ln)
                 seen_norm.add(norm_ln)
 
-    return "\n\n".join(f"- {p}" for p in extracted[:max_points])
+    return "\n\n".join(f"{idx + 1}. {p}" for idx, p in enumerate(extracted[:max_points]))
 
 
 # =============================================================================
@@ -617,6 +617,7 @@ async def send_message(
                 )
 
                 assistant_content, intent_type, orch_output = _normalize_orchestrator_response(result, default_intent="interpretive")
+                assistant_content = _ensure_point_style(assistant_content, min_points=6, max_points=8)
 
                 # DA-first UX: for explanatory questions, always return textual narrative unless visual was explicitly requested.
                 output_data = {

@@ -170,6 +170,7 @@ async def generate_chart_explanation(
             user_prompt=user_prompt,
             temperature=0.3,  # Slightly creative
             max_tokens=512,
+            purpose="dashboard_narrative",
         )
         
         logger.info(f"Chart explanation generated via {response.provider.value}")

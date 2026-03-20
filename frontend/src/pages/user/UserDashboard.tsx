@@ -501,6 +501,14 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
         onFilterClick(filterCol, String(val));
     };
 
+    const STANDARD_BAR_COLOR = isDark ? '#3b82f6' : '#2563eb';
+    const getBarFillByIndex = (index: number, totalBars: number) => {
+        if (totalBars >= 3 && totalBars <= 5) {
+            return CHART_COLORS[index % CHART_COLORS.length];
+        }
+        return STANDARD_BAR_COLOR;
+    };
+
     const renderOutlierToggle = () => {
         if (!chart.outliers?.count) return null;
         return (
@@ -531,17 +539,15 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                     {renderOutlierToggle()}
                     <ResponsiveContainer width="100%" height={192} debounce={50}>
                         <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
-                            <defs>
-                                <linearGradient id="barDark" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor={CHART_COLORS[1]} stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor={CHART_COLORS[0]} stopOpacity={0.7} />
-                                </linearGradient>
-                            </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
                             <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
-                            <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="url(#barDark)" maxBarSize={40} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"} />
+                            <Bar dataKey="value" radius={[4, 4, 0, 0]} fill={STANDARD_BAR_COLOR} maxBarSize={40} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"}>
+                                {chartData.map((_: any, i: number) => (
+                                    <Cell key={`bar-cell-${i}`} fill={getBarFillByIndex(i, chartData.length)} />
+                                ))}
+                            </Bar>
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -554,17 +560,15 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                     {renderOutlierToggle()}
                     <ResponsiveContainer width="100%" height={hbarHeight} debounce={50}>
                         <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 5 }}>
-                            <defs>
-                                <linearGradient id="hbarDark" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor={CHART_COLORS[1]} />
-                                    <stop offset="100%" stopColor={CHART_COLORS[5]} />
-                                </linearGradient>
-                            </defs>
                             <CartesianGrid {...gridProps} horizontal={false} />
                             <XAxis type="number" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <YAxis dataKey={nameKey} type="category" {...axisProps} stroke={chartColors.axis} width={110} tick={{ ...textStyle, fontSize: 11 }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(129,140,248,0.05)' : 'rgba(0,0,0,0.05)' }} />
-                            <Bar dataKey="value" radius={[0, 4, 4, 0]} fill="url(#hbarDark)" maxBarSize={22} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"} />
+                            <Bar dataKey="value" radius={[0, 4, 4, 0]} fill={STANDARD_BAR_COLOR} maxBarSize={22} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"}>
+                                {chartData.map((_: any, i: number) => (
+                                    <Cell key={`hbar-cell-${i}`} fill={getBarFillByIndex(i, chartData.length)} />
+                                ))}
+                            </Bar>
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -577,16 +581,6 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                     {renderOutlierToggle()}
                     <ResponsiveContainer width="100%" height={192} debounce={50}>
                         <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
-                            <defs>
-                                <linearGradient id="stackedPos" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#6c63ff" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#6c63ff" stopOpacity={0.6} />
-                                </linearGradient>
-                                <linearGradient id="stackedNeg" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#00d4aa" stopOpacity={0.9} />
-                                    <stop offset="100%" stopColor="#00d4aa" stopOpacity={0.6} />
-                                </linearGradient>
-                            </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
                             <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
@@ -599,8 +593,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                     const label = v === 'positive' ? positiveLabel : v === 'negative' ? negativeLabel : v;
                                     return <span className="text-xs text-themed-muted">{label}</span>;
                                 }} />
-                            <Bar dataKey="positive" stackId="a" fill="url(#stackedPos)" maxBarSize={40} name="positive" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
-                            <Bar dataKey="negative" stackId="a" fill="url(#stackedNeg)" maxBarSize={40} name="negative" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
+                            <Bar dataKey="positive" stackId="a" fill="#2563eb" maxBarSize={40} name="positive" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
+                            <Bar dataKey="negative" stackId="a" fill="#0ea5a4" maxBarSize={40} name="negative" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>

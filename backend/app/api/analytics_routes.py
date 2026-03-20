@@ -800,22 +800,31 @@ NARRATIVE_SYSTEM_PROMPT = """You are a senior data analyst generating an executi
 
 Your job is to analyze ALL the KPIs AND chart breakdowns provided and write clear, factual insights.
 
-Output format — write exactly 5-7 numbered points:
+Output format — write exactly 5-7 numbered points, each on its own block with a blank line between points:
 1. [Headline] The single most important finding from the overall data.
+
 2. [Chart Insight] For EACH chart breakdown provided, write one point about its key pattern — which category dominates, which underperforms, concentration risk.
+
 3. [Trend] If a trend chart is present, note the direction and rate of change.
+
 4. [Risk] One area of concern or risk from the data.
+
 5. [Action] One concrete recommendation or question worth investigating.
 
 Example output format:
 1. Total revenue stands at $2.3M with a 12.3% upward trend, driven by strong performance in Q4.
+
 2. California dominates state revenue at $763K (33%), while Texas underperforms at a loss of $25.7K.
+
 3. Month-to-month contracts account for 89% of churn, signaling a retention risk in short-term customers.
+
 4. Revenue trend shows consistent growth from $28.7K in 2015 to $83.8K in 2017, a 191% increase.
+
 5. Average order value declined 17.5% — investigate whether aggressive discounting (15.6% impact) is eroding margins.
 
 Rules:
 - Start each point with the point number followed by a period and space.
+- Put a blank line between every point.
 - Use actual numbers and percentages from the data provided.
 - Reference specific categories, segments, or time periods by name.
 - Every point must contain at least one data point from the provided data.
@@ -974,6 +983,7 @@ Chart Breakdowns:
             user_prompt=user_prompt,
             temperature=0.3,
             max_tokens=512,
+            purpose="dashboard_narrative",
         )
 
         return {"narrative": response.content.strip()}

@@ -56,12 +56,6 @@ export default function UserLayout() {
         return item?.label ?? 'Workspace';
     })();
 
-    const topNavContext = isActive('/user/chat')
-        ? ['Chat Analytics', 'Beta']
-        : isActive('/user/datasets')
-            ? ['Datasets', 'Management']
-            : [pageTitle, 'Overview'];
-
     return (
         <div
             className="flex h-screen overflow-hidden font-serif selection:bg-primary selection:text-white transition-colors duration-300"
@@ -148,27 +142,9 @@ export default function UserLayout() {
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
-                <header className="h-16 shrink-0 px-6 border-b border-border-main/30 bg-bg-main/80 backdrop-blur-md flex items-center justify-between">
+                <header className="h-16 shrink-0 px-6 border-b border-border-main/30 bg-bg-main/80 backdrop-blur-md flex items-center justify-start">
                     <div className="flex items-center gap-4">
-                        <h1 className="text-lg font-semibold tracking-wide text-themed-main">{topNavContext[0]}</h1>
-                        <span className="text-themed-muted text-xs uppercase tracking-[0.16em]">{topNavContext[1]}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="relative hidden lg:block">
-                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-themed-muted text-[16px] leading-none">search</span>
-                            <input
-                                type="text"
-                                placeholder="Search datasets..."
-                                className="bg-bg-card border border-border-main/30 rounded-full py-1.5 pl-9 pr-4 text-xs text-themed-main w-64 focus:ring-2 focus:ring-primary/20 outline-none"
-                            />
-                        </div>
-                        <button type="button" className="text-themed-muted hover:text-primary transition-colors relative">
-                            <span className="material-symbols-outlined text-[20px] leading-none">notifications</span>
-                            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
-                        </button>
-                        <div className="w-8 h-8 rounded-full bg-bg-card border border-border-main/40 flex items-center justify-center text-themed-main text-xs font-bold">
-                            V
-                        </div>
+                        <h1 className="text-lg font-semibold tracking-wide text-themed-main">{pageTitle}</h1>
                     </div>
                 </header>
 

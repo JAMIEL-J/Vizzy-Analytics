@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.api.deps import DBSession
 from app.services.user_services import get_user_by_email, create_user
@@ -20,6 +20,7 @@ router = APIRouter()
 
 
 class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
     email: EmailStr
     password: str
 
@@ -70,13 +71,14 @@ def register(
         session=session,
         email=request.email,
         hashed_password=hashed,
+        name=request.name,
         role=UserRole.USER,
     )
 
     record_audit_event(
         event_type="USER_REGISTERED",
         user_id=str(user.id),
-        metadata={"email": request.email},
+        metadata={"email": request.email, "name": request.name},
     )
 
     return MessageResponse(message="Registration successful")

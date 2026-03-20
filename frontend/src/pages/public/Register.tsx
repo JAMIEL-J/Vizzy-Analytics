@@ -36,7 +36,11 @@ export default function Register() {
         setIsLoading(true);
 
         try {
-            await authApi.register({ email: formData.email, password: formData.password });
+            await authApi.register({
+                name: formData.name.trim(),
+                email: formData.email,
+                password: formData.password,
+            });
             navigate('/login');
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Registration failed. Please try again.');
