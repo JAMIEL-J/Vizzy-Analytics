@@ -10,7 +10,7 @@ interface HealthDashboardProps {
     };
 }
 
-export const HealthDashboard: React.FC<HealthDashboardProps> = ({ healthScore, riskLevel, issues = {} }) => {
+export const HealthDashboard: React.FC<HealthDashboardProps> = ({ healthScore, riskLevel, issues: _issues = {} }) => {
     const scoreValue = typeof healthScore === 'object' ? healthScore.score : healthScore;
     const safeScore = isNaN(scoreValue) ? 0 : scoreValue;
 

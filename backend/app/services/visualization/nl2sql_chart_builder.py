@@ -54,8 +54,9 @@ def _is_currency_metric(label: str, metric_col: Optional[str], column_metadata: 
     text = f"{label or ''} {metric_col or ''}".lower()
     currency_keywords = [
         "revenue", "profit", "income", "earnings", "cost", "expense",
-        "price", "charges", "payment", "budget", "salary", "wage",
-        "fee", "sales", "discount", "amount", "value",
+        "price", "charges", "charge", "payment", "budget", "salary", "wage",
+        "fee", "sales", "discount", "amount", "value", "spent", "spend",
+        "spending", "mrr", "arr", "billing", "bill"
     ]
     return any(kw in text for kw in currency_keywords)
 
@@ -153,19 +154,31 @@ def build_chart_from_nl2sql(nl2sql_result: dict) -> Dict[str, Any]:
 def _build_kpi(data: list, columns: list, title: str, x_axis: str, y_axis: str) -> dict:
     """KPI: single number result."""
     row = data[0] if data else {}
-    # Take the first numeric value from the first row
     value = None
     label = title
+    
+    # Check for a string column (e.g., the top winning category name)
+    category_context = None
+    for col in columns:
+        val = row.get(col)
+        if isinstance(val, str) and not category_context:
+            category_context = val
+
+    # Find the numeric value
     for col in columns:
         val = row.get(col)
         if isinstance(val, (int, float)):
             value = val
-            label = col.replace("_", " ").title() if not title else title
+            label = (col.replace("_", " ").title() if not title else title)
+            if category_context:
+                label = f"{category_context} ({label})"
             break
 
     if value is None:
         # Fallback: first value regardless of type
         value = list(row.values())[0] if row else 0
+        if category_context and value != category_context:
+            label = f"{category_context} ({label})"
 
     # Smart detection for rates, margins, and percentages
     is_percentage = _is_likely_percentage(label)
@@ -373,15 +386,48 @@ def _extract_key_insight(
                 return f"The result is {fmt_val}"
         return "Result computed."
 
-    if chart_type in ("bar", "pie") and len(data) >= 2:
+    if chart_type in ("bar", "pie", "table") and len(data) >= 2:
         _, value_col = _detect_category_value_cols(columns, data)
         category_col = [c for c in columns if c != value_col][0] if len(columns) > 1 else columns[0]
-        top_row = max(data, key=lambda r: r.get(value_col, 0))
+        top_row = max(data, key=lambda r: r.get(value_col, 0) if isinstance(r.get(value_col), (int, float)) else 0)
         val = top_row.get(value_col, 0)
         is_currency = _is_currency_metric(title, value_col, column_metadata)
         currency_symbol = _currency_symbol_for_metric(value_col, column_metadata)
         fmt_val = _format_compact_number(val, is_currency=is_currency, symbol=currency_symbol)
-        return f"{top_row.get(category_col, 'Top item')} leads with {fmt_val}."
+        
+        # If it's a table but looks like a regular grouped list, give a top-item metric
+        action_verb = "leads with" if chart_type != "table" else "is listed with highest value:"
+        return f"{top_row.get(category_col, 'Top item')} {action_verb} {fmt_val}."
+
+    if chart_type == "line" and len(data) >= 3:
+        time_col, value_col = _detect_time_value_cols(columns, data)
+        
+        # Extract numeric values
+        values = [r.get(value_col) for r in data if isinstance(r.get(value_col), (int, float))]
+        if len(values) >= 4:
+            # Simple IQR anomaly detection without needing Pandas
+            sorted_v = sorted(values)
+            n = len(sorted_v)
+            q1 = sorted_v[n // 4]
+            q3 = sorted_v[(n * 3) // 4]
+            iqr = q3 - q1
+            upper_bound = q3 + 1.5 * iqr
+            lower_bound = q1 - 1.5 * iqr
+            
+            anomalies = [r for r in data if isinstance(r.get(value_col), (int, float)) and (r.get(value_col) > upper_bound or r.get(value_col) < lower_bound)]
+            
+            if anomalies:
+                is_currency = _is_currency_metric(title, value_col, column_metadata)
+                currency_symbol = _currency_symbol_for_metric(value_col, column_metadata)
+                
+                # Report top anomaly
+                top_anomaly = max(anomalies, key=lambda r: abs(r.get(value_col) - ((q1+q3)/2)))
+                av = top_anomaly.get(value_col)
+                fmt_val = _format_compact_number(av, is_currency=is_currency, symbol=currency_symbol)
+                direction = "spike" if av > q3 else "drop"
+                return f"Detected {len(anomalies)} anomalies. Notable {direction} on {top_anomaly.get(time_col, 'date')} ({fmt_val})."
+            else:
+                return "The trend appears stable with no major anomalies detected."
 
     return f"Showing {len(data)} data points."
 

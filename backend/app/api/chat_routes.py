@@ -41,8 +41,9 @@ def _is_currency_kpi(kpi_label: str, chart_spec: dict) -> bool:
     label = (kpi_label or "").lower()
     currency_keywords = [
         "revenue", "profit", "income", "earnings", "cost", "expense",
-        "price", "charges", "payment", "budget", "salary", "wage",
-        "fee", "sales", "discount", "amount", "value",
+        "price", "charges", "charge", "payment", "budget", "salary", "wage",
+        "fee", "sales", "discount", "amount", "value", "spent", "spend",
+        "spending", "mrr", "arr", "billing", "bill"
     ]
     return any(kw in label for kw in currency_keywords)
 
@@ -221,6 +222,10 @@ def _ensure_point_style(text: str, min_points: int = 6, max_points: int = 8) -> 
         if m:
             extracted.append(m.group(2).strip())
 
+    # If still no extracted lines, treat any sufficiently long text chunk as a line
+    if not extracted and lines:
+        extracted = [ln for ln in lines if len(ln) > 10]
+
     if not extracted:
         sentences = re.split(r"(?<=[.!?])\s+", raw.replace("\n", " "))
         extracted = [s.strip() for s in sentences if s.strip()]
@@ -238,7 +243,7 @@ def _ensure_point_style(text: str, min_points: int = 6, max_points: int = 8) -> 
                 extracted.append(ln)
                 seen_norm.add(norm_ln)
 
-    return "\n".join(f"- {p}" for p in extracted[:max_points])
+    return "\n\n".join(f"- {p}" for p in extracted[:max_points])
 
 
 # =============================================================================

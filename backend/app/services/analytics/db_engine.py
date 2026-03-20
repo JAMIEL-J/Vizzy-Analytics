@@ -16,28 +16,27 @@ class DBEngine:
     - _read_con:  Locked-down connection for executing all LLM-generated queries.
     """
 
-    def __init__(self, db_path: str = ":memory:"):
-        self._db_path = db_path
-        self._write_con = duckdb.connect(database=db_path, read_only=False)
+    def __init__(self, db_path: Optional[str] = None):
+        from app.core.config import get_settings
+        settings = get_settings()
+        self._db_path = db_path or settings.storage.duckdb_path
+
+        # Ensure parent directory exists for file-based paths
+        if self._db_path != ":memory:":
+            import os
+            os.makedirs(os.path.dirname(self._db_path) or ".", exist_ok=True)
+
+        self._write_con = duckdb.connect(database=self._db_path, read_only=False)
         self._read_con = None
         self.coercion_results: List[ColumnCoercionResult] = []
 
     def _lock_down_read_con(self):
-        """Create a separate locked-down connection for reading."""
-        # For :memory:, we must use the same connection object or they won't see the same data,
-        # but the approved plan suggests creating a materialized TABLE in :memory:,
-        # and then locking THAT connection.
-        
-        # In DuckDB, SET enable_external_access applies to the connection.
-        # So we use a separate connection for reading if it's not :memory:, 
-        # but for :memory: we have to be careful.
-        
-        if self._db_path == ":memory:":
-            # We use the same connection but lock it AFTER loading
-            self._read_con = self._write_con
-        else:
-            self._read_con = duckdb.connect(database=self._db_path, read_only=True)
-        
+        """Lock down the connection for safe query execution after data loading."""
+        # Always reuse the write connection — DuckDB rejects opening a second
+        # connection to the same file with a different read_only configuration.
+        # Security SETs are applied here AFTER all data loading is complete.
+        self._read_con = self._write_con
+
         try:
             # Apply security locks in correct order (lock_configuration must be LAST)
             self._read_con.execute("SET enable_external_access = false")

@@ -13,7 +13,7 @@ from app.core.config import get_settings
 from app.core.exceptions import InvalidOperation
 
 
-ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls", "json", "xml"}
+ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls", "json", "xml", "parquet"}
 
 
 def validate_file(*, filename: str, file_size: int) -> str:
@@ -128,6 +128,18 @@ def _load_xml(source: Union[Path, BinaryIO]) -> pd.DataFrame:
         )
 
 
+def _load_parquet(source: Union[Path, BinaryIO]) -> pd.DataFrame:
+    """Load Parquet into DataFrame."""
+    try:
+        return pd.read_parquet(source)
+    except Exception as e:
+        raise InvalidOperation(
+            operation="load_parquet",
+            reason="Failed to parse Parquet file",
+            details=str(e),
+        )
+
+
 def load_from_path(
     file_path: Union[str, Path],
     filename: str,
@@ -149,6 +161,8 @@ def load_from_path(
         return _load_csv(path)
     if ext == "json":
         return _load_json(path)
+    if ext == "parquet":
+        return _load_parquet(path)
     if ext == "xml":
         return _load_xml(path)
 
@@ -172,6 +186,8 @@ def load_from_upload(
         return _load_csv(file_stream)
     if ext == "json":
         return _load_json(file_stream)
+    if ext == "parquet":
+        return _load_parquet(file_stream)
     if ext == "xml":
         return _load_xml(file_stream)
 

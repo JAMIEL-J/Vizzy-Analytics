@@ -267,10 +267,17 @@ def get_recent_context(
     messages = list(session.exec(query).all())
     messages.reverse()  # Oldest first
 
-    return [
-        {"role": msg.role.value, "content": msg.content}
-        for msg in messages
-    ]
+    context_list = []
+    for msg in messages:
+        text = msg.content
+        if msg.role.value == "assistant" and msg.output_data and isinstance(msg.output_data, dict):
+            sql = msg.output_data.get("sql")
+            if sql:
+                text += f"\n[The data for this response was generated using SQL: `{sql}`]"
+        
+        context_list.append({"role": msg.role.value, "content": text})
+
+    return context_list
 
 
 def auto_generate_title(

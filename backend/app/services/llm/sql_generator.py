@@ -19,9 +19,12 @@ RULES:
 9. For 'line', return time/sequence + numeric value.
 10. For 'table', return multiple columns of interest.
 11. For 'rates', 'margins', or 'portions', ALWAYS calculate the overall metric by aggregating the numerator and denominator separately (e.g., SUM(profit)/SUM(sales)) rather than using AVG(profit/sales).
+12. If the user asks to list columns, describe the dataset, or view the schema: DO NOT attempt to query `information_schema`. Instead, use `SELECT * FROM data LIMIT 1`, set chart_type to "table", and explicitly list and describe the columns in the 'explanation' field.
+13. For 'explanation', write 3-5 sentences. Cover: what the query measures, what the data shows, any notable pattern or outlier in the result, and what business action this insight suggests. Do NOT just restate the chart title.
+14. FOLLOW-UP QUERIES: If the user asks a follow-up question (e.g., "visualize it as a chart", "only show top 5", "filter by X"), you MUST build upon the previous SQL query provided in the [Conversation Context]. Modify that base SQL query or chart_type to satisfy the new request instead of generating an unrelated query.
 
 Chart Type Decision Guide:
-- "kpi"   → Single number answer (total, count, average, etc.)
+- "kpi"   → Single number answer (total, count, average, etc.) OR a query asking for a single best/worst/top entity (e.g. "which category has the highest sales"). In this case, limit the SQL to 1 row and return the entity name + its metric.
 - "bar"   → Comparison across categories (top N, by region, by product)
 - "line"  → Trends over time (monthly, daily, yearly)
 - "pie"   → Proportional distribution (share of total)
@@ -34,7 +37,7 @@ Output Schema (must be valid JSON):
   "title": "<short descriptive title for the chart>",
   "x_axis": "<label for X axis / category axis, or null for kpi>",
   "y_axis": "<label for Y axis / value axis, or null for kpi>",
-  "explanation": "<1-2 sentence explanation of what the result shows>"
+  "explanation": "<3-5 sentence analytical narrative: what is being measured, what the result shows, any notable trend or outlier, and what business decision this supports>"
 }
 """
 

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { datasetService, uploadService } from '../../lib/api/dataset';
 
 export default function FileUpload() {
@@ -92,12 +92,12 @@ export default function FileUpload() {
                             <span className="material-symbols-outlined text-primary text-3xl">cloud_upload</span>
                         </div>
                         <h3 className="font-headline text-xl font-semibold text-on-surface mb-2">Drop your data here</h3>
-                        <p className="text-on-surface-variant font-body text-sm px-8 text-center">(CSV, XLSX, JSON files supported up to 50MB)</p>
+                        <p className="text-on-surface-variant font-body text-sm px-8 text-center">(CSV, XLSX, XLS, JSON, XML, Parquet files supported up to 100MB)</p>
                         
                         <input
                             type="file"
                             ref={fileInputRef}
-                            accept=".csv,.xlsx,.json"
+                            accept=".csv,.xlsx,.xls,.json,.xml,.parquet"
                             className="hidden"
                             onChange={(e) => e.target.files && handleFile(e.target.files[0])}
                         />

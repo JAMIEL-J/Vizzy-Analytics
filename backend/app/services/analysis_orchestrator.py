@@ -161,8 +161,12 @@ def _extract_points_from_text(text: str, max_points: int = 8) -> List[str]:
     if bullet_lines:
         return bullet_lines[:max_points]
 
-    sentence_candidates = re.split(r"(?<=[.!?])\s+", raw.replace("\n", " ").strip())
-    points = [s.strip() for s in sentence_candidates if s.strip()]
+    # Fallback: Treat each line as a point
+    points = [ln for ln in lines if len(ln) > 10]
+    if not points:
+        sentence_candidates = re.split(r"(?<=[.!?])\s+", raw.replace("\n", " ").strip())
+        points = [s.strip() for s in sentence_candidates if s.strip()]
+        
     if not points:
         points = [raw]
     return points[:max_points]
@@ -505,7 +509,6 @@ async def run_analysis_orchestration(
         diagnostics = battery_result.get("diagnostics", [])
 
         if diagnostics:
-            # Synthesize findings with LLM
             synthesis_prompt = f"""You are a senior data analyst. Based on the following diagnostic breakdowns,
 write a concise explanation answering the user's question.
 
@@ -516,10 +519,9 @@ Rules:
 - Provide 6 to 8 points
 - Cover multiple drivers, not just one segment
 - Include at least 5 numeric facts from the diagnostics
-- Use plain English, no jargon
-- Return the answer as 6-8 concise points
-- Each point must start with '- '
-- Keep each point to one sentence."""
+- CRITICAL: You MUST use proper Markdown list formatting. EVERY point MUST begin with a markdown bullet ('- ' or '1. ').
+- CRITICAL: Add a newline between each point for readability.
+- Keep each point to one clear sentence."""
 
             try:
                 llm_client = get_llm_client()

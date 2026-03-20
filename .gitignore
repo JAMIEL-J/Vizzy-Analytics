@@ -69,6 +69,8 @@ data/
 uploads/
 **/data/
 **/uploads/
+data/vizzy_analytics.duckdb
+data/vizzy_analytics.duckdb.wal
 
 # Testing
 .coverage

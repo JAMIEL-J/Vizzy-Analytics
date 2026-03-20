@@ -82,6 +82,7 @@ class StorageSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="STORAGE_")
 
     data_dir: str = Field(default="data/uploads")
+    duckdb_path: str = Field(default="data/vizzy_analytics.duckdb")
     max_file_size_mb: int = Field(default=100, ge=1, le=1000)
 
 
