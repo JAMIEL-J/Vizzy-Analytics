@@ -1482,7 +1482,7 @@ def _generate_churn_charts(df, classification):
                 title=f'{_beautify_column_name(scatter_x)} vs {_beautify_column_name(scatter_y)}',
                 chart_type='scatter', data=data, confidence='MEDIUM',
                 reason='Tier 5: Correlation between key metrics',
-                dimension=scatter_x, metric=scatter_y # Fallback re-aggregation logic handles this
+                dimension=scatter_x, metric=scatter_y, aggregation='sum'
             ))
 
     # 14. Time trend OR Value at Risk by another dimension
@@ -1670,6 +1670,30 @@ def _generate_churn_charts(df, classification):
             rec.dimension = bonus_dim
             rec.aggregation = 'count'
             add_chart(rec)
+
+    # 23. Extra View: Total Charges by Gender (User Request)
+    # Search ALL columns for a more robust match, not just classification summaries
+    gender_col = next((c for c in df.columns if 'gender' in str(c).lower()), None)
+    total_vol_metric = next((c for c in df.columns if 'total' in str(c).lower() and ('charge' in str(c).lower() or 'revenue' in str(c).lower() or 'spent' in str(c).lower())), None)
+    
+    if gender_col and total_vol_metric:
+        try:
+            # Ensure metric is numeric for sum aggregation
+            df[total_vol_metric] = pd.to_numeric(df[total_vol_metric], errors='coerce')
+            data = _safe_groupby_sum(df, gender_col, total_vol_metric)
+            if data and len(data) > 0:
+                rec = ChartRecommendation(
+                    slot='', 
+                    title=f'Total {_beautify_column_name(total_vol_metric)} by {_beautify_column_name(gender_col)}',
+                    chart_type='hbar', data=data, confidence='MEDIUM',
+                    reason='Extra view: Total financial volume split by gender',
+                    format_type='currency',
+                    dimension=gender_col, metric=total_vol_metric, aggregation='sum'
+                )
+                rec.variance_score = float('inf')  # Force it to the top so it doesn't get truncated
+                add_chart(rec)
+        except Exception as e:
+            logger.error(f"[USER-REQUEST] Failed to add custom chart: {e}")
 
     return charts
 
@@ -1884,7 +1908,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=f"{_beautify_column_name(discount_col)} vs {_beautify_column_name(profit_col)}",
                 chart_type="scatter", data=data, confidence="MEDIUM",
                 reason="Promotional Effectiveness: Do discounts kill profitability?",
-                format_type="currency"
+                format_type="currency",
+                dimension=discount_col, metric=profit_col, aggregation="sum"
             ))
 
     # ── TIER 3: CUSTOMER-CENTRIC (RFM Proxies) ─────────────
@@ -2203,7 +2228,7 @@ def _generate_generic_charts(df: pd.DataFrame, classification: ColumnClassificat
                 slot="slot_4", title=_create_smart_title(m1, "") + " vs " + _beautify_column_name(m2),
                 chart_type="scatter", data=data, confidence="MEDIUM",
                 reason="Metric correlation",
-                dimension=None, metric=m1, aggregation="sum"
+                dimension=m1, metric=m2, aggregation="sum"
             ))
     
     # 5+. Distributions
@@ -2255,7 +2280,7 @@ def _generate_marketing_charts(df: pd.DataFrame, classification: ColumnClassific
 
     if spend_col and conv_col:
         data = _get_scatter_data(df, spend_col, conv_col, label_col=primary_dim)
-        add_chart(ChartRecommendation('', 'Spend vs Conversions', 'scatter', data, 'HIGH', 'Cost acquisition efficiency', format_type='number', metric=spend_col, dimension=None, aggregation='sum'))
+        add_chart(ChartRecommendation('', 'Spend vs Conversions', 'scatter', data, 'HIGH', 'Cost acquisition efficiency', format_type='number', dimension=spend_col, metric=conv_col, aggregation='sum'))
 
     if dates and click_col:
         data = _get_time_trend(df, dates[0], click_col)
@@ -2651,9 +2676,10 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
     import statistics
     for chart in charts:
         try:
-            # Keep complex visualizations pinned highly
-            if chart.chart_type in ('scatter', 'area_bounds', 'line', 'map', 'geo_map'):
+            # Keep complex visualizations and manually pinned charts pinned highly
+            if getattr(chart, 'variance_score', 0) == float('inf') or chart.chart_type in ('scatter', 'area_bounds', 'line', 'map', 'geo_map'):
                 chart.variance_score = float('inf')
+                continue
             elif chart.data and isinstance(chart.data, list):
                 # Calculate the standard deviation (spread) of the grouped values
                 values = [float(d.get('value', 0)) for d in chart.data if 'value' in d and d.get('value') is not None]

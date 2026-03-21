@@ -534,7 +534,13 @@ def get_dashboard_analytics(
                         elif 'at Risk' in title and met:
                             manual_data = _get_value_at_risk(df_filtered, target_col, dim, met)
                         
-                        # 3. Generic Fallback Re-aggregation (Numeric vs Distribution)
+                        # 3. Scatter Chart Handling (Raw X/Y Pairs)
+                        elif ctype == 'scatter':
+                            if dim and met:
+                                from app.services.analytics.chart_recommender import _get_scatter_data
+                                manual_data = _get_scatter_data(df_filtered, dim, met, limit=500)
+                        
+                        # 4. Generic Fallback Re-aggregation (Numeric vs Distribution)
                         if not manual_data:
                             if met and pd.api.types.is_numeric_dtype(df[met]):
                                 if agg == 'mean':

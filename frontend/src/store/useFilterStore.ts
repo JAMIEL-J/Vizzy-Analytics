@@ -537,12 +537,15 @@ const recomputeCharts = (
             }
         }
 
-        if (dimension) {
-            const chartType = (override.type || config.type || '').toLowerCase();
+        const chartType = (override.type || config.type || '').toLowerCase();
+        const isScatter = chartType === 'scatter';
+
+        if (dimension || isScatter) {
             const originalType = (config.type || '').toLowerCase();
             const isTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(chartType) && config.is_date;
             const originalWasTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(originalType) && config.is_date;
             const isCountOnly = !metric;
+
             // PERFORMANCE OPTIMIZATION: Reuse high-fidelity backend data if no filters are active and analytics logic hasn't changed
             const sameAgg = !override.aggregation || override.aggregation.toLowerCase() === (config.aggregation || (isCountOnly ? 'count' : 'sum')).toLowerCase();
             const sameTrend = isTrend === originalWasTrend;
@@ -555,7 +558,6 @@ const recomputeCharts = (
             }
 
             // STABILITY FIX: If we are only overriding TYPE (Bar -> H-Bar) and have NO other reason to recompute
-            // (e.g. no active filters and same aggregation), reuse existing chart data to avoid naive local recalc.
             if (!hasActiveFilters && existingCharts?.[slotId]) {
                 if (sameAgg && sameTrend) {
                     charts[slotId] = existingCharts[slotId];
@@ -564,21 +566,30 @@ const recomputeCharts = (
             }
 
             // Scatter charts need point-wise x/y data, not grouped name/value buckets.
-            if (chartType === 'scatter') {
-                if (!metric) {
+            if (isScatter) {
+                // Determine which keys to pull from the raw rows. 
+                // We prioritize config.dimension/metric but if missing (common in scatter), 
+                // we try to use the ones defined in the titles or metadata.
+                const xKey = dimension || config.x_column;
+                const yKey = metric || config.y_column;
+
+                if (!xKey || !yKey) {
+                    // Final fallback: if no keys found, we can't filter locally, keep server data.
                     charts[slotId] = seedRows;
                     continue;
                 }
 
                 const scatterPoints = filtered
                     .map((row) => ({
-                        x: Number(getRowValue(row, dimension)),
-                        y: Number(getRowValue(row, metric)),
+                        x: Number(getRowValue(row, xKey)),
+                        y: Number(getRowValue(row, yKey)),
+                        xLabel: xKey,
+                        yLabel: yKey
                     }))
                     .filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y));
 
-                // Keep payload bounded for rendering performance.
-                charts[slotId] = scatterPoints.length > 1200 ? scatterPoints.slice(0, 1200) : scatterPoints;
+                // Always take a representative sample but capped for performance
+                charts[slotId] = scatterPoints.length > 1000 ? scatterPoints.slice(0, 1000) : scatterPoints;
                 continue;
             }
 
@@ -694,12 +705,16 @@ const recomputeCharts = (
                 } else if (metric && !shouldIncludeMetricRow(row)) {
                     return acc;
                 }
-                acc[key].push(aggregation === 'COUNT' ? 1 : metricVal);
+                
+                // For target metrics, 'COUNT' means count positive instances (SUM of binary 0/1)
+                const shouldPushBinary = metric && metricIsTarget && aggregation === 'COUNT';
+                acc[key].push(aggregation === 'COUNT' && !shouldPushBinary ? 1 : metricVal);
                 return acc;
             }, {} as Record<string, any[]>);
 
             let chartData = Object.entries(grouped).map(([name, values]) => {
-                let computed = aggregateValues(values as any[], aggregation, scalingFactor);
+                const effectiveAggregation = (metricIsTarget && aggregation === 'COUNT') ? 'SUM' : aggregation;
+                let computed = aggregateValues(values as any[], effectiveAggregation, scalingFactor);
                 if (metricIsTarget && (aggregation === 'MEAN' || aggregation === 'AVG' || isRateChart)) {
                     computed = computed * 100;
                 }

@@ -663,13 +663,9 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                     </linearGradient>
                                 ))}
                             </defs>
-                            <Pie data={chartData} cx="50%" cy="46%" innerRadius={46} outerRadius={72}
-                                paddingAngle={3} dataKey="value" stroke={isDark ? '#1a1d24' : '#ffffff'}
-                                strokeWidth={2} animationBegin={0} animationDuration={800}>
-                                {chartData.map((entry: any, i: number) => (
-                                    <Cell key={i} fill={`url(#donutGrad${i})`}
-                                        onClick={() => handleSliceClick(entry)}
-                                        style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))', cursor: onFilterClick ? 'pointer' : 'default' }} />
+                            <Pie data={chartData} cx="50%" cy="46%" innerRadius={65} outerRadius={90} paddingAngle={2} dataKey="value" stroke="none">
+                                {chartData.map((_entry: any, index: number) => (
+                                    <Cell key={`cell-${index}`} fill={`url(#donutGrad${index % chartData.length})`} onClick={() => handleSliceClick(chartData[index])} cursor={onFilterClick ? 'pointer' : 'default'} style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }} />
                                 ))}
                             </Pie>
                             {(() => {
@@ -677,17 +673,17 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                 const totalText = formatCenterTotal(total);
                                 const fontSize = totalText.length > 10 ? 22 : totalText.length > 7 ? 26 : 30;
                                 return (
-                                    <>
-                                        <circle cx="50%" cy="46%" r="39" fill={isDark ? '#121722' : '#ffffff'} stroke={isDark ? '#252b3a' : '#e6e9f0'} strokeWidth={1.2} />
-                                        <text x="50%" y="44.5%" textAnchor="middle" dominantBaseline="middle" fill={isDark ? '#f4f7ff' : '#1f2a3d'} style={{ fontSize, fontWeight: 800, letterSpacing: '0.01em' }}>
+                                    <g style={{ pointerEvents: 'none' }}>
+                                        <circle cx="50%" cy="46%" r="58" fill={isDark ? '#121722' : '#ffffff'} stroke={isDark ? '#252b3a' : '#e6e9f0'} strokeWidth={1} />
+                                        <text x="50%" y="44%" textAnchor="middle" dominantBaseline="middle" fill={isDark ? '#f4f7ff' : '#1f2a3d'} style={{ fontSize: fontSize * 0.85, fontWeight: 800, letterSpacing: '-0.02em' }}>
                                             {totalText}
                                         </text>
-                                    </>
+                                        <text x="50%" y="54%" textAnchor="middle" dominantBaseline="middle" fill={isDark ? '#9aa3b2' : '#6b7280'} style={{ fontSize: 10, letterSpacing: '0.1em', fontWeight: 700 }}>
+                                            TOTAL
+                                        </text>
+                                    </g>
                                 );
                             })()}
-                            <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill={isDark ? '#9aa3b2' : '#6b7280'} style={{ fontSize: 9, letterSpacing: '0.08em', fontWeight: 700 }}>
-                                TOTAL
-                            </text>
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
                             <Legend verticalAlign="bottom" align="center" layout="horizontal" iconType="circle" iconSize={7}
                                 formatter={(v: string) => {
@@ -1536,6 +1532,7 @@ export default function UserDashboard() {
         setDomain,
         chartData,
         setDashboardData,
+        target_value,
         setTargetValue
     } = useFilterStore();
 
@@ -1963,7 +1960,9 @@ export default function UserDashboard() {
         metric: (val as any).metric ?? analytics?.chart_configs?.[id]?.metric,
         aggregation: (val as any).aggregation ?? analytics?.chart_configs?.[id]?.aggregation,
         data: chartData?.[id] || (val as any).data,
-        data_without_outliers: chartData?.[id] || (val as any).data_without_outliers
+        data_without_outliers: (Object.keys(active_filters).length === 0 && target_value === 'all')
+            ? ((val as any).data_without_outliers || (val as any).data)
+            : (chartData?.[id] || (val as any).data)
     })) : [];
 
     // Sort: regular charts first, tall hbar charts last so they don't break grid row alignment
