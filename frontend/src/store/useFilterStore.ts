@@ -345,10 +345,11 @@ const recomputeCharts = (
     if (!rawData || !chartConfigs) return existingCharts;
     const filtered = applyFilters(rawData, filters, targetCol, targetVal);
 
+    const hasActiveFilters = Object.keys(filters).length > 0 || normalizeScalar(targetVal) !== 'all';
     const hasNoFilters = Object.keys(filters).length === 0 && targetVal === 'all';
 
-    // Calculate scaling factor to account for sampling in the raw data
-    const scalingFactor = (totalRecords > 0 && rawData.length > 0)
+    // Only scale unfiltered totals; scaling filtered subsets can introduce large distortions.
+    const scalingFactor = (!hasActiveFilters && totalRecords > 0 && rawData.length > 0)
         ? totalRecords / rawData.length
         : 1;
 
@@ -372,6 +373,14 @@ const recomputeCharts = (
         const isRateChart = /rate|%/i.test(String(config.title || ''));
         const isCohortChart = /cohort/i.test(String(config.title || ''));
         const isRangeChart = /range/i.test(String(config.title || ''));
+        const isAtRiskChart = /at\s*risk/i.test(String(config.title || ''));
+
+        const shouldIncludeMetricRow = (row: any): boolean => {
+            if (!metric) return true;
+            if (!isAtRiskChart || !targetCol) return true;
+            const rowTarget = getRowValue(row, targetCol);
+            return toTargetBinary(rowTarget) === 1;
+        };
 
         // Range charts should preserve backend-provided bins/labels instead of regrouping by raw metric values.
         if (dimension && isRangeChart && seedRows.length > 0) {
@@ -399,6 +408,7 @@ const recomputeCharts = (
                     if (!metric) {
                         groupedRange[match.label].push(1);
                     } else {
+                        if (!shouldIncludeMetricRow(row)) continue;
                         const m = getRowValue(row, metric);
                         if (metricIsTarget) {
                             const binary = toTargetBinary(m);
@@ -450,6 +460,7 @@ const recomputeCharts = (
                         if (!metric) {
                             fallbackValues.push(1);
                         } else {
+                            if (!shouldIncludeMetricRow(row)) continue;
                             const m = getRowValue(row, metric);
                             if (metricIsTarget) {
                                 const binary = toTargetBinary(m);
@@ -500,6 +511,7 @@ const recomputeCharts = (
                     if (!metric) {
                         groupedCohort[label].push(1);
                     } else {
+                        if (!shouldIncludeMetricRow(row)) continue;
                         const m = getRowValue(row, metric);
                         if (metricIsTarget) {
                             const binary = toTargetBinary(m);
@@ -544,8 +556,6 @@ const recomputeCharts = (
 
             // STABILITY FIX: If we are only overriding TYPE (Bar -> H-Bar) and have NO other reason to recompute
             // (e.g. no active filters and same aggregation), reuse existing chart data to avoid naive local recalc.
-            const hasActiveFilters = Object.keys(filters).length > 0 || (targetVal && targetVal !== 'all');
-
             if (!hasActiveFilters && existingCharts?.[slotId]) {
                 if (sameAgg && sameTrend) {
                     charts[slotId] = existingCharts[slotId];
@@ -681,6 +691,8 @@ const recomputeCharts = (
                     if (metricVal === null) {
                         return acc;
                     }
+                } else if (metric && !shouldIncludeMetricRow(row)) {
+                    return acc;
                 }
                 acc[key].push(aggregation === 'COUNT' ? 1 : metricVal);
                 return acc;

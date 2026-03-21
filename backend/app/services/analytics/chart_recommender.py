@@ -371,6 +371,47 @@ def _prioritize_dimensions(dimensions: List[str]) -> List[str]:
     # Add remaining dimensions at the end
     prioritized.extend(remaining)
     return prioritized
+
+
+def _pick_at_risk_metric(financial_metrics: List[str]) -> Optional[str]:
+    """
+    Select the best metric for churn "at risk" calculations.
+
+    Preference order:
+    1) Total/annual/lifetime revenue-like columns (e.g. TotalCharges, AnnualRevenue)
+    2) Generic revenue/value columns
+    3) Monthly/periodic revenue-like columns as fallback
+    """
+    if not financial_metrics:
+        return None
+
+    def _norm(name: str) -> str:
+        return ''.join(ch for ch in str(name).lower() if ch.isalnum())
+
+    normalized = [(_norm(col), col) for col in financial_metrics]
+
+    total_like = (
+        'total', 'annual', 'yearly', 'arr', 'lifetime', 'ltv',
+        'grossrevenue', 'totalrevenue', 'totalcharge', 'totalcharges'
+    )
+    revenue_like = (
+        'revenue', 'sales', 'income', 'billing', 'amount', 'charge', 'charges', 'value'
+    )
+    monthly_like = ('monthly', 'month', 'mrr')
+
+    for n, col in normalized:
+        if any(tok in n for tok in total_like) and any(tok in n for tok in revenue_like):
+            return col
+
+    for n, col in normalized:
+        if any(tok in n for tok in revenue_like) and not any(tok in n for tok in monthly_like):
+            return col
+
+    for n, col in normalized:
+        if any(tok in n for tok in monthly_like) and any(tok in n for tok in revenue_like):
+            return col
+
+    return financial_metrics[0]
 # ============================================================================
 # GEO DETECTION HELPERS
 # ============================================================================
@@ -1104,17 +1145,35 @@ def _generate_churn_charts(df, classification):
     value_hints     = ['charge', 'revenue', 'spent', 'billing', 'income', 'balance',
                        'price', 'amount', 'salary', 'cost', 'fee']
 
+    def _compact(col: str) -> str:
+        return ''.join(ch for ch in str(col).lower() if ch.isalnum())
+
+    def _looks_financial_name(col: str) -> bool:
+        name = _compact(col)
+        financial_tokens = (
+            'charge', 'charges', 'monthlycharge', 'totalcharge', 'revenue', 'income',
+            'billing', 'bill', 'balance', 'amount', 'salary', 'cost', 'fee', 'mrr', 'arr'
+        )
+        return any(tok in name for tok in financial_tokens)
+
     try:
         from .semantic_resolver import semantic_similarity
         
         def _semantic_check(col, hints, threshold=0.55):
             return any(semantic_similarity(h, col) >= threshold for h in hints)
             
-        def _is_lifecycle(col): return _semantic_check(col, lifecycle_hints)
+        def _is_lifecycle(col):
+            # Guard: avoid treating financial fields like MonthlyCharges as lifecycle.
+            if _looks_financial_name(col):
+                return False
+            return _semantic_check(col, lifecycle_hints)
         def _is_senior(col):    return _semantic_check(col, senior_hints)
         def _is_financial(col): return _semantic_check(col, value_hints) and not _is_lifecycle(col)
     except ImportError:
-        def _is_lifecycle(col): return any(h in col.lower().replace('_', '') for h in lifecycle_hints)
+        def _is_lifecycle(col):
+            if _looks_financial_name(col):
+                return False
+            return any(h in col.lower().replace('_', '') for h in lifecycle_hints)
         def _is_senior(col):    return any(h in col.lower().replace('_', '') for h in senior_hints)
         def _is_financial(col): return any(h in col.lower() for h in value_hints) and not _is_lifecycle(col)
 
@@ -1137,6 +1196,15 @@ def _generate_churn_charts(df, classification):
     # but we will guard the 'At Risk' charts.
     if not primary_value_metric:
         primary_value_metric = next((c for c in pm if c != lifecycle_col and not _is_senior(c)), pm[0] if pm else None)
+
+    # Monthly financial metric (e.g., MonthlyCharges/MRR) for explicit monthly churn views.
+    monthly_value_metric = next(
+        (
+            c for c in financial_metrics
+            if any(tok in ''.join(ch for ch in str(c).lower() if ch.isalnum()) for tok in ('monthly', 'month', 'mrr'))
+        ),
+        None
+    )
 
     # Binary dimensions (exactly 2 unique values)
     binary_dims = [d for d in pd_ if df[d].nunique() == 2 and d != target_col]
@@ -1218,7 +1286,7 @@ def _generate_churn_charts(df, classification):
     # ── TIER 2: FINANCIAL IMPACT ─────────────────────────────────────
 
     # 4. Value at Risk by Primary Dimension (STRICTLY FINANCIAL)
-    impact_metric = financial_metrics[0] if financial_metrics else None
+    impact_metric = _pick_at_risk_metric(financial_metrics)
     if impact_metric and primary_dim:
         data = _get_value_at_risk(df, target_col, primary_dim, impact_metric)
         if data:
@@ -1229,6 +1297,19 @@ def _generate_churn_charts(df, classification):
                 reason=f'Tier 2: Financial impact of {label.lower()} by segment',
                 format_type='currency',
                 dimension=primary_dim, metric=impact_metric, aggregation='sum'
+            ))
+
+    # 4b. Monthly Value at Risk by Primary Dimension (explicit monthly counterpart)
+    if monthly_value_metric and primary_dim and monthly_value_metric != impact_metric:
+        data = _get_value_at_risk(df, target_col, primary_dim, monthly_value_metric)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{_beautify_column_name(monthly_value_metric)} at Risk by {_beautify_column_name(primary_dim)}',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason=f'Tier 2: Monthly financial impact of {label.lower()} by segment',
+                format_type='currency',
+                dimension=primary_dim, metric=monthly_value_metric, aggregation='sum'
             ))
 
     # 5. Metric Distribution — Treemap
@@ -1536,6 +1617,18 @@ def _generate_churn_charts(df, classification):
                 chart_type='bar', data=data, confidence='HIGH',
                 reason='Tier 6: Do high-value customers churn more or less?',
                 dimension=cohort_metric, metric=target_col, aggregation='mean'
+            ))
+
+    # 19b. Monthly Financial Cohort Analysis — explicit monthly counterpart
+    if monthly_value_metric and monthly_value_metric != lifecycle_col and monthly_value_metric != cohort_metric:
+        data = _get_metric_cohort_analysis(df, monthly_value_metric, target_col)
+        if data:
+            add_chart(ChartRecommendation(
+                slot='',
+                title=f'{label} Rate by {_beautify_column_name(monthly_value_metric)} Range (%)',
+                chart_type='bar', data=data, confidence='HIGH',
+                reason='Tier 6: Monthly financial cohort analysis',
+                dimension=monthly_value_metric, metric=target_col, aggregation='mean'
             ))
 
     # 20. Positive vs Negative cohort — Avg Lifecycle/Tenure Comparison

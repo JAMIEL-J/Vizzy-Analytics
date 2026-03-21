@@ -8,12 +8,12 @@ import { useFilterStore } from '../../store/useFilterStore';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     AreaChart, Area, PieChart, Pie, Cell, Legend,
-    ScatterChart, Scatter, Treemap,
+    ScatterChart, Scatter,
     RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import { ColumnClassificationPanel } from '../../components/dashboard/ColumnClassificationPanel';
 import { Button } from '@/components/ui/button';
-import { VIZZY_CHART_COLORS, VIZZY_THEME } from '../../theme/tokens';
+import { VIZZY_THEME } from '../../theme/tokens';
 
 type CachedEntry<T> = {
     value: T;
@@ -154,7 +154,8 @@ const setSessionCachedAnalytics = (cacheKey: string, value: DashboardAnalytics) 
 
 // ─── Color Palettes ──────────────────────────────────────────────────────────
 
-const CHART_COLORS = [...VIZZY_CHART_COLORS];
+const CHART_COLORS = ['#f59e0b', '#6366f1', '#10b981', '#f43f5e', '#14b8a6', '#8b5cf6', '#0ea5e9', '#ea580c'];
+const KPI_CARD_COLORS = ['#f59e0b', '#4f46e5', '#059669', '#e11d48', '#0d9488', '#7c3aed', '#0284c7', '#c026d3', '#334155', '#ea580c'];
 
 // (static heatmap grid removed - now driven by real data)
 
@@ -311,7 +312,7 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLab
 
 
     return (
-        <div className="rounded-sm px-4 py-3 border border-border-main backdrop-blur-md min-w-[160px] bg-bg-card/95 dark:bg-black/95 shadow-xl text-themed-main font-mono z-[9999]">
+        <div className="rounded-sm px-4 py-3 border border-border-main backdrop-blur-md min-w-[160px] bg-bg-card/95 dark:bg-black/95 shadow-xl text-themed-main z-[9999]" style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}>
             {chartTitle && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-border-main opacity-70 leading-tight">{chartTitle}</p>}
 
             {displayLabel && (
@@ -326,7 +327,7 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLab
                     return (
                         <div key={i} className="flex items-center justify-between gap-6">
                             <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-sm inline-block shadow-[0_0_5px_currentColor]" style={{ background: p.color || p.fill || '#6c63ff' }} />
+                                <span className="w-1.5 h-1.5 rounded-sm inline-block shadow-[0_0_5px_currentColor]" style={{ background: p.color || p.fill || CHART_COLORS[0] }} />
                                 <span className="text-[10px] tracking-widest uppercase opacity-70 whitespace-nowrap">{p.name}:</span>
                             </div>
                             <span className="text-sm font-bold tabular-nums text-themed-main group-hover:text-primary transition-colors">
@@ -346,7 +347,7 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLab
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-const KPICard = ({ title, value, icon, trend, trend_label, subtitle }: { title: string; value: string; icon?: string; trend?: number; trend_label?: string; subtitle?: string }) => {
+const KPICard = ({ title, value, icon, trend, trend_label, subtitle, cardColor }: { title: string; value: string; icon?: string; trend?: number; trend_label?: string; subtitle?: string; cardColor: string }) => {
     const iconEl = KPI_ICON_SVG[icon || 'default'] ?? KPI_ICON_SVG.default;
 
     // Trend logic
@@ -356,23 +357,18 @@ const KPICard = ({ title, value, icon, trend, trend_label, subtitle }: { title: 
 
     // Adjust logic if "down is good" (like Churn Rate) based on title heuristics
     const reverseLogic = title.toLowerCase().includes('churn') || title.toLowerCase().includes('bounce');
-    const colorClass = isNeutral ? 'text-on-surface-variant bg-surface-container-high' :
-        (isPositive && !reverseLogic) || (isNegative && reverseLogic) ? 'text-secondary dark:text-primary bg-secondary/10 dark:bg-primary/10' :
-            'text-error bg-error/10';
+    const trendTone = isNeutral ? 'FLAT' : ((isPositive && !reverseLogic) || (isNegative && reverseLogic) ? 'UP' : 'DOWN');
 
 
     return (
-        <div className={`bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md p-6 rounded-xl relative overflow-hidden group flex flex-col justify-between hover:bg-surface-container-low transition-all shadow-sm dark:shadow-none border border-transparent dark:border-white/5`}>
-            {/* Decorative arc (remade simpler) */}
-            <div className={`absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-bl-[4rem] -mr-4 -mt-4 transition-all group-hover:scale-110`} />
-
-            <div className="flex justify-between items-start mb-4 relative z-10">
-                <span className="p-2 bg-primary/5 dark:bg-primary/10 text-primary rounded-lg group-hover:bg-primary group-hover:text-white transition-colors">
+        <div className="rounded-3xl p-5 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-4px_rgba(0,0,0,0.1)] flex flex-col justify-between min-h-[140px]" style={{ background: cardColor }}>
+            <div className="flex justify-between items-start mb-4">
+                <span className="w-10 h-10 rounded-2xl bg-white/20 text-white flex items-center justify-center">
                     {iconEl}
                 </span>
 
                 {trend !== undefined && (
-                    <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${colorClass}`}>
+                    <div className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-white/20 text-white">
                         {isPositive && <span className="material-symbols-outlined text-xs">trending_up</span>}
                         {isNegative && <span className="material-symbols-outlined text-xs">trending_down</span>}
                         {isNeutral && <span className="material-symbols-outlined text-xs">trending_flat</span>}
@@ -381,23 +377,24 @@ const KPICard = ({ title, value, icon, trend, trend_label, subtitle }: { title: 
                 )}
             </div>
 
-            <div className="flex flex-col gap-1 z-10">
-                <p className="text-[10px] sm:text-xs font-label uppercase tracking-wider text-on-surface-variant font-bold">{title}</p>
-                <div className="flex items-baseline justify-between mt-1">
-                    <h3 className="text-2xl font-bold text-on-surface font-headline">{value}</h3>
-                </div>
-
+            <div>
+                <p
+                    className="text-[12px] tracking-[0.05em] uppercase text-white/80 font-medium"
+                    style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}
+                >
+                    {title}
+                </p>
+                <h3
+                    className="text-[24px] leading-8 font-bold text-white mt-1"
+                    style={{ fontFamily: '"Public Sans", sans-serif' }}
+                >
+                    {value}
+                </h3>
                 {trend_label && trend !== undefined && (
-                    <p className="text-[10px] text-on-surface-variant font-medium text-right mt-0.5">{trend_label}</p>
+                    <p className="text-[10px] text-white/80 mt-1 font-medium" style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}>{trend_label} ({trendTone})</p>
                 )}
-
                 {subtitle && (
-                    <p className="text-[10px] text-on-surface-variant font-medium mt-1.5 flex items-center gap-1">
-                        <svg className="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        {subtitle}
-                    </p>
+                    <p className="text-[10px] text-white/75 mt-1 font-medium" style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}>{subtitle}</p>
                 )}
             </div>
         </div>
@@ -407,16 +404,16 @@ const KPICard = ({ title, value, icon, trend, trend_label, subtitle }: { title: 
 // ─── Chart Card Wrapper ───────────────────────────────────────────────────────
 
 const ChartCard = ({ title, children, className, actions }: { title: string; children: React.ReactNode; className?: string; actions?: React.ReactNode }) => (
-    <div className={`bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md p-6 rounded-xl shadow-sm dark:shadow-none border border-transparent dark:border-white/5 relative group transition-colors duration-300 h-full flex flex-col ${className || ''}`}>
-        <div className="flex justify-between items-center mb-6 flex-shrink-0">
-            <h4 className="text-lg font-headline font-semibold text-on-surface">{title}</h4>
+    <div className={`bg-white dark:bg-[#17181b] border border-[#e4e4e7] dark:border-[#2a2d33] rounded-3xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] h-full flex flex-col ${className || ''}`}>
+        <div className="flex justify-between items-center mb-5 flex-shrink-0">
+            <h4 className="text-[15px] font-semibold text-[#2d2f2f] dark:text-[#eceff4]">{title}</h4>
             {actions ? (
                 <div className="relative z-10 flex gap-2 items-center">{actions}</div>
             ) : (
                 <div className="flex gap-2 relative z-10">
-                    <button className="p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-on-surface-variant">refresh</span></button>
-                    <button className="p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-on-surface-variant">ios_share</span></button>
-                    <button className="p-1.5 hover:bg-surface-container-low dark:hover:bg-white/5 rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-on-surface-variant">more_vert</span></button>
+                    <button className="p-1.5 hover:bg-[#f2f3f3] dark:hover:bg-[#262931] rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-[#5a5c5c] dark:text-[#b9bec9]">refresh</span></button>
+                    <button className="p-1.5 hover:bg-[#f2f3f3] dark:hover:bg-[#262931] rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-[#5a5c5c] dark:text-[#b9bec9]">ios_share</span></button>
+                    <button className="p-1.5 hover:bg-[#f2f3f3] dark:hover:bg-[#262931] rounded-lg transition-colors"><span className="material-symbols-outlined text-sm text-[#5a5c5c] dark:text-[#b9bec9]">more_vert</span></button>
                 </div>
             )}
         </div>
@@ -433,12 +430,17 @@ const ChartCard = ({ title, children, className, actions }: { title: string; chi
 const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: any; chartColors: any; isDark: boolean; onFilterClick?: (col: string, val: string) => void }) => {
     const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
     const [showOutliers, setShowOutliers] = useState(true);
+    const [treemapTip, setTreemapTip] = useState<{ x: number; y: number; name: string; value: number } | null>(null);
+    const treemapRef = useRef<HTMLDivElement>(null);
 
     const chartData = showOutliers ? chart?.data : (chart?.data_without_outliers || chart?.data);
 
-    const gridProps = { stroke: chartColors.grid, strokeDasharray: '3 3' };
-    const axisProps = { stroke: chartColors.axis, fontSize: 11, tickLine: false, axisLine: false };
+    const gridProps = { stroke: chartColors.grid, strokeDasharray: '2 6' };
+    const axisProps = { stroke: chartColors.axis, fontSize: 10, tickLine: false, axisLine: false };
     const textStyle = { fill: chartColors.text };
+    const polishedPalette = isDark
+        ? ['#f59e0b', '#6366f1', '#10b981', '#f43f5e', '#14b8a6', '#8b5cf6']
+        : ['#f59e0b', '#6366f1', '#22c55e', '#f43f5e', '#14b8a6', '#8b5cf6'];
 
     if (!chartData?.length) {
         return (
@@ -474,6 +476,18 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
         return v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v;
     };
 
+    const formatCenterTotal = (total: number): string => {
+        if (isMoney) {
+            if (total >= 1_000_000) return `$${(total / 1_000_000).toFixed(2)}M`;
+            if (total >= 1_000) return `$${(total / 1_000).toFixed(1)}K`;
+            return `$${Math.round(total).toLocaleString()}`;
+        }
+        if (isPercent) return `${total.toFixed(1)}%`;
+        if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(2)}M`;
+        if (total >= 1_000) return `${(total / 1_000).toFixed(1)}K`;
+        return Math.round(total).toLocaleString();
+    };
+
     // Auto-detect label key from first data row
     const firstRow = chartData[0] || {};
     const nameKey = 'name' in firstRow ? 'name'
@@ -501,10 +515,10 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
         onFilterClick(filterCol, String(val));
     };
 
-    const STANDARD_BAR_COLOR = isDark ? '#3b82f6' : '#2563eb';
+    const STANDARD_BAR_COLOR = polishedPalette[0];
     const getBarFillByIndex = (index: number, totalBars: number) => {
         if (totalBars >= 3 && totalBars <= 5) {
-            return CHART_COLORS[index % CHART_COLORS.length];
+            return polishedPalette[index % polishedPalette.length];
         }
         return STANDARD_BAR_COLOR;
     };
@@ -538,12 +552,11 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                 <div className="flex flex-col h-full w-full">
                     {renderOutlierToggle()}
                     <ResponsiveContainer width="100%" height={192} debounce={50}>
-                        <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
-                            <CartesianGrid {...gridProps} vertical={false} />
+                        <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 26, left: 0 }} barCategoryGap="16%">
                             <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
-                            <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
+                            <YAxis hide />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
-                            <Bar dataKey="value" radius={[4, 4, 0, 0]} fill={STANDARD_BAR_COLOR} maxBarSize={40} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"}>
+                            <Bar dataKey="value" radius={[6, 6, 0, 0]} fill={STANDARD_BAR_COLOR} maxBarSize={52} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"}>
                                 {chartData.map((_: any, i: number) => (
                                     <Cell key={`bar-cell-${i}`} fill={getBarFillByIndex(i, chartData.length)} />
                                 ))}
@@ -559,12 +572,12 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                 <div className="flex flex-col h-full w-full">
                     {renderOutlierToggle()}
                     <ResponsiveContainer width="100%" height={hbarHeight} debounce={50}>
-                        <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 5 }}>
+                        <BarChart data={chartData} layout="vertical" margin={{ top: 6, right: 14, bottom: 6, left: 2 }} barCategoryGap="28%">
                             <CartesianGrid {...gridProps} horizontal={false} />
                             <XAxis type="number" {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <YAxis dataKey={nameKey} type="category" {...axisProps} stroke={chartColors.axis} width={110} tick={{ ...textStyle, fontSize: 11 }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(129,140,248,0.05)' : 'rgba(0,0,0,0.05)' }} />
-                            <Bar dataKey="value" radius={[0, 4, 4, 0]} fill={STANDARD_BAR_COLOR} maxBarSize={22} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"}>
+                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={STANDARD_BAR_COLOR} maxBarSize={20} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"}>
                                 {chartData.map((_: any, i: number) => (
                                     <Cell key={`hbar-cell-${i}`} fill={getBarFillByIndex(i, chartData.length)} />
                                 ))}
@@ -593,8 +606,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                     const label = v === 'positive' ? positiveLabel : v === 'negative' ? negativeLabel : v;
                                     return <span className="text-xs text-themed-muted">{label}</span>;
                                 }} />
-                            <Bar dataKey="positive" stackId="a" fill="#2563eb" maxBarSize={40} name="positive" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
-                            <Bar dataKey="negative" stackId="a" fill="#0ea5a4" maxBarSize={40} name="negative" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
+                            <Bar dataKey="positive" stackId="a" fill={CHART_COLORS[1]} maxBarSize={40} name="positive" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
+                            <Bar dataKey="negative" stackId="a" fill={CHART_COLORS[2]} maxBarSize={40} name="negative" onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -614,7 +627,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                     </linearGradient>
                                 ))}
                             </defs>
-                            <Pie data={chartData} cx="38%" cy="50%" outerRadius={80} innerRadius={0}
+                            <Pie data={chartData} cx="50%" cy="46%" outerRadius={72} innerRadius={24}
                                 paddingAngle={2} dataKey="value" stroke={isDark ? '#1a1d24' : '#ffffff'}
                                 strokeWidth={2} animationBegin={0} animationDuration={800}>
                                 {chartData.map((entry: any, i: number) => (
@@ -624,12 +637,12 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                 ))}
                             </Pie>
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                            <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" iconSize={8}
+                            <Legend verticalAlign="bottom" align="center" layout="horizontal" iconType="circle" iconSize={7}
                                 formatter={(v: string) => {
                                     const item = chartData.find((d: any) => d.name === v);
                                     const total = chartData.reduce((s: number, d: any) => s + (d.value || 0), 0);
                                     const pct = total > 0 && item ? ((item.value / total) * 100).toFixed(0) : '0';
-                                    return <span className="text-xs text-themed-muted">{v.length > 12 ? v.slice(0, 12) + '…' : v} <span className="opacity-50">{pct}%</span></span>;
+                                    return <span className="text-[10px] text-themed-muted uppercase tracking-wide">{v.length > 10 ? v.slice(0, 10) + '…' : v} <span className="opacity-60">{pct}%</span></span>;
                                 }} />
                         </PieChart>
                     </ResponsiveContainer>
@@ -650,7 +663,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                     </linearGradient>
                                 ))}
                             </defs>
-                            <Pie data={chartData} cx="38%" cy="50%" innerRadius={52} outerRadius={80}
+                            <Pie data={chartData} cx="50%" cy="46%" innerRadius={46} outerRadius={72}
                                 paddingAngle={3} dataKey="value" stroke={isDark ? '#1a1d24' : '#ffffff'}
                                 strokeWidth={2} animationBegin={0} animationDuration={800}>
                                 {chartData.map((entry: any, i: number) => (
@@ -659,13 +672,29 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                         style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))', cursor: onFilterClick ? 'pointer' : 'default' }} />
                                 ))}
                             </Pie>
+                            {(() => {
+                                const total = chartData.reduce((s: number, d: any) => s + (Number(d.value) || 0), 0);
+                                const totalText = formatCenterTotal(total);
+                                const fontSize = totalText.length > 10 ? 22 : totalText.length > 7 ? 26 : 30;
+                                return (
+                                    <>
+                                        <circle cx="50%" cy="46%" r="39" fill={isDark ? '#121722' : '#ffffff'} stroke={isDark ? '#252b3a' : '#e6e9f0'} strokeWidth={1.2} />
+                                        <text x="50%" y="44.5%" textAnchor="middle" dominantBaseline="middle" fill={isDark ? '#f4f7ff' : '#1f2a3d'} style={{ fontSize, fontWeight: 800, letterSpacing: '0.01em' }}>
+                                            {totalText}
+                                        </text>
+                                    </>
+                                );
+                            })()}
+                            <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill={isDark ? '#9aa3b2' : '#6b7280'} style={{ fontSize: 9, letterSpacing: '0.08em', fontWeight: 700 }}>
+                                TOTAL
+                            </text>
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                            <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" iconSize={8}
+                            <Legend verticalAlign="bottom" align="center" layout="horizontal" iconType="circle" iconSize={7}
                                 formatter={(v: string) => {
                                     const item = chartData.find((d: any) => d.name === v);
                                     const total = chartData.reduce((s: number, d: any) => s + (d.value || 0), 0);
                                     const pct = total > 0 && item ? ((item.value / total) * 100).toFixed(0) : '0';
-                                    return <span className="text-xs text-themed-muted">{v.length > 12 ? v.slice(0, 12) + '…' : v} <span className="opacity-50">{pct}%</span></span>;
+                                    return <span className="text-[10px] text-themed-muted uppercase tracking-wide">{v.length > 10 ? v.slice(0, 10) + '…' : v} <span className="opacity-60">{pct}%</span></span>;
                                 }} />
                         </PieChart>
                     </ResponsiveContainer>
@@ -681,8 +710,8 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
                             <defs>
                                 <linearGradient id="areaDark" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor={CHART_COLORS[2]} stopOpacity={0.35} />
-                                    <stop offset="100%" stopColor={CHART_COLORS[2]} stopOpacity={0.02} />
+                                    <stop offset="0%" stopColor={CHART_COLORS[0]} stopOpacity={0.28} />
+                                    <stop offset="100%" stopColor={CHART_COLORS[0]} stopOpacity={0.03} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
@@ -694,9 +723,9 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                                 }} tick={{ ...textStyle }} />
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
-                            <Area type="monotone" dataKey="value" stroke={CHART_COLORS[2]} strokeWidth={2.5}
-                                fill="url(#areaDark)" dot={false}
-                                activeDot={{ r: 5, fill: '#00d4aa', stroke: '#111318', onClick: (e: any) => handleSliceClick(e?.payload || e) }}
+                            <Area type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2.75}
+                                fill={chart.type === 'line' ? 'transparent' : 'url(#areaDark)'} dot={false}
+                                activeDot={{ r: 4.5, fill: '#ffffff', stroke: CHART_COLORS[0], strokeWidth: 2, onClick: (e: any) => handleSliceClick(e?.payload || e) }}
                                 onClick={handleSliceClick}
                                 cursor={onFilterClick ? 'pointer' : 'default'} />
                         </AreaChart>
@@ -748,7 +777,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ strokeDasharray: '3 3', stroke: chartColors.axis }} />
                             <Scatter data={chartData}>
                                 {chartData.map((_: any, i: number) => (
-                                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={0.8} />
+                                    <Cell key={i} fill={polishedPalette[i % polishedPalette.length]} stroke={isDark ? '#111318' : '#ffffff'} strokeWidth={1.2} opacity={0.88} />
                                 ))}
                             </Scatter>
                         </ScatterChart>
@@ -757,33 +786,111 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
             );
 
         case 'treemap': {
-            const TreeCell = ({ x, y, width, height, name, index: idx }: any) => {
-                const col = CHART_COLORS[Math.abs(String(name).charCodeAt(0)) % CHART_COLORS.length];
-                const hov = hoveredIdx === idx;
+            const toSentenceCase = (value: string) => {
+                const raw = String(value || '').trim();
+                if (!raw) return 'Item';
+                const lower = raw.toLowerCase();
+                return lower.charAt(0).toUpperCase() + lower.slice(1);
+            };
+
+            const sorted = [...chartData]
+                .map((d: any) => ({ ...d, value: Number(d?.value) || 0, label: toSentenceCase(String(d?.name ?? d?.label ?? 'Item')) }))
+                .sort((a: any, b: any) => b.value - a.value);
+            const [p0, p1, ...rest] = sorted;
+            const tileColors = isDark
+                ? ['#5046d6', '#d89b1c', '#19a487', '#2f85d5', '#2a8f7f']
+                : ['#e8ddab', '#d8dff4', '#b8e1cf', '#cde8f7', '#b8e8e1'];
+
+            const renderTile = (item: any, color: string, idx: number, compact = false) => {
+                const isHovered = hoveredIdx === idx;
                 return (
-                    <g onMouseEnter={() => setHoveredIdx(idx)} onMouseLeave={() => setHoveredIdx(null)}
-                        onClick={() => handleSliceClick({ name })}
-                        style={{ cursor: onFilterClick ? 'pointer' : 'default' }}>
-                        <rect x={x} y={y} width={width} height={height} rx={4}
-                            fill={col} stroke={isDark ? "#0d0d0d" : "#ffffff"} strokeWidth={2}
-                            style={{ filter: hov ? 'brightness(1.2)' : 'none', transition: 'filter 0.2s' }} />
-                        {width > 50 && height > 28 && (
-                            <text x={x + width / 2} y={y + height / 2 + 4} textAnchor="middle"
-                                fill="#fff" fontSize={10} fontWeight="600" style={{ pointerEvents: 'none' }}>
-                                {String(name).slice(0, 12)}
-                            </text>
-                        )}
-                    </g>
+                    <button
+                        type="button"
+                        key={`${item.label}-${idx}`}
+                        onMouseEnter={() => setHoveredIdx(idx)}
+                        onMouseMove={(e) => {
+                            if (!treemapRef.current) return;
+                            const rect = treemapRef.current.getBoundingClientRect();
+                            setTreemapTip({
+                                x: e.clientX - rect.left + 12,
+                                y: e.clientY - rect.top - 10,
+                                name: item.label,
+                                value: item.value,
+                            });
+                        }}
+                        onMouseLeave={() => {
+                            setHoveredIdx(null);
+                            setTreemapTip(null);
+                        }}
+                        onClick={() => handleSliceClick(item)}
+                        className="w-full h-full rounded-md text-left p-2.5 transition-all"
+                        style={{
+                            background: color,
+                            border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.35)'}`,
+                            boxShadow: isHovered ? '0 8px 20px rgba(15,23,42,0.16)' : 'none',
+                            transform: isHovered ? 'translateY(-1px)' : 'translateY(0px)',
+                            cursor: onFilterClick ? 'pointer' : 'default',
+                        }}
+                    >
+                        <div className="h-full flex flex-col justify-end gap-0.5">
+                            <p className="text-[10px] font-semibold tracking-[0.02em] truncate" style={{ color: isDark ? '#f8fafc' : '#1f2937', fontFamily: '"Be Vietnam Pro", sans-serif' }}>
+                                {item.label}
+                            </p>
+                            {!compact && (
+                                <p className="text-[11px] font-bold" style={{ color: isDark ? '#e2e8f0' : '#334155', fontFamily: '"Public Sans", sans-serif' }}>
+                                    {fmtVal(item.value)}
+                                </p>
+                            )}
+                        </div>
+                    </button>
                 );
             };
+
             return (
                 <div className="flex flex-col h-full w-full">
                     {renderOutlierToggle()}
-                    <ResponsiveContainer width="100%" height={192} debounce={50}>
-                        <Treemap data={chartData} dataKey="value" stroke={isDark ? "#0d0d0d" : "#ffffff"} content={<TreeCell />}>
-                            <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
-                        </Treemap>
-                    </ResponsiveContainer>
+                    <div ref={treemapRef} className="h-[192px] grid grid-cols-[1.35fr_1fr] gap-2 relative" onMouseLeave={() => setTreemapTip(null)}>
+                        {sorted.length <= 1 ? (
+                            <div className="col-span-2 min-h-0">
+                                {p0 ? renderTile(p0, tileColors[0], 0) : null}
+                            </div>
+                        ) : sorted.length === 2 ? (
+                            <div className="col-span-2 grid gap-2 min-h-0" style={{ gridTemplateRows: `${Math.max(1, p0?.value || 1)}fr ${Math.max(1, p1?.value || 1)}fr` }}>
+                                {p0 ? renderTile(p0, tileColors[0], 0) : null}
+                                {p1 ? renderTile(p1, tileColors[1], 1) : null}
+                            </div>
+                        ) : (
+                            <>
+                                <div className="grid gap-2 min-h-0" style={{ gridTemplateRows: `${Math.max(1, p0?.value || 1)}fr ${Math.max(1, p1?.value || 1)}fr` }}>
+                                    {p0 ? renderTile(p0, tileColors[0], 0) : null}
+                                    {p1 ? renderTile(p1, tileColors[1], 1) : null}
+                                </div>
+                                <div className="grid gap-2 min-h-0 overflow-y-auto pr-0.5" style={{ gridTemplateRows: rest.map((r: any) => `${Math.max(1, r?.value || 1)}fr`).join(' ') || '1fr' }}>
+                                    {rest.map((item: any, i: number) => renderTile(item, tileColors[(i + 2) % tileColors.length], i + 2, false))}
+                                </div>
+                            </>
+                        )}
+                        {treemapTip && (
+                            <div
+                                className="pointer-events-none absolute z-20"
+                                style={{
+                                    left: treemapTip.x,
+                                    top: treemapTip.y,
+                                    transform: 'translate(0,-100%)',
+                                }}
+                            >
+                                <ThemedTooltip
+                                    active
+                                    label={treemapTip.name}
+                                    payload={[{ name: chart.value_label || 'Value', value: treemapTip.value, color: CHART_COLORS[0] }]}
+                                    formatter={fmtVal}
+                                    chartTitle={chart.title}
+                                    valueLabel={chart.value_label}
+                                    formatType={chart.format_type}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
             );
         }
@@ -797,7 +904,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
                             <PolarGrid stroke={chartColors.grid} />
                             <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: chartColors.text }} />
                             <PolarRadiusAxis tick={{ fontSize: 9, fill: chartColors.axis }} />
-                            <Radar dataKey="value" stroke="#6c63ff" fill="#6c63ff" fillOpacity={0.35} onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
+                            <Radar dataKey="value" stroke={CHART_COLORS[0]} fill={CHART_COLORS[0]} fillOpacity={0.2} strokeWidth={2} onClick={handleSliceClick} cursor={onFilterClick ? 'pointer' : 'default'} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} valueLabel={chart.value_label} />} />
                         </RadarChart>
                     </ResponsiveContainer>
@@ -845,7 +952,7 @@ const FilterDropdown = ({
             <Button
                 type="button"
                 onClick={() => setOpen(o => !o)}
-                className="flex items-center gap-2 bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl px-4 py-2.5 shadow-sm text-[15px] font-sans tracking-wide text-on-surface hover:bg-surface-container-low transition-colors focus:outline-none"
+                className="flex items-center gap-2 bg-white border border-[#d8dada] rounded-2xl px-4 py-2.5 shadow-sm text-[14px] text-[#2d2f2f] hover:bg-[#f8f9f9] transition-colors"
                 variant="ghost"
             >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -858,10 +965,10 @@ const FilterDropdown = ({
             </Button>
 
             {open && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-surface-container-lowest dark:bg-surface-container/90 dark:backdrop-blur-xl border border-transparent dark:border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden font-sans">
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-[#e5e7e7] rounded-2xl shadow-2xl z-50 overflow-hidden">
                     <div className="py-1">
                         {datasets.length === 0 ? (
-                            <p className="px-4 py-3 text-sm text-on-surface-variant">No datasets available</p>
+                            <p className="px-4 py-3 text-sm text-[#7a7c7c]">No datasets available</p>
                         ) : (
                             datasets.map(ds => (
                                 <Button
@@ -869,8 +976,8 @@ const FilterDropdown = ({
                                     key={ds.id}
                                     onClick={() => { onDatasetChange(ds.id); setOpen(false); }}
                                     className={`w-full text-left px-4 py-2.5 text-xs uppercase tracking-widest transition-colors flex items-center gap-2 ${ds.id === selectedDatasetId
-                                        ? 'bg-primary/10 text-primary font-bold'
-                                        : 'text-themed-muted hover:bg-bg-hover hover:text-themed-main'}`}
+                                        ? 'bg-[#efedff] text-[#6c63ff] font-bold'
+                                        : 'text-[#5a5c5c] hover:bg-[#f6f7f7] hover:text-[#2d2f2f]'}`}
                                     variant="ghost"
                                 >
                                     <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -973,27 +1080,14 @@ const MultiFilterPanel = ({
 
     return (
         <div ref={panelRef} className="mb-6 relative z-30">
-            {/* Panel card */}
-            <div className="bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl shadow-sm p-4">
-
-                {/* Header row */}
+            <div className="bg-white dark:bg-[#17181b] border border-[#eceeee] dark:border-[#2a2d33] rounded-[24px] shadow-[0_4px_20px_rgba(32,48,68,0.05)] p-5">
                 <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-themed-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
-                        </svg>
-                        <span className="text-sm font-serif tracking-wide text-themed-muted uppercase">Filters</span>
-                        {totalActive > 0 && (
-                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-sm bg-primary text-white text-[11px] font-bold">
-                                {totalActive} active
-                            </span>
-                        )}
-                    </div>
+                    <span className="text-[10px] uppercase tracking-[0.08em] text-[#5a5c5c] dark:text-[#a3a8b3] font-semibold">Filters</span>
                     {totalActive > 0 && (
                         <Button
                             type="button"
                             onClick={onClearAll}
-                            className="text-xs text-themed-muted hover:text-red-400 transition-colors"
+                            className="text-[11px] text-[#6c63ff] hover:text-[#3525cd] transition-colors"
                             variant="ghost"
                         >
                             Clear all
@@ -1001,8 +1095,7 @@ const MultiFilterPanel = ({
                     )}
                 </div>
 
-                {/* 4 filter slots in a grid row */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                     {filterSlots.map((selectedCol, slotIdx) => {
                         // Columns available in THIS slot's picker =
                         // all cols minus those already pinned in OTHER slots
@@ -1019,56 +1112,56 @@ const MultiFilterPanel = ({
                         const isValuesOpen = openValues === slotIdx;
 
                         return (
-                            <div key={slotIdx} className="flex flex-col gap-1.5">
-
-                                {/* ── Column Picker button ── */}
+                            <div key={slotIdx} className="flex flex-col gap-2">
                                 <div className="relative">
+                                    <div className="text-[10px] uppercase tracking-[0.08em] text-[#5a5c5c] dark:text-[#a3a8b3] font-semibold mb-1.5" style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}>
+                                        {selectedCol ? toLabel(selectedCol) : `Filter ${slotIdx + 1}`}
+                                    </div>
                                     <Button
                                         type="button"
                                         onClick={() => {
                                             setOpenValues(null);
                                             setOpenPicker(isPickerOpen ? null : slotIdx);
                                         }}
-                                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-sm text-[15px] font-serif border transition-all ${selectedCol
-                                            ? 'bg-bg-card border-white/20 text-themed-main'
-                                            : 'bg-bg-card border-dashed border-border-main text-themed-muted hover:border-primary/50'
+                                        className={`w-full h-9 flex items-center justify-between gap-2 px-3 rounded-[16px] text-[14px] border border-transparent transition-all ${selectedCol
+                                            ? 'bg-[#e8e5ff] text-[#6c63ff]'
+                                            : 'bg-[#f0f1f1] text-[#2d2f2f] dark:bg-[#23262d] dark:text-[#eceff4]'
                                             }`}
                                         variant="ghost"
                                     >
-                                        <span className="truncate">
-                                            {selectedCol ? toLabel(selectedCol) : `Filter ${slotIdx + 1}`}
+                                        <span className="truncate" style={{ fontFamily: '"Be Vietnam Pro", sans-serif', fontWeight: 500 }}>
+                                            {selectedCol ? toLabel(selectedCol) : 'Select Filter'}
                                         </span>
+
                                         <div className="flex items-center gap-1 flex-shrink-0">
-                                            {/* Unpin × */}
                                             {selectedCol && (
                                                 <span
                                                     role="button"
                                                     tabIndex={0}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        // Clear values for this column
                                                         onFilterChange(selectedCol, []);
                                                         onSlotChange(slotIdx, null);
                                                     }}
-                                                    className="hover:text-red-400 transition-colors"
+                                                    className="text-[#7a7c7c] hover:text-red-500 transition-colors"
                                                     aria-label="Remove filter"
                                                 >
                                                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.3" d="M6 18L18 6M6 6l12 12" />
                                                     </svg>
                                                 </span>
                                             )}
-                                            <svg className={`w-3 h-3 transition-transform ${isPickerOpen ? 'rotate-180' : ''}`}
-                                                fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
+                                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full transition-colors ${isPickerOpen || !!selectedCol ? 'bg-[#6c63ff] text-white' : 'bg-[#dfe1e1] text-[#5a5c5c] dark:bg-[#2c2f36] dark:text-[#c0c6d0]'}`}>
+                                                <svg className={`w-3 h-3 transition-transform ${isPickerOpen ? 'rotate-180' : ''}`}
+                                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.3" d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </span>
                                         </div>
                                     </Button>
 
-                                    {/* Column picker dropdown */}
                                     {isPickerOpen && (
-                                        <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-bg-card rounded-sm shadow-2xl z-50 overflow-hidden">
-                                            {/* Clear slot option */}
+                                        <div className="absolute top-full left-0 mt-1 w-full min-w-[180px] bg-white dark:bg-[#17181b] rounded-[16px] border border-[#e5e7e7] dark:border-[#2f333b] shadow-2xl z-50 overflow-hidden">
                                             {selectedCol && (
                                                 <Button
                                                     type="button"
@@ -1077,7 +1170,7 @@ const MultiFilterPanel = ({
                                                         onSlotChange(slotIdx, null);
                                                         setOpenPicker(null);
                                                     }}
-                                                    className="w-full text-left px-3 py-2 text-[13px] font-serif text-themed-muted hover:text-red-400 hover:bg-bg-hover transition-colors border-b border-border-main"
+                                                    className="w-full text-left px-3 py-2 text-[13px] text-[#7a7c7c] hover:text-red-500 hover:bg-[#f8f9f9] dark:hover:bg-[#1f2127] transition-colors border-b border-[#eceeee] dark:border-[#2f333b]"
                                                     variant="ghost"
                                                 >
                                                     — No filter (clear slot)
@@ -1096,9 +1189,9 @@ const MultiFilterPanel = ({
                                                             onSlotChange(slotIdx, col);
                                                             setOpenPicker(null);
                                                         }}
-                                                        className={`w-full text-left px-3 py-2 text-[14px] font-serif transition-colors ${col === selectedCol
-                                                            ? 'bg-primary/10 text-primary font-medium'
-                                                            : 'text-themed-main hover:bg-bg-hover'
+                                                        className={`w-full text-left px-3 py-2 text-[14px] transition-colors ${col === selectedCol
+                                                            ? 'bg-[#efedff] text-[#6c63ff] font-medium'
+                                                            : 'text-[#2d2f2f] dark:text-[#eceff4] hover:bg-[#f8f9f9] dark:hover:bg-[#1f2127]'
                                                             }`}
                                                         variant="ghost"
                                                     >
@@ -1110,7 +1203,6 @@ const MultiFilterPanel = ({
                                     )}
                                 </div>
 
-                                {/* ── Value picker button (only when column is chosen) ── */}
                                 {selectedCol && (
                                     <div className="relative">
                                         <Button
@@ -1119,13 +1211,13 @@ const MultiFilterPanel = ({
                                                 setOpenPicker(null);
                                                 setOpenValues(isValuesOpen ? null : slotIdx);
                                             }}
-                                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-sm text-[14px] font-serif border transition-all ${slotValues.length > 0
-                                                ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                                                : 'bg-bg-card border-border-main text-themed-muted hover:border-primary/50'
+                                            className={`w-full h-9 flex items-center justify-between gap-2 px-3 rounded-[16px] text-[14px] border border-transparent transition-all ${slotValues.length > 0
+                                                ? 'bg-[#e8e5ff] text-[#6c63ff] font-medium'
+                                                : 'bg-[#f0f1f1] text-[#2d2f2f] dark:bg-[#23262d] dark:text-[#eceff4]'
                                                 }`}
                                             variant="ghost"
                                         >
-                                            <span className="truncate text-xs">
+                                            <span className="truncate">
                                                 {slotValues.length === 0
                                                     ? 'All values'
                                                     : slotValues.length === 1
@@ -1135,32 +1227,28 @@ const MultiFilterPanel = ({
                                                         : `${slotValues.length} selected`}
                                             </span>
                                             <div className="flex items-center gap-1 flex-shrink-0">
-                                                {slotValues.length > 0 && (
-                                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-white text-[9px] font-bold">
-                                                        {slotValues.length}
-                                                    </span>
-                                                )}
-                                                <svg className={`w-3 h-3 transition-transform ${isValuesOpen ? 'rotate-180' : ''}`}
-                                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                                </svg>
+                                                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full transition-colors ${isValuesOpen || slotValues.length > 0 ? 'bg-[#6c63ff] text-white' : 'bg-[#dfe1e1] text-[#5a5c5c] dark:bg-[#2c2f36] dark:text-[#c0c6d0]'}`}>
+                                                    <svg className={`w-3 h-3 transition-transform ${isValuesOpen ? 'rotate-180' : ''}`}
+                                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.3" d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </span>
                                             </div>
                                         </Button>
 
-                                        {/* Values dropdown */}
                                         {isValuesOpen && (
-                                            <div className="absolute top-full left-0 mt-1 w-full min-w-[200px] bg-bg-card border border-border-main rounded-sm shadow-2xl z-50 overflow-hidden">
-                                                <div className="flex items-center justify-between px-3 py-2.5 border-b border-border-main bg-bg-card/50 backdrop-blur-sm">
+                                            <div className="absolute top-full left-0 mt-1 w-full min-w-[200px] bg-white dark:bg-[#17181b] border border-[#e5e7e7] dark:border-[#2f333b] rounded-[16px] shadow-2xl z-50 overflow-hidden">
+                                                <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#eceeee] dark:border-[#2f333b] bg-[#f8f9f9] dark:bg-[#1f2127]">
                                                     <Button
                                                         type="button"
                                                         onClick={() => onFilterChange(selectedCol, selectedColOptions.map(v => toRawTargetValue(selectedCol, v)))}
-                                                        className="text-[12px] uppercase tracking-wider font-serif text-primary hover:text-primary/80 font-bold transition-colors"
+                                                        className="text-[11px] uppercase tracking-wider text-[#6c63ff] hover:text-[#3525cd] font-bold transition-colors"
                                                         variant="ghost"
                                                     >Select all</Button>
                                                     <Button
                                                         type="button"
                                                         onClick={() => onFilterChange(selectedCol, [])}
-                                                        className="text-[12px] uppercase tracking-wider font-serif text-themed-muted hover:text-red-400 font-bold transition-colors"
+                                                        className="text-[11px] uppercase tracking-wider text-[#7a7c7c] hover:text-red-500 font-bold transition-colors"
                                                         variant="ghost"
                                                     >Clear</Button>
                                                 </div>
@@ -1168,15 +1256,15 @@ const MultiFilterPanel = ({
                                                     {selectedColOptions.map(val => (
                                                         <label
                                                             key={val}
-                                                            className="flex items-center gap-2.5 px-3 py-2 hover:bg-bg-hover cursor-pointer transition-colors"
+                                                            className="flex items-center gap-2.5 px-3 py-2 hover:bg-[#f7f8f8] dark:hover:bg-[#1f2127] cursor-pointer transition-colors"
                                                         >
                                                             <input
                                                                 type="checkbox"
                                                                 checked={slotValues.includes(val)}
                                                                 onChange={() => toggleValue(selectedCol, val)}
-                                                                className="w-3.5 h-3.5 rounded accent-primary"
+                                                                className="w-3.5 h-3.5 rounded accent-[#6c63ff]"
                                                             />
-                                                            <span className="text-[14px] font-serif text-themed-main truncate">
+                                                            <span className="text-[14px] text-[#2d2f2f] dark:text-[#eceff4] truncate">
                                                                 {selectedCol === targetColumn ? (targetRawToSemantic[String(val)] || formatTargetTabLabel(String(val), targetColumn || undefined)) : val}
                                                             </span>
                                                         </label>
@@ -1448,7 +1536,6 @@ export default function UserDashboard() {
         setDomain,
         chartData,
         setDashboardData,
-        target_value,
         setTargetValue
     } = useFilterStore();
 
@@ -1506,6 +1593,7 @@ export default function UserDashboard() {
     // Reset slots + filters when dataset changes
     useEffect(() => {
         setFilterSlots([null, null, null, null]);
+        setTargetValue('all');
         clearFilters();
     }, [selectedDatasetId]);
 
@@ -1566,13 +1654,13 @@ export default function UserDashboard() {
         return () => {
             clearTimeout(timer);
         };
-    }, [selectedDatasetId, target_value, classification_overrides, selected_domain]);
+    }, [selectedDatasetId, classification_overrides, selected_domain]);
 
     const buildDashboardCacheKey = () => {
         return stableSerialize({
             schema: DASHBOARD_CACHE_SCHEMA_VERSION,
             datasetId: selectedDatasetId,
-            targetValue: target_value || 'all',
+            targetValue: 'all',
             selectedDomain: selected_domain || 'auto',
             filters: normalizedActiveFilters,
             classificationOverrides: classification_overrides || {},
@@ -1640,7 +1728,7 @@ export default function UserDashboard() {
             setError(null);
             const data = await analyticsService.getDashboardAnalytics(
                 selectedDatasetId,
-                target_value,
+                'all',
                 normalizedActiveFilters,
                 {},
                 classification_overrides,
@@ -1676,7 +1764,7 @@ export default function UserDashboard() {
             setIsKPILoading(true);
             const data = await analyticsService.getDashboardAnalytics(
                 selectedDatasetId,
-                target_value,
+                'all',
                 normalizedActiveFilters,
                 chart_overrides,
                 classification_overrides,
@@ -1710,7 +1798,7 @@ export default function UserDashboard() {
             const baseKey = stableSerialize({
                 schema: DASHBOARD_CACHE_SCHEMA_VERSION,
                 datasetId: selectedDatasetId,
-                targetValue: target_value || 'all',
+                targetValue: 'all',
                 selectedDomain: selected_domain || 'auto',
                 filters: {},
                 classificationOverrides: classification_overrides || {},
@@ -1736,7 +1824,7 @@ export default function UserDashboard() {
         return () => {
             clearTimeout(timer);
         };
-    }, [selectedDatasetId, target_value, selected_domain, classification_overrides, normalizedActiveFilters, chart_overrides]);
+    }, [selectedDatasetId, selected_domain, classification_overrides, normalizedActiveFilters, chart_overrides]);
 
     const handleChartFilterClick = (col: string, val: string) => {
         const rawCol = String(col || '').trim();
@@ -1950,14 +2038,14 @@ export default function UserDashboard() {
     <style>
         body { background-color: #0e1015; color: #f3f4f6; font-family: 'Inter', sans-serif; margin: 0; }
         .glass-panel { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .accent-bar { width: 3px; height: 24px; background-color: #6C63FF; }
+        .accent-bar { width: 3px; height: 24px; background-color: ${CHART_COLORS[0]}; }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-6">
     <div class="w-full max-w-4xl glass-panel p-8 rounded-xl shadow-2xl">
         <div class="flex items-center gap-3 mb-8">
             <div class="accent-bar"></div>
-            <h1 class="text-2xl font-light tracking-tight uppercase text-[#6C63FF] font-['Outfit']">${safeTitle}</h1>
+            <h1 class="text-2xl font-light tracking-tight uppercase" style="color:${CHART_COLORS[0]};font-family:'Outfit',sans-serif;">${safeTitle}</h1>
         </div>
         
         <div id="vizzyChart" style="width: 100%; height: 500px;" class="rounded-lg overflow-hidden border border-white/5"></div>
@@ -1977,7 +2065,7 @@ export default function UserDashboard() {
       function drawRegionsMap() {
         var data = google.visualization.arrayToDataTable(${safeJSON(mapData)});
         var options = {
-            colorAxis: {colors: ['#2A2D35', '#6C63FF']},
+            colorAxis: {colors: ['#2A2D35', '${CHART_COLORS[0]}']},
             backgroundColor: 'transparent',
             datalessRegionColor: '#16181D',
             defaultColor: '#1a1d24',
@@ -2020,8 +2108,8 @@ export default function UserDashboard() {
                         {
                             label: ${safeJSON(chart.title || 'Scatter')},
                             data: ${safeJSON(data.map((d: any) => ({ x: Number(d.x) || 0, y: Number(d.y) || 0 })))},
-                            backgroundColor: '#6C63FF',
-                            borderColor: '#6C63FF',
+                            backgroundColor: '${CHART_COLORS[0]}',
+                            borderColor: '${CHART_COLORS[0]}',
                             pointRadius: 6,
                             pointHoverRadius: 8
                         }
@@ -2041,7 +2129,7 @@ export default function UserDashboard() {
                         groups: [${safeJSON(labelKey)}],
                         backgroundColor: (ctx) => {
                             const colors = ${JSON.stringify(CHART_COLORS)};
-                            return colors[ctx.dataIndex % colors.length] || '#6C63FF';
+                            return colors[ctx.dataIndex % colors.length] || '${CHART_COLORS[0]}';
                         },
                         labels: { display: true, color: '#0e1015', font: { family: 'Inter', weight: 600 } },
                         borderWidth: 1,
@@ -2122,7 +2210,7 @@ export default function UserDashboard() {
     <style>
         body { background-color: #0e1015; color: #f3f4f6; font-family: 'Inter', sans-serif; margin:0; padding:0; }
         .glass-panel { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .accent-bar { width: 3px; height: 24px; background-color: #6C63FF; }
+        .accent-bar { width: 3px; height: 24px; background-color: ${CHART_COLORS[0]}; }
         canvas { width: 100% !important; height: 100% !important; max-height: 500px; }
     </style>
 </head>
@@ -2130,7 +2218,7 @@ export default function UserDashboard() {
     <div class="w-full max-w-4xl glass-panel p-8 rounded-xl shadow-2xl">
         <div class="flex items-center gap-3 mb-8">
             <div class="accent-bar"></div>
-            <h1 class="text-2xl font-light tracking-tight uppercase text-[#6C63FF] font-['Outfit']">${safeTitle}</h1>
+            <h1 class="text-2xl font-light tracking-tight uppercase" style="color:${CHART_COLORS[0]};font-family:'Outfit',sans-serif;">${safeTitle}</h1>
         </div>
         
         <div class="relative w-full overflow-hidden" style="height: 500px;">
@@ -2177,7 +2265,7 @@ export default function UserDashboard() {
                             },
                             tooltip: {
                                 backgroundColor: '#16181D',
-                                titleColor: '#6C63FF',
+                                titleColor: '${CHART_COLORS[0]}',
                                 bodyColor: '#fff',
                                 borderColor: 'rgba(255,255,255,0.1)',
                                 borderWidth: 1,
@@ -2278,225 +2366,137 @@ export default function UserDashboard() {
     };
 
     return (
-        <div id="dashboard-root" className="min-h-screen bg-bg-main text-themed-main font-display antialiased selection:bg-primary selection:text-white relative">
-            <div className="grain-overlay z-0"></div>
-            <div className="flex flex-col min-h-screen relative z-10">
-
-                {/* ── Header ── */}
-                <header className="flex justify-between items-center px-6 lg:px-8 py-5 sticky top-0 z-50 bg-bg-main/80 backdrop-blur-md border-b border-border-main transition-colors duration-300">
-                    <div className="flex items-center gap-4">
-                        <span className="material-symbols-outlined text-primary text-2xl">diamond</span>
-                        <h1 className="text-xl lg:text-2xl font-light tracking-widest uppercase text-themed-main">
-                            {getDashboardTitle(analytics?.domain)}
-                        </h1>
+        <div className="min-h-screen bg-[#f6f6f6] dark:bg-[#111216] text-[#2d2f2f] dark:text-[#eceff4] transition-colors">
+            <style>{`@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');`}</style>
+            <header className="bg-white dark:bg-[#15161a] h-16 sticky top-0 z-50 border-b border-[#eceeee] dark:border-[#272a31] px-6 flex items-center justify-between">
+                <div className="flex-1" />
+                <h1 className="text-[20px] leading-7 font-extrabold text-[#203044] dark:text-[#eceff4] tracking-tight">{getDashboardTitle(analytics?.domain)}</h1>
+                <div className="flex-1 flex justify-end items-center gap-2">
+                    <button className="w-8 h-8 rounded-full hover:bg-[#f3f4f4] dark:hover:bg-[#242730] flex items-center justify-center text-[#5a5c5c] dark:text-[#b9bec9]">
+                        <span className="material-symbols-outlined text-[18px]">notifications</span>
+                    </button>
+                    <SettingsDropdown />
+                    <div className="w-8 h-8 rounded-full border border-[#d8dada] bg-gradient-to-br from-[#e7e8e8] to-[#c8c9c9] flex items-center justify-center text-[11px] font-bold text-[#5a5c5c]">
+                        VX
                     </div>
+                </div>
+            </header>
 
-                    <div className="flex items-center gap-3 font-mono">
-                        {/* Dataset Filter Dropdown */}
-                        <FilterDropdown
-                            datasets={datasets}
-                            selectedDatasetId={selectedDatasetId}
-                            onDatasetChange={setSelectedDatasetId}
-                        />
-
-                        {/* Refresh */}
-                        <Button
-                            type="button"
-                            onClick={() => loadAnalytics(undefined, true)}
-                            disabled={isLoading}
-                            className="p-2.5 rounded-sm bg-transparent border border-border-main text-themed-muted hover:text-primary hover:border-primary/50 transition-all shadow-sm disabled:opacity-50"
-                            title="Refresh data"
-                            variant="ghost"
-                            size="icon"
-                        >
-                            <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                        </Button>
-
-                        {/* Settings */}
-                        <SettingsDropdown />
-
-                        {/* Avatar */}
-                        <div className="w-9 h-9 rounded-sm bg-primary border-b-2 border-[#4f46e5] flex items-center justify-center text-white text-xs font-bold shadow-md flex-shrink-0">
-                            VX
-                        </div>
+            <main className="w-full px-4 md:px-6 xl:px-10 2xl:px-14 py-8 md:py-10">
+                {!selectedDatasetId && !isLoading && (
+                    <div className="rounded-3xl border border-[#eceeee] dark:border-[#2a2d33] bg-white dark:bg-[#17181b] p-10 text-center text-[#7a7c7c] dark:text-[#a3a8b3]">
+                        Select a dataset to start analytics.
                     </div>
-                </header>
+                )}
 
-                <main className="flex-1 p-6 lg:p-8">
+                {isLoading && (
+                    <div className="h-64 flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-full border-2 border-[#c7c2ff] border-t-[#6c63ff] animate-spin" />
+                    </div>
+                )}
 
-                    {/* ── Dataset Info Strip ── */}
-                    {analytics && (
-                        <div className="flex items-center gap-3 mb-6 text-xs text-themed-muted dark:text-themed-muted">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <span className="font-medium text-gray-700 dark:text-themed-main">{analytics.dataset_name}</span>
-                            <span className="text-themed-main dark:text-gray-600">•</span>
-                            <span>{analytics.total_rows.toLocaleString()} rows</span>
-                            <span className="text-themed-main dark:text-gray-600">•</span>
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-primary/10 border border-primary/20 text-primary font-medium">
-                                <span className="opacity-70">Domain:</span>
-                                <select
-                                    value={selected_domain || 'auto'}
-                                    onChange={(e) => setDomain(e.target.value === 'auto' ? null : e.target.value)}
-                                    className="bg-transparent border-none outline-none text-primary font-bold cursor-pointer capitalize"
-                                >
-                                    <option className="bg-[#16181D] text-gray-300" value="auto">Auto ({analytics.domain})</option>
-                                    <option className="bg-[#16181D] text-gray-300" value="sales">Sales</option>
-                                    <option className="bg-[#16181D] text-gray-300" value="churn">Churn</option>
-                                    <option className="bg-[#16181D] text-gray-300" value="marketing">Marketing</option>
-                                    <option className="bg-[#16181D] text-gray-300" value="finance">Finance</option>
-                                    <option className="bg-[#16181D] text-gray-300" value="healthcare">Healthcare</option>
-                                    <option className="bg-[#16181D] text-gray-300" value="generic">Generic</option>
-                                </select>
-                            </div>
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${analytics.domain_confidence === 'HIGH' ? 'bg-green-500/10 text-green-500' :
-                                analytics.domain_confidence === 'MEDIUM' ? 'bg-yellow-500/10 text-yellow-500' :
-                                    'bg-red-500/10 text-red-500'
-                                }`}>
-                                {analytics.domain_confidence} Confidence
-                            </span>
-                        </div>
-                    )}
+                {!isLoading && error && (
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+                        <h3 className="font-semibold text-red-800">Error Loading Analytics</h3>
+                        <p className="text-sm text-red-600 mt-1">{error}</p>
+                    </div>
+                )}
 
-                    {/* ── Target Filter Tabs ── */}
-                    {analytics?.target_values && analytics.target_values.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2 mb-6">
-                            {(() => {
-                                const allBinary = analytics.target_values.length <= 2 && analytics.target_values.every(v => isBinaryTargetValue(String(v)));
-                                const allLabel = allBinary
-                                    ? getTargetSemanticLabels(analytics.target_column).all
-                                    : `All ${prettifyLabel(analytics.target_column || 'Target')}`;
-                                return (
-                            <Button
-                                type="button"
-                                onClick={() => setTargetValue('all')}
-                                className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === 'all'
-                                    ? 'bg-primary text-white shadow-md shadow-primary/20'
-                                    : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
-                                variant="ghost"
-                            >
-                                {allLabel}
-                            </Button>
-                                );
-                            })()}
-                            {analytics.target_values.map(val => (
+                {!isLoading && !error && analytics && (
+                    <div className="flex flex-col gap-8">
+                        <section className="flex flex-col gap-6">
+                            <div className="flex flex-wrap items-end justify-between gap-4">
+                                <div className="flex flex-col gap-3">
+                                    <div>
+                                        <div className="text-[10px] uppercase tracking-[0.08em] text-[#5a5c5c] dark:text-[#a3a8b3] font-semibold mb-2">Select Dataset</div>
+                                        <FilterDropdown
+                                            datasets={datasets}
+                                            selectedDatasetId={selectedDatasetId}
+                                            onDatasetChange={setSelectedDatasetId}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <h2 className="text-[34px] md:text-[48px] leading-[1] font-extrabold tracking-[-0.02em] text-[#2d2f2f] dark:text-[#eceff4]">
+                                            {analytics.dataset_name}
+                                        </h2>
+                                        <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-[#5a5c5c] dark:text-[#a3a8b3]">
+                                            <span>{analytics.total_rows.toLocaleString()} Rows</span>
+                                            <div className="flex items-center gap-2">
+                                                <span>Domain:</span>
+                                                <select
+                                                    value={selected_domain || 'auto'}
+                                                    onChange={(e) => setDomain(e.target.value === 'auto' ? null : e.target.value)}
+                                                    className="bg-transparent text-[#2d2f2f] dark:text-[#eceff4] font-semibold outline-none border border-[#d8dada] dark:border-[#3a3f49] rounded-xl px-2 py-1"
+                                                >
+                                                    <option value="auto">Auto ({analytics.domain})</option>
+                                                    <option value="sales">Sales</option>
+                                                    <option value="churn">Churn</option>
+                                                    <option value="marketing">Marketing</option>
+                                                    <option value="finance">Finance</option>
+                                                    <option value="healthcare">Healthcare</option>
+                                                    <option value="generic">Generic</option>
+                                                </select>
+                                            </div>
+                                            <span className={`px-2 py-1 rounded-lg text-[10px] uppercase font-bold tracking-wider ${analytics.domain_confidence === 'HIGH' ? 'bg-green-100 text-green-700' : analytics.domain_confidence === 'MEDIUM' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                                {analytics.domain_confidence} Confidence
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <Button
                                     type="button"
-                                    key={val}
-                                    onClick={() => setTargetValue(val)}
-                                    className={`px-4 py-2 rounded-sm text-[13px] font-serif uppercase tracking-widest font-bold transition-all ${target_value === val
-                                        ? 'bg-primary text-white shadow-md shadow-primary/20'
-                                        : 'bg-bg-card border border-border-main text-themed-muted hover:text-primary hover:border-primary/50'}`}
+                                    onClick={() => loadAnalytics(undefined, true)}
+                                    disabled={isLoading}
+                                    className="h-10 px-5 rounded-2xl border-0 bg-[#cb5ae875] text-[#100f0f] font-semibold shadow-[0_10px_15px_-3px_rgba(108,99,255,0.25),0_4px_6px_-4px_rgba(108,99,255,0.25)]"
                                     variant="ghost"
                                 >
-                                    {formatTargetTabLabel(String(val), analytics.target_column)}
+                                    <span className={`material-symbols-outlined text-[16px] ${isLoading ? 'animate-spin' : ''}`}>refresh</span>
+                                    Reload
                                 </Button>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* ── Multi-Filter Panel ── */}
-                    {analytics?.geo_filters && Object.keys(analytics.geo_filters).length > 0 && (
-                        <MultiFilterPanel
-                            geoFilters={analytics.geo_filters}
-                            targetColumn={analytics.target_column}
-                            targetValues={analytics.target_values?.map(v => String(v)) || []}
-                            filterSlots={filterSlots}
-                            activeFilters={active_filters}
-                            onSlotChange={(slotIdx, col) =>
-                                setFilterSlots(prev => prev.map((s, i) => i === slotIdx ? col : s))
-                            }
-                            onFilterChange={(col, values) => setFilterValues(col, values)}
-                            onClearAll={() => clearFilters()}
-                        />
-                    )}
-
-                    {/* ── No Dataset Selected ── */}
-                    {!selectedDatasetId && !isLoading && (
-                        <div className="flex flex-col items-center justify-center h-[420px] text-center select-none">
-                            <div className="relative mb-6">
-                                <div className="w-20 h-20 rounded-2xl bg-gray-100 dark:bg-[#1C1F26] border border-gray-200 dark:border-border-main/60 flex items-center justify-center shadow-sm">
-                                    <svg className="w-9 h-9 text-themed-muted dark:text-themed-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 11h6M9 14h4" />
-                                    </svg>
-                                </div>
-                                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400/90 flex items-center justify-center shadow">
-                                    <svg className="w-3 h-3 text-themed-main" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 9v4m0 4h.01" />
-                                    </svg>
-                                </div>
                             </div>
-                            <h3 className="text-base font-semibold text-gray-700 dark:text-gray-200 mb-1">No Dataset Loaded</h3>
-                            <p className="text-sm text-themed-muted dark:text-themed-muted max-w-xs">
-                                Select a dataset using the <span className="font-medium text-gray-600 dark:text-themed-muted">Select Dataset</span> button above, or upload one to get started.
-                            </p>
-                        </div>
-                    )}
 
-                    {/* ── Loading ── */}
-                    {isLoading && (
-                        <div className="flex items-center justify-center h-64">
-                            <div className="text-center">
-                                <div className="w-12 h-12 rounded-full border-2 border-blue-500/20 border-t-blue-500 animate-spin mx-auto" />
-                                <p className="text-sm text-themed-muted dark:text-themed-muted mt-4">Loading analytics…</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ── Error ── */}
-                    {!isLoading && error && (
-                        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6 flex items-center gap-4">
-                            <svg className="w-6 h-6 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <div>
-                                <h3 className="font-semibold text-red-800 dark:text-red-300">Error Loading Analytics</h3>
-                                <p className="text-sm text-red-600 dark:text-red-400 mt-0.5">{error}</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ── Empty State ── */}
-                    {!isLoading && !error && !analytics && (
-                        <div className="flex flex-col items-center justify-center h-64 text-center">
-                            <svg className="w-16 h-16 text-themed-main dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
-                            <h3 className="text-lg font-bold text-gray-700 dark:text-themed-main">No Data Yet</h3>
-                            <p className="text-sm text-themed-muted dark:text-themed-muted mt-1">Upload a dataset to see your analytics</p>
-                        </div>
-                    )}
-
-                    {/* ── Main Content ── */}
-                    {!isLoading && !error && analytics && (
-                        <>
                             {analytics.columns && (
                                 <ColumnClassificationPanel columns={analytics.columns} isDark={isDark} />
                             )}
 
-                            {/* Data Quality Report Panel */}
+                            {analytics?.geo_filters && Object.keys(analytics.geo_filters).length > 0 && (
+                                <MultiFilterPanel
+                                    geoFilters={analytics.geo_filters}
+                                    targetColumn={analytics.target_column}
+                                    targetValues={analytics.target_values?.map(v => String(v)) || []}
+                                    filterSlots={filterSlots}
+                                    activeFilters={active_filters}
+                                    onSlotChange={(slotIdx, col) =>
+                                        setFilterSlots(prev => prev.map((s, i) => i === slotIdx ? col : s))
+                                    }
+                                    onFilterChange={(col, values) => setFilterValues(col, values)}
+                                    onClearAll={() => clearFilters()}
+                                />
+                            )}
+
                             {analytics.data_quality && analytics.data_quality.length > 0 && (
-                                <div className="mb-6">
-                                    <Button
-                                        type="button"
-                                        onClick={() => setDataQualityOpen(!dataQualityOpen)}
-                                        className="flex items-center gap-2 text-xs font-serif uppercase tracking-widest text-themed-muted hover:text-primary transition-colors mb-2"
-                                        variant="ghost"
-                                    >
-                                        <svg className={`w-3 h-3 transition-transform ${dataQualityOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                        </svg>
-                                        Data Quality Report ({analytics.data_quality.filter(d => d.null_pct > 0).length} columns with nulls)
-                                    </Button>
+                                <div className="px-2">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <span className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[#5a5c5c] dark:text-[#a3a8b3]">
+                                            Data Quality Report ({analytics.data_quality.filter(d => d.null_pct > 0).length} columns with nulls)
+                                        </span>
+                                        <div className="h-px flex-1 bg-[#eceeee] dark:bg-[#2a2d33]" />
+                                        <Button
+                                            type="button"
+                                            onClick={() => setDataQualityOpen(!dataQualityOpen)}
+                                            className="text-xs text-[#6c63ff]"
+                                            variant="ghost"
+                                        >
+                                            {dataQualityOpen ? 'Hide' : 'Show'}
+                                        </Button>
+                                    </div>
                                     {dataQualityOpen && (
-                                        <div className="bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl p-4 overflow-x-auto">
-                                            <table className="w-full text-xs font-mono">
+                                        <div className="bg-white dark:bg-[#17181b] border border-[#eceeee] dark:border-[#2a2d33] rounded-2xl p-4 overflow-x-auto">
+                                            <table className="w-full text-xs">
                                                 <thead>
-                                                    <tr className="text-themed-muted border-b border-border-main">
+                                                    <tr className="text-[#7a7c7c] dark:text-[#a3a8b3] border-b border-[#eceeee] dark:border-[#2a2d33]">
                                                         <th className="text-left py-2 pr-4">Column</th>
                                                         <th className="text-right py-2 pr-4">Null %</th>
                                                         <th className="text-right py-2 pr-4">Null Count</th>
@@ -2506,20 +2506,12 @@ export default function UserDashboard() {
                                                 </thead>
                                                 <tbody>
                                                     {analytics.data_quality.map((dq: any) => (
-                                                        <tr key={dq.column} className="border-b border-border-main/30 hover:bg-white/5 transition-colors">
-                                                            <td className="py-1.5 pr-4 text-themed-main">{dq.column}</td>
-                                                            <td className={`py-1.5 pr-4 text-right font-bold ${dq.null_pct > 20 ? 'text-red-400' : dq.null_pct > 5 ? 'text-yellow-400' : 'text-green-400'}`}>
-                                                                {dq.null_pct}%
-                                                            </td>
-                                                            <td className="py-1.5 pr-4 text-right text-themed-muted">{dq.null_count.toLocaleString()}</td>
-                                                            <td className="py-1.5 pr-4 text-themed-muted">{dq.dtype}</td>
-                                                            <td className="py-1.5">
-                                                                {dq.action !== 'none' ? (
-                                                                    <span className="px-1.5 py-0.5 rounded-sm bg-primary/10 text-primary text-[10px] uppercase">{dq.action}</span>
-                                                                ) : (
-                                                                    <span className="text-themed-muted">—</span>
-                                                                )}
-                                                            </td>
+                                                        <tr key={dq.column} className="border-b border-[#f2f3f3] dark:border-[#262931]">
+                                                            <td className="py-1.5 pr-4 text-[#2d2f2f] dark:text-[#eceff4]">{dq.column}</td>
+                                                            <td className="py-1.5 pr-4 text-right font-semibold">{dq.null_pct}%</td>
+                                                            <td className="py-1.5 pr-4 text-right text-[#5a5c5c] dark:text-[#a3a8b3]">{dq.null_count.toLocaleString()}</td>
+                                                            <td className="py-1.5 pr-4 text-[#5a5c5c] dark:text-[#a3a8b3]">{dq.dtype}</td>
+                                                            <td className="py-1.5 text-[#5a5c5c] dark:text-[#a3a8b3]">{dq.action}</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -2529,53 +2521,71 @@ export default function UserDashboard() {
                                 </div>
                             )}
 
-                            {/* Insight Narrative Card */}
-                            <div className="mb-6 bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl p-5 border-l-4 border-l-primary">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    <span className="text-xs font-serif uppercase tracking-widest text-primary font-bold">Vizzy Insight</span>
+                            <div className="border border-[#ddd9ff] dark:border-[#2b2763] rounded-2xl p-8 bg-[linear-gradient(155deg,rgba(74,64,224,0.05)_0%,rgba(74,64,224,0)_100%)] dark:bg-[linear-gradient(155deg,rgba(108,99,255,0.12)_0%,rgba(108,99,255,0.03)_100%)]">
+                                <div className="flex items-center gap-3 mb-5">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3525cd] to-[#9f99ff] flex items-center justify-center shadow-[0_10px_15px_-3px_rgba(108,99,255,0.35)]">
+                                        <span className="material-symbols-outlined text-white text-[18px]">auto_awesome</span>
+                                    </div>
+                                    <span className="text-xl font-extrabold tracking-tight text-[#2d2f2f] dark:text-[#eceff4]">VIZZY INSIGHT</span>
                                 </div>
                                 {narrativeLoading ? (
                                     <div className="space-y-2">
-                                        <div className="h-3 bg-white/5 rounded-sm animate-pulse w-full" />
-                                        <div className="h-3 bg-white/5 rounded-sm animate-pulse w-5/6" />
-                                        <div className="h-3 bg-white/5 rounded-sm animate-pulse w-4/6" />
+                                        <div className="h-3 bg-[#f1f2f2] rounded w-full animate-pulse" />
+                                        <div className="h-3 bg-[#f1f2f2] rounded w-5/6 animate-pulse" />
+                                        <div className="h-3 bg-[#f1f2f2] rounded w-4/6 animate-pulse" />
                                     </div>
                                 ) : narrative ? (
-                                    <div className="space-y-2">
-                                        {narrative.split('\n').filter(line => line.trim()).map((line, i) => (
-                                            <p key={i} className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-serif flex gap-2">
-                                                <span className="text-primary font-bold shrink-0">{line.match(/^\d+\./) ? line.match(/^\d+\./)![0] : `${i + 1}.`}</span>
-                                                <span>{line.replace(/^\d+\.\s*/, '')}</span>
-                                            </p>
-                                        ))}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-8 gap-y-5">
+                                        {narrative.split('\n').filter(line => line.trim()).map((line, i) => {
+                                            const cleaned = line.replace(/^\d+\.\s*/, '').trim();
+                                            const colonIndex = cleaned.indexOf(':');
+                                            const rawHeading = colonIndex > 0 ? cleaned.slice(0, colonIndex).trim() : '';
+                                            const description = colonIndex > 0 ? cleaned.slice(colonIndex + 1).trim() : cleaned;
+                                            const heading = rawHeading && !/^insight\b/i.test(rawHeading)
+                                                ? rawHeading
+                                                : 'Key Insight';
+                                            return (
+                                            <div key={i} className="flex gap-3 items-start">
+                                                <span className="text-3xl leading-8 font-extrabold text-[#6c63ff33]">{String(i + 1).padStart(2, '0')}</span>
+                                                <div className="text-sm leading-6 text-[#5a5c5c] dark:text-[#c8cdd7]">
+                                                    <p className="font-semibold text-[#2d2f2f] dark:text-[#f3f6fb]">{heading}:</p>
+                                                    <p>{description}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                        })}
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-500 italic font-serif">Generating insights…</p>
+                                    <p className="text-sm text-[#7a7c7c] dark:text-[#a3a8b3]">Generating insights...</p>
                                 )}
                             </div>
+                        </section>
 
-                            {/* KPI Grid — Dynamic Columns */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] xl:grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-5 mb-7">
-                                {kpiEntries.map(([key, kpi]) => (
+                        <section>
+                            <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+                                {kpiEntries.map(([key, kpi], idx) => (
                                     <KPICard
                                         key={key}
                                         title={kpi.title}
-                                        value={isKPILoading ? "..." : formatValue(kpi.value, kpi.format)}
+                                        value={isKPILoading ? '...' : formatValue(kpi.value, kpi.format)}
                                         icon={kpi.icon || 'default'}
                                         trend={kpi.trend}
                                         trend_label={kpi.trend_label}
-                                        subtitle={(Object.values(active_filters).some(f => f.length > 0) || target_value !== 'all') ? "Filtered View" : kpi.subtitle}
+                                        subtitle={Object.values(active_filters).some(f => f.length > 0) ? 'Filtered View' : kpi.subtitle}
+                                        cardColor={KPI_CARD_COLORS[idx % KPI_CARD_COLORS.length]}
                                     />
                                 ))}
                             </div>
+                        </section>
 
-                            {/* Chart Row 1 — 3 columns */}
+                        <section>
                             {chartArray.length > 0 && (
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-                                    {chartArray.slice(0, 3).map((chart) => (
+                                <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-6">
+                                    {SHOW_CORRELATION_CHART && (
+                                        <CorrelationHeatmapCard corr={corrMatrix} loading={corrLoading} isDark={isDark} />
+                                    )}
+
+                                    {chartArray.map((chart) => (
                                         <ChartCard key={chart.id} title={chart.title || `Insight ${chart.id}`} actions={renderChartActions(chart)}>
                                             <div data-chart-id={chart.id}>
                                                 <ChartRenderer
@@ -2589,48 +2599,10 @@ export default function UserDashboard() {
                                     ))}
                                 </div>
                             )}
-
-                            {/* Chart Row 2 — 3 columns */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                                {/* Correlation heatmap (code retained, hidden by feature flag) */}
-                                {SHOW_CORRELATION_CHART && (
-                                    <CorrelationHeatmapCard corr={corrMatrix} loading={corrLoading} isDark={isDark} />
-                                )}
-
-                                {/* Remaining charts */}
-                                {chartArray.slice(3).map((chart) => (
-                                    <ChartCard key={chart.id} title={chart.title || `Insight ${chart.id}`} actions={renderChartActions(chart)}>
-                                        <div data-chart-id={chart.id}>
-                                            <ChartRenderer
-                                                chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
-                                                chartColors={chartColors}
-                                                isDark={isDark}
-                                                onFilterClick={handleChartFilterClick}
-                                            />
-                                        </div>
-                                    </ChartCard>
-                                ))}
-
-                                {/* Pad to 3 columns if fewer than 2 extra charts */}
-                                {chartArray.length < 4 && (
-                                    <ChartCard title={chartArray[1]?.title ?? 'Additional Insights'}>
-                                        <div className="h-48 flex items-center justify-center">
-                                            <p className="text-sm text-themed-muted dark:text-gray-600">Not enough chart types detected</p>
-                                        </div>
-                                    </ChartCard>
-                                )}
-                                {chartArray.length < 5 && (
-                                    <ChartCard title={chartArray[2]?.title ?? 'More Insights'}>
-                                        <div className="h-48 flex items-center justify-center">
-                                            <p className="text-sm text-themed-muted dark:text-gray-600">Not enough chart types detected</p>
-                                        </div>
-                                    </ChartCard>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </main>
-            </div>
+                        </section>
+                    </div>
+                )}
+            </main>
         </div>
     );
 }

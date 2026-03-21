@@ -223,6 +223,76 @@ def _format_narrative_value(value: Any, is_currency: bool = False, currency_symb
     return f"{currency_symbol}{base}" if is_currency else base
 
 
+def _normalize_filter_value(value: Any) -> str:
+    """
+    Normalize a value for filter matching.
+    Handles case-insensitivity, type coercion, and whitespace trimming.
+    """
+    if value is None or value == '':
+        return ''
+    return str(value).strip().lower()
+
+
+def _scalar_filter_match(row_value: Any, filter_value: Any) -> bool:
+    """
+    Check if a row value matches a filter value with smart normalization.
+    
+    Handles:
+    - Case-insensitive string matching:  "NORTH" == "north"
+    - Type coercion: 1 == "1" == 1.0 == True
+    - Whitespace trimming: "  North  " == "North"
+    - None/NULL values: None != any filter value
+    """
+    # Exact type match first (fast path)
+    if row_value == filter_value:
+        return True
+    
+    # None/NULL handling
+    if row_value is None or filter_value is None:
+        return False
+    
+    # Normalize both to lowercase strings for comparison
+    row_norm = _normalize_filter_value(row_value)
+    filter_norm = _normalize_filter_value(filter_value)
+    
+    # String comparison
+    if row_norm == filter_norm:
+        return True
+    
+    # Try numeric comparison for when types differ
+    try:
+        row_num = float(row_norm)
+        filter_num = float(filter_norm)
+        if not (pd.isna(row_num) or pd.isna(filter_num)):
+            return row_num == filter_num
+    except (ValueError, TypeError):
+        pass
+    
+    return False
+
+
+def _binary_target_value_match(row_value: Any, filter_value: Any) -> bool:
+    """
+    Special matching for binary target values (Churn, Yes/No, True/False, 1/0).
+    Treats semantically equivalent values as matches.
+    """
+    POSITIVE_KEYWORDS = {'1', '1.0', 'yes', 'true', 'y', 'positive', 'churned', 'churn', 
+                        'exited', 'attrited', 'left', 'cancelled', 'canceled', 'defaulted', 'inactive'}
+    NEGATIVE_KEYWORDS = {'0', '0.0', 'no', 'false', 'n', 'negative', 'retained', 'stayed', 
+                        'active', 'performing'}
+    
+    row_norm = _normalize_filter_value(row_value)
+    filter_norm = _normalize_filter_value(filter_value)
+    
+    # If both are positive or both are negative, they match
+    if row_norm in POSITIVE_KEYWORDS and filter_norm in POSITIVE_KEYWORDS:
+        return True
+    if row_norm in NEGATIVE_KEYWORDS and filter_norm in NEGATIVE_KEYWORDS:
+        return True
+    
+    return False
+
+
 # =============================================================================
 # API Endpoints
 # =============================================================================
@@ -311,26 +381,69 @@ def get_dashboard_analytics(
         # Apply target filter if specified
         df_filtered = df.copy()
         if state.target_value and state.target_value.lower() != 'all' and target_col:
-            positive_keywords = ['yes', 'true', '1']
-            negative_keywords = ['no', 'false', '0']
+            filter_norm = _normalize_filter_value(state.target_value)
             
-            if state.target_value.lower() in positive_keywords:
-                search_vals = positive_keywords + ['Yes', 'True', 1, True]
-            elif state.target_value.lower() in negative_keywords:
-                search_vals = negative_keywords + ['No', 'False', 0, False]
+            # Expanded keyword matching for binary and generic values
+            POSITIVE_KEYWORDS = {'1', '1.0', 'yes', 'true', 'y', 'positive', 'churned', 'churn', 
+                               'exited', 'attrited', 'left', 'cancelled', 'canceled', 'defaulted', 'inactive'}
+            NEGATIVE_KEYWORDS = {'0', '0.0', 'no', 'false', 'n', 'negative', 'retained', 'stayed', 
+                               'active', 'performing'}
+            
+            if filter_norm in POSITIVE_KEYWORDS:
+                # User selected "Positive" category - match all positive binary representations
+                matches = []
+                for idx, val in enumerate(df[target_col]):
+                    if _binary_target_value_match(val, 'yes'):  # Treat as positive
+                        matches.append(idx)
+                df_filtered = df.iloc[matches].copy() if matches else df.iloc[[]].copy()
+            elif filter_norm in NEGATIVE_KEYWORDS:
+                # User selected "Negative" category - match all negative binary representations
+                matches = []
+                for idx, val in enumerate(df[target_col]):
+                    if _binary_target_value_match(val, 'no'):  # Treat as negative
+                        matches.append(idx)
+                df_filtered = df.iloc[matches].copy() if matches else df.iloc[[]].copy()
             else:
-                search_vals = [state.target_value]
-            
-            df_filtered = df[df[target_col].astype(str).str.lower().isin([str(x).lower() for x in search_vals])].copy()
+                # Non-binary value: use smart scalar matching
+                matches = []
+                for idx, val in enumerate(df[target_col]):
+                    if _scalar_filter_match(val, state.target_value):
+                        matches.append(idx)
+                df_filtered = df.iloc[matches].copy() if matches else df.iloc[[]].copy()
         
-        # Parse and apply multi-column filters
+        # Parse and apply multi-column filters with smart matching
         active_filters = state.active_filters or {}
         
         for col, values in active_filters.items():
-            if col in df_filtered.columns and values:
-                df_filtered = df_filtered[
-                    df_filtered[col].astype(str).isin([str(v) for v in values])
-                ]
+            if col not in df_filtered.columns or not values:
+                continue
+            
+            # For each row, check if ANY of the filter values match
+            matches = []
+            for idx, row_val in enumerate(df_filtered[col]):
+                for filter_val in values:
+                    # Use smart matching that handles case, type, and binary equivalence
+                    if _scalar_filter_match(row_val, filter_val):
+                        matches.append(idx)
+                        break  # Found a match for this row, move to next row
+                    # Also check binary equivalence if target column
+                    elif col == target_col and _binary_target_value_match(row_val, filter_val):
+                        matches.append(idx)
+                        break
+            
+            df_filtered = df_filtered.iloc[matches].copy() if matches else df_filtered.iloc[[]].copy()
+        
+        # Log filter impact for debugging
+        is_filtered = len(df_filtered) < len(df)
+        if is_filtered:
+            filter_impact = {
+                'original_rows': len(df),
+                'filtered_rows': len(df_filtered),
+                'reduction_pct': round((1 - len(df_filtered) / len(df)) * 100, 1) if len(df) > 0 else 0,
+                'target_filter': state.target_value if state.target_value and state.target_value.lower() != 'all' else None,
+                'active_filters': list(active_filters.keys()) if active_filters else None
+            }
+            print(f"[FILTER DEBUG] {filter_impact}")
         
         # Extract filter options for ALL dimension columns (not just geo)
         # This allows filtering by Category, Segment, Region, Product, etc.
@@ -359,6 +472,9 @@ def get_dashboard_analytics(
         charts_full = recommend_charts(df, domain, classification, overrides=state.chart_overrides)
 
         is_filtered = len(df_filtered) < len(df)
+        
+        # If anything filtered the dataset, regenerate chart values from the filtered subset.
+        # Chart structure is still anchored to charts_full; only data payloads are replaced.
         if is_filtered:
             charts_filtered = recommend_charts(df_filtered, domain, classification, overrides=state.chart_overrides)
 
@@ -800,37 +916,33 @@ NARRATIVE_SYSTEM_PROMPT = """You are a senior data analyst generating an executi
 
 Your job is to analyze ALL the KPIs AND chart breakdowns provided and write clear, factual insights.
 
-Output format — write exactly 5-7 numbered points, each on its own block with a blank line between points:
-1. [Headline] The single most important finding from the overall data.
+Output format — write exactly 5-7 numbered points, each on its own block with a blank line between points.
+Every point MUST follow this strict pattern:
+<number>. <Heading>: <Description>
 
-2. [Chart Insight] For EACH chart breakdown provided, write one point about its key pattern — which category dominates, which underperforms, concentration risk.
+Heading requirements:
+- 2 to 5 words maximum.
+- Title Case.
+- Specific and data-grounded (not generic labels like "Insight 1", "Observation", "Key Finding").
 
-3. [Trend] If a trend chart is present, note the direction and rate of change.
-
-4. [Risk] One area of concern or risk from the data.
-
-5. [Action] One concrete recommendation or question worth investigating.
+Description requirements:
+- One concise sentence that includes at least one concrete metric (value, percentage, count, or change).
+- Must reference specific categories/segments/periods when available.
 
 Example output format:
-1. Total revenue stands at $2.3M with a 12.3% upward trend, driven by strong performance in Q4.
+1. Revenue Momentum: Total revenue is $2.3M with a +12.3% trend, driven by Q4 performance.
 
-2. California dominates state revenue at $763K (33%), while Texas underperforms at a loss of $25.7K.
+2. State Concentration Risk: California contributes $763K (33%) while Texas posts a -$25.7K loss.
 
-3. Month-to-month contracts account for 89% of churn, signaling a retention risk in short-term customers.
-
-4. Revenue trend shows consistent growth from $28.7K in 2015 to $83.8K in 2017, a 191% increase.
-
-5. Average order value declined 17.5% — investigate whether aggressive discounting (15.6% impact) is eroding margins.
+3. Contract Churn Pressure: Month-to-month contracts represent 89% of churned customers.
 
 Rules:
 - Start each point with the point number followed by a period and space.
 - Put a blank line between every point.
 - Use actual numbers and percentages from the data provided.
-- Reference specific categories, segments, or time periods by name.
-- Every point must contain at least one data point from the provided data.
-- Do NOT use markdown formatting, bold, headers, or special characters. Plain numbered text only.
+- Do NOT use markdown formatting, bold, bullets, or special symbols.
 - Do NOT invent data. Only reference what is explicitly provided.
-- Write in third person ("The data shows..." not "You should...")."""
+- Write in third person."""
 
 
 def _summarize_charts(charts: Dict[str, Any], max_charts: int = 8, currency_symbol: str = "$") -> str:

@@ -133,6 +133,44 @@ def _is_financial_column(col: str) -> bool:
     return any(tok in name for tok in financial_tokens)
 
 
+def _pick_best_churn_value_metric(candidates: List[str]) -> Optional[str]:
+    """
+    Select best monetary metric for churn KPIs.
+
+    Preference order:
+    1) Total/annual/lifetime revenue-like columns (e.g. TotalCharges, AnnualRevenue)
+    2) Generic revenue/value columns that are not monthly
+    3) Monthly revenue-like columns as fallback
+    """
+    if not candidates:
+        return None
+
+    normalized = [(_normalized_col(c), c) for c in candidates]
+
+    total_like = (
+        'total', 'annual', 'yearly', 'arr', 'lifetime', 'ltv',
+        'totalrevenue', 'grossrevenue', 'totalcharge', 'totalcharges'
+    )
+    revenue_like = (
+        'revenue', 'sales', 'income', 'billing', 'amount', 'charge', 'charges', 'value'
+    )
+    monthly_like = ('monthly', 'month', 'mrr')
+
+    for n, c in normalized:
+        if any(t in n for t in total_like) and any(t in n for t in revenue_like):
+            return c
+
+    for n, c in normalized:
+        if any(t in n for t in revenue_like) and not any(t in n for t in monthly_like):
+            return c
+
+    for n, c in normalized:
+        if any(t in n for t in monthly_like) and any(t in n for t in revenue_like):
+            return c
+
+    return candidates[0]
+
+
 def _count_target_positive(df: pd.DataFrame, target_col: str) -> int:
     """Count positive cases in target column."""
     if not target_col or target_col not in df.columns:
@@ -584,7 +622,7 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
         c for c in numeric_candidates
         if _is_financial_column(c) and not _is_lifecycle_column(c)
     ]
-    value_col = financial_candidates[0] if financial_candidates else None
+    value_col = _pick_best_churn_value_metric(financial_candidates)
 
     # Lifecycle metric (used for "at churn" average) prefers tenure/duration over age.
     tenure_like = [
