@@ -90,3 +90,27 @@
 html {
     scroll-behavior: smooth;
 }
+
+/* Authentication Template Custom Styles */
+.floating-input:focus-within label,
+.floating-input input:not(:placeholder-shown) + label {
+    transform: translateY(-1.5rem) scale(0.85);
+    background-color: #ffffff;
+    padding: 0 0.25rem;
+    color: #3525cd;
+}
+
+.dark .floating-input:focus-within label,
+.dark .floating-input input:not(:placeholder-shown) + label {
+    background-color: #f9f9ff;
+    color: #4f46e5;
+}
+
+.glass-effect {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+}
+
+.ambient-shadow {
+    box-shadow: 0 12px 40px rgba(20, 27, 44, 0.06);
+}

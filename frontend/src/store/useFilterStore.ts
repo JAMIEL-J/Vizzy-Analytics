@@ -21,6 +21,7 @@ export interface DashboardState {
     total_records: number;
 
     setDashboardData: (rawData: any[], chartConfigs: Record<string, any>, initialChartData: Record<string, any>, totalRows: number, targetCol?: string | null) => void;
+    syncServerChartData: (charts: Record<string, any>) => void;
     setTargetValue: (value: string) => void;
     setFilter: (column: string, value: string) => void;
     setFilterValues: (column: string, values: string[]) => void;
@@ -348,8 +349,8 @@ const recomputeCharts = (
     const hasActiveFilters = Object.keys(filters).length > 0 || normalizeScalar(targetVal) !== 'all';
     const hasNoFilters = Object.keys(filters).length === 0 && targetVal === 'all';
 
-    // Only scale unfiltered totals; scaling filtered subsets can introduce large distortions.
-    const scalingFactor = (!hasActiveFilters && totalRecords > 0 && rawData.length > 0)
+    // Scale unconditionally to match the backend KPI calculations which scan the full un-sampled dataframe.
+    const scalingFactor = (totalRecords > 0 && rawData.length > 0)
         ? totalRecords / rawData.length
         : 1;
 
@@ -800,6 +801,10 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
             target_column: finalTargetCol,
             total_records: totalRows
         });
+    },
+
+    syncServerChartData: (charts) => {
+        set({ chartData: charts });
     },
 
     setTargetValue: (value) => {

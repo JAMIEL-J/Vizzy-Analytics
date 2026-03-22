@@ -539,6 +539,31 @@ def get_dashboard_analytics(
                             if dim and met:
                                 from app.services.analytics.chart_recommender import _get_scatter_data
                                 manual_data = _get_scatter_data(df_filtered, dim, met, limit=500)
+                                
+                        # 3.5. Geo Map Multiple Metric Fallback
+                        elif ctype == 'geo_map' and full_chart.get('geo_meta') and full_chart['geo_meta'].get('metrics'):
+                            try:
+                                from app.services.analytics.chart_recommender import _beautify_column_name
+                                target_metrics_beautiful = set(full_chart['geo_meta']['metrics'])
+                                metrics_to_sum = [m for m in classification.metrics if _beautify_column_name(m) in target_metrics_beautiful]
+                                if not metrics_to_sum and met: metrics_to_sum = [met]
+                                
+                                if metrics_to_sum:
+                                    pm = metrics_to_sum[0]
+                                    grouped = df_filtered.groupby(dim)
+                                    primary_aggs = grouped[pm].sum().sort_values(ascending=False).head(100)
+                                    sec_aggs = {m: grouped[m].sum() for m in metrics_to_sum[1:]}
+                                    
+                                    for g_name, p_val in primary_aggs.items():
+                                        if pd.isna(p_val): continue
+                                        entry = {"name": str(g_name), "value": round(float(p_val), 2)}
+                                        m_dict = {_beautify_column_name(pm): round(float(p_val), 2)}
+                                        for m, sg in sec_aggs.items():
+                                            m_dict[_beautify_column_name(m)] = round(float(sg.get(g_name, 0)), 2)
+                                        entry["metrics"] = m_dict
+                                        manual_data.append(entry)
+                            except Exception as e:
+                                print(f"Geo Map fallback error: {e}")
                         
                         # 4. Generic Fallback Re-aggregation (Numeric vs Distribution)
                         if not manual_data:

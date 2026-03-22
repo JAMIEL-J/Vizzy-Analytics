@@ -155,79 +155,20 @@ const setSessionCachedAnalytics = (cacheKey: string, value: DashboardAnalytics) 
 // ─── Color Palettes ──────────────────────────────────────────────────────────
 
 const CHART_COLORS = ['#f59e0b', '#6366f1', '#10b981', '#f43f5e', '#14b8a6', '#8b5cf6', '#0ea5e9', '#ea580c'];
-const KPI_CARD_COLORS = ['#f59e0b', '#4f46e5', '#059669', '#e11d48', '#0d9488', '#7c3aed', '#0284c7', '#c026d3', '#334155', '#ea580c'];
+const KPI_CARD_COLORS = [
+    '#4a40e0',
+    '#006576',
+    '#f8a010',
+    '#f74b6d',
+    '#4a40e0',
+    '#006576',
+    '#f8a010',
+    '#f74b6d',
+];
 
 // (static heatmap grid removed - now driven by real data)
 
-// ─── KPI Icon Map ─────────────────────────────────────────────────────────────
-
-const KPI_ICON_SVG: Record<string, React.ReactNode> = {
-    dollar: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-    ),
-    users: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-    ),
-    'user-minus': (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM21 12h-6" />
-        </svg>
-    ),
-    'trending-up': (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-        </svg>
-    ),
-    percent: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
-        </svg>
-    ),
-    activity: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-    ),
-    shield: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-    ),
-    'alert-circle': (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-    ),
-    clock: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-    ),
-    repeat: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-    ),
-    default: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
-    ),
-};
+// Legacy SVG watermarks removed. Using Material Symbols instead.
 
 // ─── Dark Tooltip ─────────────────────────────────────────────────────────────
 
@@ -347,56 +288,82 @@ const ThemedTooltip = ({ active, payload, label, formatter, chartTitle, valueLab
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-const KPICard = ({ title, value, icon, trend, trend_label, subtitle, cardColor }: { title: string; value: string; icon?: string; trend?: number; trend_label?: string; subtitle?: string; cardColor: string }) => {
-    const iconEl = KPI_ICON_SVG[icon || 'default'] ?? KPI_ICON_SVG.default;
+const KPICard = ({ title, value, icon, trend, trend_label, subtitle, cardColor, index = 0 }: { title: string; value: string; icon?: string; trend?: number; trend_label?: string; subtitle?: string; cardColor: string, index?: number }) => {
+    // Map backend icons instantly to SVG nodes to guarantee rendering rather than relying on Web Fonts
+    const getSvgIcon = (i?: string, idx = 0) => {
+        const icons = [
+            /* payments */ <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 -960 960 960" className="w-[120px] h-[120px]"><path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-480H160v480Zm320-80q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35Zm0-80q-17 0-28.5-11.5T440-480q0-17 11.5-28.5T480-520q17 0 28.5 11.5T520-480q0 17-11.5 28.5T480-400Zm0-80Z"/></svg>,
+            /* shopping_cart */ <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 -960 960 960" className="w-[120px] h-[120px]"><path d="M280-80q-33 0-56.5-23.5T200-160q0-33 23.5-56.5T280-240q33 0 56.5 23.5T360-160q0 33-23.5 56.5T280-80Zm400 0q-33 0-56.5-23.5T600-160q0-33 23.5-56.5T680-240q33 0 56.5 23.5T760-160q0 33-23.5 56.5T680-80ZM246-720l96 200h280l110-200H246Zm-38-80h590q23 0 32.5 16.5T810-745L692-532q-11 20-29.5 31T622-490H324l-44 80h480v80H280q-45 0-68-39.5t-2-78.5l54-98-144-304H40v-80h130l38 80Zm134 280h280-280Z"/></svg>,
+            /* receipt_long */ <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 -960 960 960" className="w-[120px] h-[120px]"><path d="M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80l-80-80v-640q0-33 23.5-56.5T240-880h480q33 0 56.5 23.5T800-800v640l-80 80-80-80-80 80-80-80-80 80-80-80-80 80Zm0-163 40-40 80 80 80-80 80 80 80-80 80 80 80-80 40 40v-557H240v557Zm-80 43v-600 600Z"/></svg>,
+            /* analytics */ <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 -960 960 960" className="w-[120px] h-[120px]"><path d="M280-280h80v-200h-80v200Zm160 0h80v-400h-80v400Zm160 0h80v-120h-80v120ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z"/></svg>
+        ];
+        
+        if (i === 'dollar') return icons[0];
+        if (i === 'users' || i === 'group') return <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 -960 960 960" className="w-[120px] h-[120px]"><path d="M480-480q-66 0-113-47t-47-113q0-66 47-113t113-47q66 0 113 47t47 113q0 66-47 113t-113 47ZM160-240v-32q0-34 17.5-62.5T224-378q92-42 189-42t189 42q29 14 46.5 42.5T666-272v32q0 33-23.5 56.5T586-160H240q-33 0-56.5-23.5T160-240Zm80 0h400v-32q0-11-5.5-20T620-306q-71-34-140-34t-140 34q-10 6-15 14.5t-5 19.5v32Z"/></svg>;
+        if (i === 'percent') return icons[3];
+        if (i === 'cart') return icons[1];
+        if (i === 'receipt') return icons[2];
+        return icons[idx % icons.length];
+    };
+    
+    const svgNode = getSvgIcon(icon, index);
+
+    // Dynamic scale for massive numbers like millions
+    const formatCompactValue = (valStr: string) => {
+        if (!valStr) return '';
+        // Skip compacting if it has manual alpha markers or is short
+        if (/[a-zA-Z]$/.test(valStr.trim())) return valStr;
+        
+        const rawNum = parseFloat(valStr.replace(/[^0-9.-]+/g,""));
+        if (!isNaN(rawNum) && Math.abs(rawNum) >= 1_000_000) {
+            const isCurrency = valStr.includes('$');
+            return `${isCurrency ? '$' : ''}${(rawNum / 1_000_000).toFixed(2)}M`;
+        }
+        return valStr;
+    };
+
+    const finalValue = formatCompactValue(String(value ?? ''));
+
+    // Dynamic Font Sizing for long numbers (remaining cases)
+    const valueSizeClass = finalValue.length >= 13
+        ? 'text-2xl'
+        : 'text-3xl sm:text-4xl';
 
     // Trend logic
     const isPositive = trend !== undefined && trend > 0;
     const isNegative = trend !== undefined && trend < 0;
-    const isNeutral = trend === 0;
+    const trendIcon = isPositive ? 'trending_up' : isNegative ? 'trending_down' : 'remove';
+    const trendText = trend !== undefined ? `${Math.abs(trend)}%` : '';
+    const trendCaption = trend_label || subtitle || (trend !== undefined ? 'vs last month' : '');
+    // Remove the unicode arrows if backend sends them since we have our own Material Symbol font icon now
+    const badgeTextCleaned = (trendText ? `${trendText} ${trendCaption}` : trendCaption).replace(/^[⤵⤴]\s*/, '').trim();
 
-    // Adjust logic if "down is good" (like Churn Rate) based on title heuristics
-    const reverseLogic = title.toLowerCase().includes('churn') || title.toLowerCase().includes('bounce');
-    const trendTone = isNeutral ? 'FLAT' : ((isPositive && !reverseLogic) || (isNegative && reverseLogic) ? 'UP' : 'DOWN');
-
+    const isLightCard = cardColor.toLowerCase() === '#f8a010';
+    const textColor = isLightCard ? '#111827' : '#ffffff';
+    const badgeBg = isLightCard ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+    const badgeColor = isLightCard ? '#111827' : '#ffffff';
+    // Set explicit watermark color to ensure contrast
+    const watermarkColor = isLightCard ? 'rgba(17,24,39,0.15)' : 'rgba(255,255,255,0.15)';
 
     return (
-        <div className="rounded-3xl p-5 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-4px_rgba(0,0,0,0.1)] flex flex-col justify-between min-h-[140px]" style={{ background: cardColor }}>
-            <div className="flex justify-between items-start mb-4">
-                <span className="w-10 h-10 rounded-2xl bg-white/20 text-white flex items-center justify-center">
-                    {iconEl}
-                </span>
-
-                {trend !== undefined && (
-                    <div className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-white/20 text-white">
-                        {isPositive && <span className="material-symbols-outlined text-xs">trending_up</span>}
-                        {isNegative && <span className="material-symbols-outlined text-xs">trending_down</span>}
-                        {isNeutral && <span className="material-symbols-outlined text-xs">trending_flat</span>}
-                        <span>{Math.abs(trend)}%</span>
-                    </div>
-                )}
+        <div className="rounded-xl p-6 relative overflow-hidden group shadow-xl" style={{ background: cardColor, color: textColor, boxShadow: `0 20px 25px -5px ${cardColor}33, 0 8px 10px -6px ${cardColor}33` }}>
+            <div className="absolute -right-4 -bottom-4 group-hover:scale-110 transition-transform duration-500" style={{ color: watermarkColor }}>
+                {svgNode}
             </div>
-
-            <div>
-                <p
-                    className="text-[12px] tracking-[0.05em] uppercase text-white/80 font-medium"
-                    style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}
-                >
-                    {title}
-                </p>
-                <h3
-                    className="text-[24px] leading-8 font-bold text-white mt-1"
-                    style={{ fontFamily: '"Public Sans", sans-serif' }}
-                >
-                    {value}
-                </h3>
-                {trend_label && trend !== undefined && (
-                    <p className="text-[10px] text-white/80 mt-1 font-medium" style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}>{trend_label} ({trendTone})</p>
-                )}
-                {subtitle && (
-                    <p className="text-[10px] text-white/75 mt-1 font-medium" style={{ fontFamily: '"Be Vietnam Pro", sans-serif' }}>{subtitle}</p>
-                )}
-            </div>
+            
+            <p className="text-xs uppercase tracking-widest font-bold opacity-80 mb-2 relative z-10 font-['DM_Sans',sans-serif]">
+                {title}
+            </p>
+            <h2 className={`${valueSizeClass} font-black mb-4 relative z-10 font-['DM_Sans',sans-serif] whitespace-nowrap tracking-tight`}>
+                {finalValue}
+            </h2>
+            
+            { badgeTextCleaned && (
+                <div className="relative z-10 flex items-center gap-2 text-xs backdrop-blur w-fit px-2 py-1 rounded-full font-semibold max-w-full font-['Be_Vietnam_Pro',sans-serif]" style={{ background: badgeBg, color: badgeColor }}>
+                    {trend !== undefined && <span className="material-symbols-outlined text-[14px] shrink-0">{trendIcon}</span>}
+                    <span className="truncate">{badgeTextCleaned}</span>
+                </div>
+            )}
         </div>
     );
 };
@@ -1519,7 +1486,6 @@ export default function UserDashboard() {
     const [selectedDatasetId, setSelectedDatasetId] = useState(() => sessionStorage.getItem('vizzy.dashboard.selectedDatasetId') || '');
     const [datasets, setDatasets] = useState<any[]>([]);
 
-    // Zustand Store for Filters
     const {
         active_filters,
         clearFilters,
@@ -1532,6 +1498,7 @@ export default function UserDashboard() {
         setDomain,
         chartData,
         setDashboardData,
+        syncServerChartData,
         target_value,
         setTargetValue
     } = useFilterStore();
@@ -1769,11 +1736,20 @@ export default function UserDashboard() {
                 signal
             );
 
+            if (data.charts) {
+                const refreshedCharts: Record<string, any> = {};
+                Object.entries(data.charts).forEach(([key, chart]: [string, any]) => {
+                    refreshedCharts[key] = chart.data;
+                });
+                syncServerChartData(refreshedCharts);
+            }
+
             setAnalytics(prev => {
                 if (!prev) return data;
                 return {
                     ...prev,
                     kpis: data.kpis,
+                    charts: data.charts ?? prev.charts,
                     target_column: data.target_column ?? prev.target_column,
                     target_values: data.target_values ?? prev.target_values,
                 };
@@ -2561,10 +2537,11 @@ export default function UserDashboard() {
                         </section>
 
                         <section>
-                            <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                                 {kpiEntries.map(([key, kpi], idx) => (
                                     <KPICard
                                         key={key}
+                                        index={idx}
                                         title={kpi.title}
                                         value={isKPILoading ? '...' : formatValue(kpi.value, kpi.format)}
                                         icon={kpi.icon || 'default'}
