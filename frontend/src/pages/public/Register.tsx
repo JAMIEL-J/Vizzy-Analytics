@@ -17,6 +17,8 @@ export default function Register() {
     
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     const handleNextStep = (e: React.FormEvent) => {
         e.preventDefault();
@@ -301,12 +303,22 @@ export default function Register() {
                         <form className="space-y-6" onSubmit={handleSubmit}>
                             {/* Password Field */}
                             <div className="space-y-1.5">
-                                <div className="flex justify-between items-center">
-                                    <label htmlFor="password" className="block text-sm font-semibold text-on-surface ml-1">Password</label>
+                                <div className="flex justify-between items-center px-1">
+                                    <label htmlFor="password" className="block text-sm font-semibold text-on-surface">Password</label>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="text-primary text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 hover:underline outline-none"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">
+                                            {showPassword ? 'visibility_off' : 'visibility'}
+                                        </span>
+                                        {showPassword ? 'Hide' : 'Show'}
+                                    </button>
                                 </div>
                                 <div className="relative">
                                     <input 
-                                        type="password" 
+                                        type={showPassword ? 'text' : 'password'}
                                         id="password" 
                                         name="password" 
                                         placeholder="Min. 8 characters" 
@@ -334,9 +346,21 @@ export default function Register() {
                             
                             {/* Confirm Password Field */}
                             <div className="space-y-1.5">
-                                <label htmlFor="confirm-password" className="block text-sm font-semibold text-on-surface ml-1">Confirm Password</label>
+                                <div className="flex justify-between items-center px-1">
+                                    <label htmlFor="confirm-password" className="block text-sm font-semibold text-on-surface">Confirm Password</label>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        className="text-primary text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 hover:underline outline-none"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">
+                                            {showConfirmPassword ? 'visibility_off' : 'visibility'}
+                                        </span>
+                                        {showConfirmPassword ? 'Hide' : 'Show'}
+                                    </button>
+                                </div>
                                 <input 
-                                    type="password" 
+                                    type={showConfirmPassword ? 'text' : 'password'}
                                     id="confirm-password" 
                                     name="confirm-password" 
                                     placeholder="Repeat your password" 

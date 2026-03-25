@@ -8,14 +8,17 @@ Restrictions: Returns computed metrics from actual dataset data
 Version: 3.0 - Dynamic Analytics Engine with Domain Detection
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from uuid import UUID
+from datetime import datetime, timezone
 import json
+import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import DBSession, AuthenticatedUser
+from app.core.logger import get_logger
 from app.core.exceptions import AuthorizationError
 from app.models.dataset import Dataset
 from app.models.dataset_version import DatasetVersion
@@ -34,10 +37,13 @@ from app.services.analytics import (
     DomainType
 )
 from app.services.analytics.pivot_generator import generate_pivot_config, generate_pivot_data
+from app.services.analytics.duckdb_builder import get_or_build_duckdb
+from app.services.analytics.duckdb_chart_builder import execute_chart_queries, execute_kpi_queries
 from sqlmodel import select
 import pandas as pd
 import numpy as np
 import os
+import duckdb
 from functools import lru_cache
 
 
@@ -79,6 +85,7 @@ def _safe_read_csv(file_path: str) -> pd.DataFrame:
 
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 # =============================================================================
@@ -293,6 +300,183 @@ def _binary_target_value_match(row_value: Any, filter_value: Any) -> bool:
     return False
 
 
+def _is_filtered_dashboard_request(state: "DashboardStateRequest") -> bool:
+    """Return True when dashboard request has any active filter scope."""
+    has_target_filter = bool(state.target_value and str(state.target_value).lower() != "all")
+    has_active_filters = any(bool(v) for v in (state.active_filters or {}).values())
+    return has_target_filter or has_active_filters
+
+
+def _build_duckdb_chart_configs(
+    charts_full: Dict[str, Dict[str, Any]],
+    date_columns: List[str],
+    target_col: Optional[str],
+) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, str]]]:
+    """Convert recommended chart metadata into duckdb_chart_builder configs."""
+    chart_configs: Dict[str, Dict[str, Any]] = {}
+    unsupported_slots: List[Dict[str, str]] = []
+
+    # DuckDB path currently supports generic grouped aggregations.
+    # Keep pandas for semantic/specialized visuals (cohort/range/stacked/target-binary).
+    unsupported_types = {
+        "scatter",
+        "stacked_bar",
+        "geo_map",
+        "area_bounds",
+        "area-bounds",
+        "heatmap",
+        "treemap",
+    }
+
+    for slot, chart in charts_full.items():
+        dim = chart.get("dimension")
+        metric = chart.get("metric")
+        chart_type = str(chart.get("type", "bar")).lower()
+        title = str(chart.get("title") or "").lower()
+
+        if chart_type in unsupported_types:
+            unsupported_slots.append({
+                "slot": slot,
+                "title": str(chart.get("title") or ""),
+                "reason": f"unsupported_type:{chart_type}",
+            })
+            continue
+
+        if "cohort" in title or "range" in title or "at risk" in title:
+            unsupported_slots.append({
+                "slot": slot,
+                "title": str(chart.get("title") or ""),
+                "reason": "unsupported_semantic_title",
+            })
+            continue
+
+        if target_col and (
+            (dim and str(dim).lower() == str(target_col).lower())
+            or (metric and str(metric).lower() == str(target_col).lower())
+        ):
+            unsupported_slots.append({
+                "slot": slot,
+                "title": str(chart.get("title") or ""),
+                "reason": "target_semantics_chart",
+            })
+            continue
+
+        # Skip configs that cannot produce meaningful SQL aggregation.
+        if not dim and not metric:
+            unsupported_slots.append({
+                "slot": slot,
+                "title": str(chart.get("title") or ""),
+                "reason": "missing_dimension_and_metric",
+            })
+            continue
+
+        # Date / Time-series aggregations (YoY, YTD, dynamic trend bucketing) 
+        # are complex in standard SQL and require specific 'name' vs 'date' key 
+        # mappings for the frontend charts. We delegate these to the robust Pandas logic.
+        if dim and dim in date_columns:
+            unsupported_slots.append({
+                "slot": slot,
+                "title": str(chart.get("title") or ""),
+                "reason": "complex_time_series_delegated_to_pandas",
+            })
+            continue
+
+        chart_configs[slot] = {
+            "type": chart.get("type", "bar"),
+            "dimension": dim,
+            "metric": metric,
+            "aggregation": chart.get("aggregation", "sum"),
+            "granularity": chart.get("granularity"),
+            "is_date": bool(dim and dim in date_columns),
+            "x_column": chart.get("x_column"),
+            "y_column": chart.get("y_column"),
+        }
+
+    return chart_configs, unsupported_slots
+
+
+def _try_duckdb_analytics(
+    *,
+    state: "DashboardStateRequest",
+    dataset_id: UUID,
+    version_id: UUID,
+    csv_path: str,
+    charts_full: Dict[str, Dict[str, Any]],
+    date_columns: List[str],
+    target_col: Optional[str],
+) -> Dict[str, Any]:
+    """Attempt filtered chart recompute via DuckDB; return success flag and merged charts."""
+    if not _is_filtered_dashboard_request(state):
+        return {"success": False, "reason": "not_filtered"}
+
+    chart_configs, unsupported_slots = _build_duckdb_chart_configs(charts_full, date_columns, target_col)
+    if not chart_configs:
+        logger.info(
+            "[DUCKDB SKIP] reason=no_chart_configs total_slots=%s unsupported_slots=%s",
+            len(charts_full),
+            unsupported_slots,
+        )
+        return {"success": False, "reason": "no_chart_configs"}
+
+    if len(chart_configs) != len(charts_full):
+        logger.info(
+            "[DUCKDB HYBRID] duckdb_slots=%s pandas_slots=%s unsupported_slots=%s",
+            len(chart_configs),
+            len(charts_full) - len(chart_configs),
+            unsupported_slots,
+        )
+
+    conn = None
+    try:
+        bootstrap_started = datetime.now(timezone.utc)
+        duckdb_path = get_or_build_duckdb(dataset_id, version_id, csv_path)
+        bootstrap_ms = (datetime.now(timezone.utc) - bootstrap_started).total_seconds() * 1000
+
+        logger.info(
+            "[DUCKDB ATTEMPT] dataset_id=%s version_id=%s path=%s exists=%s bootstrap_ms=%.1f",
+            dataset_id,
+            version_id,
+            duckdb_path,
+            os.path.exists(str(duckdb_path)),
+            bootstrap_ms,
+        )
+
+        conn = duckdb.connect(str(duckdb_path), read_only=True)
+
+        duckdb_charts = execute_chart_queries(
+            conn=conn,
+            chart_configs=chart_configs,
+            filters=state.active_filters or {},
+            target_column=target_col,
+            target_value=state.target_value or "all",
+        )
+
+        merged = {
+            slot: {**chart, "data": duckdb_charts.get(slot, chart.get("data", []))}
+            for slot, chart in charts_full.items()
+        }
+
+        return {
+            "success": True,
+            "charts": merged,
+            "reason": "duckdb_filtered",
+            "duckdb_slots": list(chart_configs.keys())
+        }
+    except Exception as exc:
+        logger.exception("[DUCKDB FALLBACK] reason=%s", exc)
+        return {
+            "success": False,
+            "reason": "duckdb_error",
+            "error": str(exc),
+        }
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 # =============================================================================
 # API Endpoints
 # =============================================================================
@@ -314,6 +498,14 @@ def get_dashboard_analytics(
     Uses intelligent domain detection to generate appropriate KPIs and charts.
     """
     try:
+        logger.info(
+            "[DASHBOARD REQUEST] dataset_id=%s target_value=%s active_filter_keys=%s active_filter_count=%s",
+            state.dataset_id,
+            state.target_value,
+            list((state.active_filters or {}).keys()),
+            sum(len(v) for v in (state.active_filters or {}).values() if isinstance(v, list)),
+        )
+
         if not state.dataset_id:
             raise HTTPException(status_code=400, detail="Please provide a dataset_id")
         
@@ -443,7 +635,7 @@ def get_dashboard_analytics(
                 'target_filter': state.target_value if state.target_value and state.target_value.lower() != 'all' else None,
                 'active_filters': list(active_filters.keys()) if active_filters else None
             }
-            print(f"[FILTER DEBUG] {filter_impact}")
+            logger.info("[FILTER DEBUG] %s", filter_impact)
         
         # Extract filter options for ALL dimension columns (not just geo)
         # This allows filtering by Category, Segment, Region, Product, etc.
@@ -472,7 +664,26 @@ def get_dashboard_analytics(
         charts_full = recommend_charts(df, domain, classification, overrides=state.chart_overrides)
 
         is_filtered = len(df_filtered) < len(df)
-        
+
+        # Try DuckDB first for filtered chart values. If not available/ready,
+        # fall back to existing pandas recomputation logic.
+        duckdb_result = _try_duckdb_analytics(
+            state=state,
+            dataset_id=state.dataset_id,
+            version_id=latest_version.id,
+            csv_path=file_path,
+            charts_full=charts_full,
+            date_columns=classification.dates,
+            target_col=target_col,
+        )
+
+        logger.info(
+            "[DASHBOARD ENGINE] filtered=%s duckdb_success=%s reason=%s",
+            is_filtered,
+            bool(duckdb_result.get("success")),
+            duckdb_result.get("reason"),
+        )
+
         # If anything filtered the dataset, regenerate chart values from the filtered subset.
         # Chart structure is still anchored to charts_full; only data payloads are replaced.
         if is_filtered:
@@ -491,11 +702,16 @@ def get_dashboard_analytics(
             )
 
             charts: Dict[str, Any] = {}
+            duckdb_success = duckdb_result.get("success", False)
+            duckdb_slots = set(duckdb_result.get("duckdb_slots", []))
+            
             for slot, full_chart in charts_full.items():
                 title = full_chart["title"]
                 flt = filtered_by_title.get(title)
 
-                if flt and flt.get("data"):
+                if duckdb_success and slot in duckdb_slots:
+                    charts[slot] = duckdb_result["charts"][slot]
+                elif flt and flt.get("data"):
                     # Correct match: same chart title found in filtered run.
                     charts[slot] = {**full_chart, "data": flt["data"]}
                 elif full_chart.get("dimension"):

@@ -1,343 +1,421 @@
+import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import ThemeToggle from '../../components/ui/ThemeToggle';
 
-export default function Landing() {
-    return (
-        <div
-            className="newsreader-page font-display overflow-x-hidden antialiased selection:bg-primary selection:text-black"
-            style={{ background: 'var(--landing-bg)', color: 'var(--text-main)' }}
+// --- Sub-components ---
+
+const LandingNavbar = () => (
+  <nav className="fixed top-0 w-full z-50 border-b border-border-subtle/20 bg-alabaster/70 backdrop-blur-xl">
+    <div className="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
+      <div className="flex items-center gap-2 text-2xl font-bold tracking-tight font-headline">
+        <span className="w-8 h-8 bg-indigo-accent rounded-lg flex items-center justify-center text-white text-base">V</span>
+        <span className="text-slate-custom">Vizzy Pro</span>
+      </div>
+      <div className="hidden md:flex items-center space-x-10">
+        <a className="text-sm font-medium text-slate-custom hover:text-indigo-accent transition-colors" href="#features">Capabilities</a>
+        <a className="text-sm font-medium text-slate-custom hover:text-indigo-accent transition-colors" href="#deep-dive">Intelligence</a>
+        <a className="text-sm font-medium text-slate-custom hover:text-indigo-accent transition-colors" href="#pricing">Pricing</a>
+      </div>
+      <div className="flex items-center gap-6">
+        <ThemeToggle size="sm" />
+        <Link to="/login" className="text-sm font-semibold text-slate-custom hover:text-indigo-accent transition-colors">Log in</Link>
+        <Link to="/register" className="px-6 py-2.5 bg-indigo-accent text-white rounded-full font-semibold hover:bg-indigo-accent/80 transition-all duration-300 shadow-lg shadow-indigo-500/20">
+          Get Started
+        </Link>
+      </div>
+    </div>
+  </nav>
+);
+
+const LandingHero = () => (
+  <section className="relative pt-40 pb-24 overflow-hidden">
+    <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-accent/5 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/4"></div>
+    <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-emerald-accent/5 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/4"></div>
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8, ease: "easeOut" }}
+      className="max-w-4xl mx-auto px-8 relative z-10 text-center"
+    >
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-accent/10 border border-indigo-accent/20 text-indigo-accent text-xs font-bold uppercase tracking-widest font-body mb-8">
+        <span className="w-2 h-2 rounded-full bg-indigo-accent animate-pulse"></span>
+        Enterprise LLM Orchestration
+      </div>
+      <h1 className="text-5xl md:text-7xl font-headline font-bold text-slate-custom leading-[1.1] tracking-tight mb-8">
+        Transform Raw Data into <span className="text-gradient">Actionable Intelligence</span> with Conversational AI.
+      </h1>
+      <p className="text-xl text-slate-custom/70 max-w-2xl mx-auto leading-relaxed mb-10">
+        Advanced LLM Orchestration meets deterministic computing. Query, visualize, and govern your enterprise data with natural language precision.
+      </p>
+      <div className="flex flex-col sm:flex-row justify-center gap-5">
+        <Link to="/register" className="px-10 py-4 bg-indigo-accent text-white rounded-2xl font-bold text-lg hover:scale-105 transition-all shadow-xl shadow-indigo-600/20 group flex items-center justify-center">
+          Get Started for free
+          <span className="material-symbols-outlined align-middle ml-2 group-hover:translate-x-1 transition-transform">bolt</span>
+        </Link>
+        <button className="px-10 py-4 bg-alabaster border border-border-subtle/20 text-slate-custom rounded-2xl font-bold text-lg hover:bg-indigo-accent/10 transition-all flex items-center justify-center gap-2">
+          <span className="material-symbols-outlined text-slate-custom/50">play_circle</span>
+          Technical Demo
+        </button>
+      </div>
+    </motion.div>
+  </section>
+);
+
+const LandingCapabilities = () => (
+  <section className="py-24 bg-alabaster" id="features">
+    <div className="max-w-7xl mx-auto px-8">
+      <motion.div 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.8 }}
+        className="text-center mb-20"
+      >
+        <h2 className="text-4xl md:text-5xl font-headline font-bold text-slate-custom mb-6 antialiased">Built for Deterministic Speed</h2>
+        <p className="text-lg text-slate-custom/60 max-w-2xl mx-auto">Powered by DuckDB and Pandas for sub-500ms execution on billion-row datasets.</p>
+      </motion.div>
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+        {[
+          { icon: 'chat_bubble', title: 'Plain English Analytics', text: 'Query your data as naturally as asking a colleague. No SQL, no friction.', color: 'indigo-accent' },
+          { icon: 'verified', title: 'Deterministic Accuracy', text: 'DuckDB-powered verification ensures LLM responses match exact tabular logic.', color: 'emerald-accent' },
+          { icon: 'auto_awesome', title: 'Smart Auto-Visuals', text: 'Instant, context-aware charts generated automatically based on your query intent.', color: 'indigo-accent' },
+          { icon: 'gavel', title: 'Data Governance', text: 'Enterprise-grade RBAC, JWT security, and immutable audit trails for every query.', color: 'emerald-accent' },
+        ].map((feat, i) => (
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: i * 0.1 }}
+            className={`p-8 bg-alabaster/40 rounded-3xl border border-border-subtle/40 hover:border-indigo-accent transition-all group`}
+          >
+            <span className={`material-symbols-outlined text-indigo-accent text-4xl mb-6 block group-hover:scale-110 transition-transform`}>{feat.icon}</span>
+            <h3 className="text-xl font-bold font-headline text-slate-custom mb-3">{feat.title}</h3>
+            <p className="text-slate-custom/70 text-sm">{feat.text}</p>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const LandingDeepDive = () => (
+  <section className="py-32 bg-alabaster relative overflow-hidden" id="deep-dive">
+    <div className="max-w-7xl mx-auto px-8">
+      {/* 01: Ingestion */}
+      <div className="grid md:grid-cols-2 gap-24 items-center mb-40">
+        <motion.div 
+          initial={{ opacity: 0, x: -30 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          className="relative"
         >
-            <div className="grain-overlay"></div>
+          <div className="absolute -top-12 -left-12 text-[10rem] font-headline font-bold text-slate-custom/5 leading-none -z-10 select-none">01</div>
+          <div className="space-y-6">
+            <span className="inline-block text-indigo-accent font-bold tracking-widest text-sm uppercase">Engine Layer</span>
+            <h3 className="text-4xl font-headline font-bold text-slate-custom leading-tight">Smart Ingestion <br/> &amp; Schema Inference.</h3>
+            <p className="text-lg text-slate-custom/70 leading-relaxed">
+              Native support for CSV, Parquet, and JSON. Our engine automatically infers schema relationships while maintaining immutable versioning for every dataset.
+            </p>
+            <div className="flex gap-4 pt-4 text-slate-custom">
+               <span className="px-3 py-1 bg-alabaster border border-border-subtle rounded-lg text-xs font-mono font-bold text-slate-custom/50">.parquet</span>
+               <span className="px-3 py-1 bg-alabaster border border-border-subtle rounded-lg text-xs font-mono font-bold text-slate-custom/50">.csv</span>
+               <span className="px-3 py-1 bg-alabaster border border-border-subtle rounded-lg text-xs font-mono font-bold text-slate-custom/50">.json</span>
+            </div>
+          </div>
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, x: 30 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          className="relative glass-card p-2 rounded-[2.5rem] border border-border-subtle shadow-xl overflow-hidden"
+        >
+          <img alt="Data Ingestion" className="w-full h-auto rounded-[2rem]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsMtThly01-Y7qh3i9IfqrN4q-UKfgTMUGThSD3qbIyMKtb_RGnJAavRE7_faZPlcLbc4cvatb9HVE6Go8OBjHeIk_H6NfabSbbMJkyYo_N2Qtzyg7cKDOujLjfBEHIqjka7GyXLUk0SP8_N5u09cAzzWMdiHq1ePxbSm9iRkqjfM2AwQu3JjBo5VZUOMVi94igoNE9Dnjh2lXxhS2nVROUnZ5KtC2oowTTP5bm2W6VfVG5CcsF5PbzBGb8w4dr273si0PQpC6EOh_" />
+        </motion.div>
+      </div>
 
-            {/* Navigation: Floating Monolith */}
-            <nav className="fixed top-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-5xl px-4">
-                <div className="glass-panel rounded-full px-8 py-4 flex items-center justify-between mx-auto max-w-3xl relative overflow-hidden">
-                    {/* Top laser accent */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-[1px] bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
-                    <Link className="flex items-center gap-3 group" to="/">
-                        <span className="material-symbols-outlined text-primary group-hover:rotate-45 transition-transform duration-500">diamond</span>
-                        <span className="font-bold tracking-widest text-lg" style={{ color: 'var(--text-main)' }}>VIZZY</span>
-                    </Link>
-                    <div className="hidden md:flex items-center gap-8 font-mono text-xs tracking-widest uppercase" style={{ color: 'var(--text-muted)' }}>
-                        <a className="hover:text-primary transition-colors" href="#features">Capabilities</a>
-                        <a className="hover:text-primary transition-colors" href="#how-it-works">Process</a>
-                        <a className="hover:text-primary transition-colors" href="#">Pricing</a>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <ThemeToggle size="sm" />
-                        <Link to="/login" className="bg-primary text-white px-5 py-2 rounded-full text-xs font-bold tracking-widest hover:bg-white hover:text-black transition-all duration-300 font-mono uppercase">
-                            Access
-                        </Link>
-                    </div>
+      {/* 02: Cleaning */}
+      <div className="grid md:grid-cols-2 gap-24 items-center mb-40">
+        <motion.div 
+          initial={{ opacity: 0, x: -30 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          className="order-2 md:order-1 relative glass-card p-2 rounded-[2.5rem] border border-border-subtle shadow-xl overflow-hidden"
+        >
+          <img alt="Cleaning Studio" className="w-full h-auto rounded-[2rem]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7gGEXAwstteRgooInzriLCEypP3VrZKHAsF2BGL04urWZucifmNQgCikGNMLGojPu9GiWneSf0gBKIMYfscClkJMnfCLuE_heUovW5-y-eirx1GUawLL5TGo86huZp8BG9NrmssXdS9MRRlCIqKzz3-2QJubNwculcaQtAnvthbQ0t3fbWTqNcdwHaDr4Un8VF9UVslhgsLcdmPXLqHgQKFr_C95rMCkHxdYlihBLdq4i_EhqrP1O9vjwZZnTr8UEmj-DuhQFqQoK" />
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, x: 30 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          className="order-1 md:order-2 relative"
+        >
+          <div className="absolute -top-12 -left-12 text-[10rem] font-headline font-bold text-slate-custom/5 leading-none -z-10 select-none">02</div>
+          <div className="space-y-6">
+            <span className="inline-block text-emerald-accent font-bold tracking-widest text-sm uppercase">Data Cleaning Studio 2.0</span>
+            <h3 className="text-4xl font-headline font-bold text-slate-custom leading-tight">Automated Profiling. <br/> Intelligent Remediation.</h3>
+            <p className="text-lg text-slate-custom/70 leading-relaxed">
+              Identify data quality issues instantly. Our visual penalty breakdown highlights anomalies, missing values, and type mismatches with one-click healing.
+            </p>
+            <ul className="space-y-3 pt-2">
+              <li className="flex items-center gap-2 text-sm font-semibold text-slate-custom/80">
+                <span className="material-symbols-outlined text-emerald-accent text-lg">check_circle</span>
+                Intelligent Outlier Removal
+              </li>
+              <li className="flex items-center gap-2 text-sm font-semibold text-slate-custom/80">
+                <span className="material-symbols-outlined text-emerald-accent text-lg">check_circle</span>
+                Semantic Type Alignment
+              </li>
+            </ul>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* 03: AI Core */}
+      <div className="grid md:grid-cols-2 gap-24 items-center mb-40">
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="relative"
+        >
+          <div className="absolute -top-12 -left-12 text-[10rem] font-headline font-bold text-slate-custom/5 leading-none -z-10 select-none">03</div>
+          <div className="space-y-6">
+            <span className="inline-block text-indigo-accent font-bold tracking-widest text-sm uppercase">AI Core</span>
+            <h3 className="text-4xl font-headline font-bold text-slate-custom leading-tight">Multi-LLM Gateway <br/> with Context Memory.</h3>
+            <p className="text-lg text-slate-custom/70 leading-relaxed">
+              Orchestrate between AI Models powered by Groq. Our context-aware memory system remembers previous query steps to allow deep, iterative data exploration.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-4">
+              {['Groq 70B', 'Gemini Pro', 'Llama-3'].map((llm, i) => (
+                <div key={i} className="px-4 py-2 bg-indigo-accent/5 border border-indigo-accent/20 rounded-xl flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-indigo-accent"></div>
+                  <span className="text-xs font-bold text-indigo-accent">{llm}</span>
                 </div>
-            </nav>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true }}
+          className="relative glass-card p-2 rounded-[2.5rem] border border-border-subtle shadow-xl overflow-hidden"
+        >
+          <img alt="AI Engine" className="w-full h-auto rounded-[2rem]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9-FojLBJlrr2fTCrQ9GL6GTzq4gSs3bNQTC10qnxrujjySg2Xsv4ZidVJMAdaTzocxttPkVi83SyjktB6mgRfKpBr9bt4jZTxjHKyv4uN6-qHpggOdX9juYUeQti0gpsUwGNKX_TrRALJy54qBL5nchVNbj9hlNkKACaavJ9DkP6cLtxwcyzos750qAfuJlifYPsHSV54i6p6dy8odY8Qzzld7_lLfT56Qt5APgP2sJZp6mwaXC3QSrTb4RSYlW1oa_aiSSDkLJhK" />
+        </motion.div>
+      </div>
 
-            {/* Hero Section: The Prism */}
-            <section className="relative min-h-screen flex flex-col items-center justify-center pt-24 overflow-hidden" style={{ background: 'var(--landing-bg)' }}>
-                {/* Abstract Background Elements */}
-                <div className="absolute inset-0 z-0">
-                    {/* Vertical laser line */}
-                    <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-primary/20 to-transparent"></div>
-                    {/* Horizontal floor line */}
-                    <div className="absolute bottom-[15%] left-0 right-0 h-[1px]" style={{ background: 'linear-gradient(90deg, transparent, rgba(128,128,128,0.12), transparent)' }}></div>
-                    {/* Prism Effect */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-gradient-to-tr from-primary/5 via-purple-900/10 to-blue-900/5 blur-[100px] opacity-40"></div>
-                </div>
+      {/* 04: Visualization */}
+      <div className="grid md:grid-cols-2 gap-24 items-center">
+        <motion.div 
+          initial={{ opacity: 0, x: -30 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          className="order-2 md:order-1 relative glass-card p-2 rounded-[2.5rem] border border-border-subtle shadow-xl overflow-hidden"
+        >
+          <img alt="Visual Intelligence" className="w-full h-auto rounded-[2rem]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPSsM1hzGxXDP6_ZD5yyMgwCzHjDaa743DSoTBR8jm3Uj9XfzwdT2_Y8UKNnJf1NVXKRsP1z1rja2XcZqM27m7d-2H-FRuVaqzxjRrHEvawYk4WmM7Vq6G3UHLH_4fSK_wRMuDQpi-b0Nsc2_isSaJr1GeTe7fw9TDFqtclin2VvBlk_tpULkGVL-XIBkdT5EVi5MHgqgAUltGlPwvhO9cSMhl8tZ49DBVgj-u__kfzT6RI38jh1TWswjhPS1lZJVEVFZSmLBfd-V7" />
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, x: 30 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          className="order-1 md:order-2 relative"
+        >
+          <div className="absolute -top-12 -left-12 text-[10rem] font-headline font-bold text-slate-custom/5 leading-none -z-10 select-none">04</div>
+          <div className="space-y-6">
+            <span className="inline-block text-emerald-accent font-bold tracking-widest text-sm uppercase">Visualization</span>
+            <h3 className="text-4xl font-headline font-bold text-slate-custom leading-tight">Visual Intelligence <br/> &amp; Deep Drill-Down.</h3>
+            <p className="text-lg text-slate-custom/70 leading-relaxed">
+              More than just static charts. Create interactive dashboards that allow users to click into any data point and drill down to the underlying raw events instantly.
+            </p>
+            <div className="pt-6">
+              <button className="px-8 py-4 bg-slate-custom text-alabaster rounded-2xl font-bold hover:opacity-90 transition-all group flex items-center gap-3 shadow-xl shadow-slate-900/10">
+                Explore Viz Suite
+                <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">insights</span>
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </div>
+  </section>
+);
 
-                <div className="relative z-10 flex flex-col items-center text-center px-4 max-w-6xl w-full">
-                    {/* Main Typography */}
-                    <div className="relative mb-8">
-                        <h1 className="text-[14vw] leading-[0.8] font-thin tracking-tighter mix-blend-screen opacity-90 select-none">
-                            <span className="block translate-y-4">DATA</span>
-                            <span className="block text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-600 italic font-light">IN FOCUS</span>
-                        </h1>
-                        {/* Decorative geometric element overlaying text */}
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[1px] bg-primary/30 rotate-12 blur-[1px]"></div>
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[2px] bg-primary mix-blend-overlay rotate-12"></div>
+const LandingPricing = () => (
+    <section className="py-32 bg-alabaster" id="pricing">
+        <div className="max-w-7xl mx-auto px-8">
+            <div className="text-center max-w-3xl mx-auto mb-20">
+                <h2 className="text-5xl font-headline font-bold text-slate-custom mb-6 tracking-tight">Professional <span className="text-indigo-accent">Plans</span></h2>
+                <p className="text-xl text-slate-custom/60">Choose the level of intelligence your enterprise requires. Deterministic accuracy for every scale.</p>
+            </div>
+            <div className="grid lg:grid-cols-3 gap-8">
+                {/* Team */}
+                <motion.div 
+                  whileHover={{ y: -10 }}
+                  className="bg-alabaster/40 p-10 rounded-[2.5rem] border border-border-subtle/40 hover:border-indigo-accent/30 transition-all hover:shadow-2xl hover:shadow-slate-900/10 group"
+                >
+                    <div className="w-12 h-12 bg-alabaster rounded-xl flex items-center justify-center mb-8 group-hover:bg-indigo-accent/10 transition-colors">
+                        <span className="material-symbols-outlined text-slate-custom">bolt</span>
                     </div>
-
-                    <div className="flex flex-col md:flex-row items-center gap-6 md:gap-12 mt-12">
-                        <p className="font-mono text-xs md:text-sm max-w-xs text-center md:text-right uppercase tracking-widest leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                            The AI-native analytics platform <br /> powered by natural language.
-                        </p>
-                        <div className="h-12 w-[1px] hidden md:block" style={{ background: 'var(--border-main)' }}></div>
-                        <Link to="/register" className="group relative px-8 py-3 overflow-hidden rounded-sm bg-transparent border hover:border-primary/50 transition-colors duration-300" style={{ borderColor: 'var(--border-main)' }}>
-                            <div className="absolute inset-0 w-0 bg-primary/10 transition-all duration-[250ms] ease-out group-hover:w-full"></div>
-                            <span className="relative font-mono text-xs font-bold tracking-[0.2em] uppercase group-hover:text-primary transition-colors" style={{ color: 'var(--text-main)' }}>Start Analyzing</span>
-                        </Link>
+                    <h3 className="text-2xl font-headline font-bold text-slate-custom mb-2">Team</h3>
+                    <p className="text-slate-custom/50 text-sm mb-8">Up to 1GB data processing</p>
+                    <div className="flex items-baseline gap-1 mb-8">
+                        <span className="text-5xl font-bold text-slate-custom tracking-tighter">$499</span>
+                        <span className="text-slate-custom/50">/mo</span>
                     </div>
-                </div>
+                    <ul className="space-y-5 mb-10 border-t border-border-subtle/20 pt-8">
+                        {[
+                          { icon: 'check', text: 'Groq/Gemini Multi-LLM', active: true },
+                          { icon: 'check', text: 'Smart Ingestion (CSV)', active: true },
+                          { icon: 'close', text: 'Immutable Versioning', active: false },
+                        ].map((item, i) => (
+                          <li key={i} className={`flex items-center gap-3 text-sm font-medium ${item.active ? 'text-slate-custom' : 'text-slate-custom/30'}`}>
+                            <span className={`material-symbols-outlined ${item.active ? 'text-emerald-accent' : ''} text-xl`}>{item.icon}</span>
+                            {item.text}
+                          </li>
+                        ))}
+                    </ul>
+                    <Link to="/register" className="w-full py-4 bg-indigo-accent/10 text-indigo-accent rounded-2xl font-bold hover:bg-indigo-accent hover:text-white transition-all text-center block">Get Started</Link>
+                </motion.div>
 
-                {/* Scroll Indicator */}
-                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 opacity-50">
-                    <div className="w-[1px] h-16" style={{ background: 'linear-gradient(to bottom, transparent, var(--text-muted), transparent)' }}></div>
-                    <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--text-muted)' }}>Scroll</span>
-                </div>
-            </section>
-
-            {/* Stats Section: System Capabilities */}
-            <section className="relative py-24 px-6" style={{ background: 'var(--landing-card-bg)', borderTop: '1px solid var(--border-subtle)' }}>
-                <div className="max-w-7xl mx-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-1 md:gap-4">
-                        {/* Stat 1 */}
-                        <div className="obsidian-card p-8 md:p-12 rounded-lg relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-6 opacity-20 group-hover:opacity-100 transition-opacity duration-500">
-                                <span className="material-symbols-outlined text-primary">bolt</span>
-                            </div>
-                            <p className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Inference Engine</p>
-                            <h3 className="text-4xl md:text-5xl font-light tracking-tight" style={{ color: 'var(--text-main)' }}>GROQ API<span className="text-primary text-2xl align-top">•</span></h3>
-                            <p className="mt-4 text-sm font-light font-display italic" style={{ color: 'var(--text-muted)' }}>Lightning fast SQL generation.</p>
-                            <div className="absolute bottom-0 left-0 h-[2px] w-0 bg-primary group-hover:w-full transition-all duration-700 ease-out"></div>
-                        </div>
-
-                        {/* Stat 2 */}
-                        <div className="obsidian-card p-8 md:p-12 rounded-lg relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-6 opacity-20 group-hover:opacity-100 transition-opacity duration-500">
-                                <span className="material-symbols-outlined text-primary">analytics</span>
-                            </div>
-                            <p className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Architecture</p>
-                            <h3 className="text-4xl md:text-5xl font-light tracking-tight" style={{ color: 'var(--text-main)' }}>Llama 3.1</h3>
-                            <p className="mt-4 text-sm font-light font-display italic" style={{ color: 'var(--text-muted)' }}>Highly precise analytical models.</p>
-                            <div className="absolute bottom-0 left-0 h-[2px] w-0 bg-primary group-hover:w-full transition-all duration-700 ease-out delay-100"></div>
-                        </div>
-
-                        {/* Stat 3 */}
-                        <div className="obsidian-card p-8 md:p-12 rounded-lg relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-6 opacity-20 group-hover:opacity-100 transition-opacity duration-500">
-                                <span className="material-symbols-outlined text-primary">speed</span>
-                            </div>
-                            <p className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>Friction</p>
-                            <h3 className="text-5xl md:text-6xl font-light tracking-tight" style={{ color: 'var(--text-main)' }}>ZERO</h3>
-                            <p className="mt-4 text-sm font-light font-display italic" style={{ color: 'var(--text-muted)' }}>Setup to insights in seconds.</p>
-                            <div className="absolute bottom-0 left-0 h-[2px] w-0 bg-primary group-hover:w-full transition-all duration-700 ease-out delay-200"></div>
-                        </div>
+                {/* Business Pro */}
+                <motion.div 
+                  whileHover={{ y: -10 }}
+                  className="relative bg-indigo-accent text-white p-10 rounded-[2.5rem] shadow-2xl shadow-indigo-900/20 z-10 lg:scale-105"
+                >
+                    <div className="absolute top-6 right-6 bg-indigo-accent text-[10px] font-bold tracking-widest uppercase px-3 py-1 rounded-full">Pro Recommended</div>
+                    <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-8">
+                        <span className="material-symbols-outlined text-white">workspace_premium</span>
                     </div>
-                </div>
-            </section>
-
-            {/* Feature Monoliths */}
-            <section id="features" className="py-32 px-4 relative overflow-hidden" style={{ background: 'var(--landing-bg)' }}>
-                {/* Background texture */}
-                <div className="absolute top-0 left-0 w-full h-full opacity-10 z-0" style={{ backgroundImage: "url('https://www.transparenttextures.com/patterns/dark-matter.png')" }}></div>
-
-                <div className="max-w-6xl mx-auto relative z-10 flex flex-col gap-32">
-                    {/* Section Header */}
-                    <div className="flex flex-col gap-6 items-start">
-                        <span className="font-mono text-primary text-xs uppercase tracking-[0.3em] pl-1 border-l border-primary">Core Protocol</span>
-                        <h2 className="text-5xl md:text-7xl font-light tracking-tighter max-w-2xl" style={{ color: 'var(--text-main)' }}>
-                            Intelligent analytics <br /> <span className="italic font-serif" style={{ color: 'var(--text-muted)' }}>driven by language.</span>
-                        </h2>
+                    <h3 className="text-2xl font-headline font-bold mb-2">Business Pro</h3>
+                    <p className="text-white/50 text-sm mb-8">Unlimited data ingestion</p>
+                    <div className="flex items-baseline gap-1 mb-8">
+                        <span className="text-5xl font-bold tracking-tighter text-white font-headline">$1,299</span>
+                        <span className="text-white/50">/mo</span>
                     </div>
+                    <ul className="space-y-5 mb-10 border-t border-white/10 pt-8">
+                        {['Data Cleaning Studio 2.0', 'Visual Penalty Breakdowns', 'DuckDB-Verified Results', 'Full JWT Audit Trails'].map((item, i) => (
+                          <li key={i} className="flex items-center gap-3 text-sm font-medium">
+                            <span className="material-symbols-outlined text-emerald-accent text-xl">check</span>
+                            {item}
+                          </li>
+                        ))}
+                    </ul>
+                    <Link to="/register" className="w-full py-4 bg-white/10 text-white rounded-2xl font-bold hover:bg-white hover:text-indigo-accent transition-all shadow-lg shadow-indigo-600/20 text-center block">Upgrade to Pro</Link>
+                </motion.div>
 
-                    {/* Feature 1: Ingest */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center group">
-                        <div className="order-2 md:order-1 flex flex-col gap-6">
-                            <div className="w-12 h-12 rounded flex items-center justify-center text-primary mb-4" style={{ border: '1px solid var(--border-main)', background: 'var(--bg-badge)' }}>
-                                <span className="material-symbols-outlined text-3xl">database</span>
-                            </div>
-                            <h3 className="text-4xl font-light tracking-tight" style={{ color: 'var(--text-main)' }}>CONNECT & MAP</h3>
-                            <p className="text-lg font-light font-serif leading-relaxed max-w-md" style={{ color: 'var(--text-muted)' }}>
-                                Upload CSVs or connect directly to your data warehouse. Vizzy's inference engine automatically maps your schema, identifies data types, and prepares your geometry for instant querying.
-                            </p>
-                            <ul className="flex flex-col gap-3 mt-4 font-mono text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                <li className="flex items-center gap-3">
-                                    <span className="w-1.5 h-1.5 bg-primary rounded-full"></span> Auto-Schema Detection
-                                </li>
-                                <li className="flex items-center gap-3">
-                                    <span className="w-1.5 h-1.5 rounded-full group-hover:bg-primary transition-colors" style={{ background: 'var(--border-main)' }}></span> CSV & Database Support
-                                </li>
-                            </ul>
-                        </div>
-                        {/* Image/Visual */}
-                        <div className="order-1 md:order-2 relative aspect-[4/3] rounded-sm overflow-hidden" style={{ border: '1px solid var(--border-subtle)', background: 'var(--landing-feature-img)' }}>
-                            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent mix-blend-overlay z-10"></div>
-                            <div className="w-full h-full bg-cover bg-center opacity-60 grayscale group-hover:grayscale-0 transition-all duration-1000 transform group-hover:scale-105" data-alt="Abstract data ingestion" style={{ backgroundImage: "url('/feature_1.png')" }}>
-                            </div>
-                        </div>
+                {/* Enterprise */}
+                <motion.div 
+                  whileHover={{ y: -10 }}
+                  className="bg-alabaster/40 p-10 rounded-[2.5rem] border border-border-subtle/40 hover:border-indigo-accent/30 transition-all hover:shadow-2xl hover:shadow-slate-900/10 group"
+                >
+                    <div className="w-12 h-12 bg-alabaster rounded-xl flex items-center justify-center mb-8 group-hover:bg-indigo-accent/10 transition-colors">
+                        <span className="material-symbols-outlined text-slate-custom">corporate_fare</span>
                     </div>
-
-                    {/* Feature 2: Natural Querying */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center group">
-                        <div className="order-1 relative aspect-[4/3] rounded-sm overflow-hidden" style={{ border: '1px solid var(--border-subtle)', background: 'var(--landing-feature-img)' }}>
-                            <div className="absolute inset-0 bg-gradient-to-bl from-primary/10 to-transparent mix-blend-overlay z-10"></div>
-                            <div className="w-full h-full bg-cover bg-center opacity-60 grayscale group-hover:grayscale-0 transition-all duration-1000 transform group-hover:scale-105" data-alt="Text to SQL execution visualization" style={{ backgroundImage: "url('/feature_2.png')" }}>
-                            </div>
-                        </div>
-                        <div className="order-2 flex flex-col gap-6 md:pl-10">
-                            <div className="w-12 h-12 rounded flex items-center justify-center text-primary mb-4" style={{ border: '1px solid var(--border-main)', background: 'var(--bg-badge)' }}>
-                                <span className="material-symbols-outlined text-3xl">query_stats</span>
-                            </div>
-                            <h3 className="text-4xl font-light tracking-tight" style={{ color: 'var(--text-main)' }}>NATURAL QUERYING</h3>
-                            <p className="text-lg font-light font-serif leading-relaxed max-w-md" style={{ color: 'var(--text-muted)' }}>
-                                Stop writing complex SQL. Ask questions in natural language, and our Groq-accelerated AI instantly translates them into highly exact optimized queries and selects the perfect chart layout.
-                            </p>
-                            <ul className="flex flex-col gap-3 mt-4 font-mono text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                <li className="flex items-center gap-3">
-                                    <span className="w-1.5 h-1.5 bg-primary rounded-full"></span> Text-to-SQL Pipeline
-                                </li>
-                                <li className="flex items-center gap-3">
-                                    <span className="w-1.5 h-1.5 rounded-full group-hover:bg-primary transition-colors" style={{ background: 'var(--border-main)' }}></span> Smart Chart Suggestions
-                                </li>
-                            </ul>
-                        </div>
+                    <h3 className="text-2xl font-headline font-bold text-slate-custom mb-2">Custom</h3>
+                    <p className="text-slate-custom/50 text-sm mb-8">On-premise deployment</p>
+                    <div className="flex items-baseline gap-1 mb-8">
+                        <span className="text-5xl font-bold text-slate-custom tracking-tighter">Custom</span>
                     </div>
-
-                    {/* Feature 3: Insights */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center group">
-                        <div className="order-2 md:order-1 flex flex-col gap-6">
-                            <div className="w-12 h-12 rounded flex items-center justify-center text-primary mb-4" style={{ border: '1px solid var(--border-main)', background: 'var(--bg-badge)' }}>
-                                <span className="material-symbols-outlined text-3xl">insights</span>
-                            </div>
-                            <h3 className="text-4xl font-light tracking-tight" style={{ color: 'var(--text-main)' }}>INSIGHTS & KPIs</h3>
-                            <p className="text-lg font-light font-serif leading-relaxed max-w-md" style={{ color: 'var(--text-muted)' }}>
-                                Go beyond simple charts. Vizzy automatically calculates key performance indicators, extracts dataset trends, and generates cohesive dashboards to uncover hidden patterns immediately.
-                            </p>
-                            <ul className="flex flex-col gap-3 mt-4 font-mono text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                <li className="flex items-center gap-3">
-                                    <span className="w-1.5 h-1.5 bg-primary rounded-full"></span> Auto-Generated KPIs
-                                </li>
-                                <li className="flex items-center gap-3">
-                                    <span className="w-1.5 h-1.5 rounded-full group-hover:bg-primary transition-colors" style={{ background: 'var(--border-main)' }}></span> Trend Extraction
-                                </li>
-                            </ul>
-                        </div>
-                        <div className="order-1 md:order-2 relative aspect-[4/3] rounded-sm overflow-hidden" style={{ border: '1px solid var(--border-subtle)', background: 'var(--landing-feature-img)' }}>
-                            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent mix-blend-overlay z-10"></div>
-                            <div className="w-full h-full bg-cover bg-center opacity-60 grayscale group-hover:grayscale-0 transition-all duration-1000 transform group-hover:scale-105" data-alt="KPI metrics and chart insights" style={{ backgroundImage: "url('/feature_3.png')" }}>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* Visual Grid: Process Flow */}
-            <section id="how-it-works" className="py-20 px-4" style={{ background: 'var(--landing-how-bg)' }}>
-                <div className="max-w-7xl mx-auto flex flex-col gap-12">
-                    <div className="flex flex-col gap-4 items-center text-center">
-                        <span className="font-mono text-primary text-xs uppercase tracking-[0.3em]">Workflow Process</span>
-                        <h2 className="text-3xl font-light tracking-tighter" style={{ color: 'var(--text-main)' }}>
-                            How it <span className="italic font-serif" style={{ color: 'var(--text-muted)' }}>works</span>
-                        </h2>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Card 1 */}
-                        <div className="group relative aspect-[3/4] overflow-hidden rounded-lg cursor-pointer">
-                            <div className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110 opacity-70" data-alt="Abstract data origin" style={{ backgroundImage: "url('/workflow_1.png')" }}>
-                            </div>
-                            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-90"></div>
-                            <div className="absolute bottom-0 left-0 p-8 flex flex-col gap-2">
-                                <span className="font-mono text-[10px] text-primary uppercase tracking-widest">01</span>
-                                <h4 className="text-xl font-light text-white uppercase mt-1">Upload Data</h4>
-                                <p className="font-mono text-xs text-gray-400">Connect to your dataset</p>
-                                <div className="h-[1px] w-0 bg-primary mt-2 group-hover:w-full transition-all duration-500"></div>
-                            </div>
-                        </div>
-
-                        {/* Card 2 */}
-                        <div className="group relative aspect-[3/4] overflow-hidden rounded-lg cursor-pointer mt-0 md:-mt-12">
-                            <div className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110 opacity-70" data-alt="Abstract data processing" style={{ backgroundImage: "url('/workflow_2.png')" }}>
-                            </div>
-                            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-90"></div>
-                            <div className="absolute bottom-0 left-0 p-8 flex flex-col gap-2">
-                                <span className="font-mono text-[10px] text-primary uppercase tracking-widest">02</span>
-                                <h4 className="text-xl font-light text-white uppercase mt-1">Ask Questions</h4>
-                                <p className="font-mono text-xs text-gray-400">Query using plain english</p>
-                                <div className="h-[1px] w-0 bg-primary mt-2 group-hover:w-full transition-all duration-500"></div>
-                            </div>
-                        </div>
-
-                        {/* Card 3 */}
-                        <div className="group relative aspect-[3/4] overflow-hidden rounded-lg cursor-pointer">
-                            <div className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110 opacity-70" data-alt="Abstract data output" style={{ backgroundImage: "url('/workflow_3.png')" }}>
-                            </div>
-                            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-90"></div>
-                            <div className="absolute bottom-0 left-0 p-8 flex flex-col gap-2">
-                                <span className="font-mono text-[10px] text-primary uppercase tracking-widest">03</span>
-                                <h4 className="text-xl font-light text-white uppercase mt-1">Visualize</h4>
-                                <p className="font-mono text-xs text-gray-400">Save and share dashboards</p>
-                                <div className="h-[1px] w-0 bg-primary mt-2 group-hover:w-full transition-all duration-500"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* CTA Section */}
-            <section className="relative py-32 px-4 flex flex-col items-center justify-center" style={{ background: 'var(--landing-cta-bg)', borderTop: '1px solid var(--border-subtle)' }}>
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1px] h-20 bg-gradient-to-b from-primary to-transparent"></div>
-                <div className="text-center space-y-8 max-w-2xl relative z-10">
-                    <h2 className="text-5xl md:text-8xl font-light tracking-tighter" style={{ color: 'var(--text-main)' }}>
-                        ENTER THE <br /> <span className="italic font-serif" style={{ color: 'var(--text-muted)' }}>NEW EPOCH</span>
-                    </h2>
-                    <p className="font-mono text-sm tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                        Join the architects of analytical insight.
-                    </p>
-                    <Link to="/register" className="inline-block mt-8 px-12 py-4 bg-primary text-white font-bold text-sm tracking-widest uppercase hover:bg-white hover:text-black transition-colors duration-300 rounded-sm">
-                        Get Access
-                    </Link>
-                </div>
-            </section>
-
-            {/* Professional Footer */}
-            <footer className="pt-20 pb-10 px-8 relative overflow-hidden" style={{ background: 'var(--landing-footer-bg)', borderTop: '1px solid var(--border-subtle)' }}>
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] rounded-full translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-                <div className="max-w-7xl mx-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 mb-16 relative z-10">
-                        <div className="lg:col-span-2">
-                            <Link className="flex items-center gap-3 mb-6" to="/">
-                                <span className="material-symbols-outlined text-primary">diamond</span>
-                                <span className="font-bold tracking-widest text-xl text-white">VIZZY</span>
-                            </Link>
-                            <p className="font-mono text-xs leading-relaxed max-w-xs mb-8" style={{ color: 'var(--landing-footer-text)' }}>
-                                AI-native business intelligence platform relying on pure inference to connect data and visualizations bridging the void.
-                            </p>
-                        </div>
-
-                        <div className="flex flex-col gap-4">
-                            <h4 className="font-mono text-xs text-white uppercase tracking-widest mb-2 border-l border-primary pl-2">Platform</h4>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Data Connections</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Natural Language SQL</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Automated KPI Boards</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Enterprise Security</a>
-                        </div>
-
-                        <div className="flex flex-col gap-4">
-                            <h4 className="font-mono text-xs text-white uppercase tracking-widest mb-2 border-l border-primary pl-2">Resources</h4>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Documentation</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>API Reference</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Tutorials</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>System Status</a>
-                        </div>
-
-                        <div className="flex flex-col gap-4">
-                            <h4 className="font-mono text-xs text-white uppercase tracking-widest mb-2 border-l border-primary pl-2">Company</h4>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>About Us</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Careers</a>
-                            <a href="#" className="font-mono text-xs hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>Contact Support</a>
-                            <div className="flex items-center gap-4 mt-2">
-                                <a href="#" className="hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>
-                                    <span className="material-symbols-outlined text-[1.2rem]">share</span>
-                                </a>
-                                <a href="#" className="hover:text-primary transition-colors" style={{ color: 'var(--landing-footer-text)' }}>
-                                    <span className="material-symbols-outlined text-[1.2rem]">mail</span>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] font-mono uppercase tracking-widest relative z-10" style={{ borderTop: '1px solid rgba(128,128,128,0.2)', color: 'var(--landing-footer-text)' }}>
-                        <div className="flex gap-6">
-                            <a className="hover:text-primary transition-colors" href="#">Privacy Policy</a>
-                            <a className="hover:text-primary transition-colors" href="#">Terms of Service</a>
-                            <a className="hover:text-primary transition-colors" href="#">Security Parameters</a>
-                        </div>
-                        <div>
-                            © 2026 VIZZY ANALYTICS PLATFORM
-                        </div>
-                    </div>
-                </div>
-            </footer>
+                    <ul className="space-y-5 mb-10 border-t border-border-subtle/20 pt-8">
+                        {['Llama-3 Self-Hosted', 'Dedicated Pandas Clusters', '24/7 Priority Support'].map((item, i) => (
+                          <li key={i} className="flex items-center gap-3 text-sm font-medium text-slate-custom">
+                            <span className="material-symbols-outlined text-emerald-accent text-xl">check</span>
+                            {item}
+                          </li>
+                        ))}
+                    </ul>
+                    <button className="w-full py-4 border border-border-subtle/20 bg-alabaster text-slate-custom rounded-2xl font-bold hover:bg-indigo-accent/10 transition-all">Contact Sales</button>
+                </motion.div>
+            </div>
         </div>
-    );
+    </section>
+);
+
+const LandingFooter = () => (
+    <footer className="bg-alabaster border-t border-border-subtle/20 pt-24 pb-12 px-8">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-16 mb-24">
+            <div className="space-y-8">
+                <div className="flex items-center gap-2 text-2xl font-bold font-headline text-slate-custom">
+                    <span className="w-8 h-8 bg-indigo-accent rounded-lg flex items-center justify-center text-white text-base">V</span>
+                    Vizzy Pro
+                </div>
+                <p className="text-slate-custom/60 leading-relaxed max-w-xs text-sm">Deterministic conversational intelligence for the modern enterprise.</p>
+            </div>
+            <div>
+                <h4 className="font-headline font-bold text-lg text-slate-custom mb-8">Platform</h4>
+                <ul className="space-y-4 text-sm">
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">Cleaning Studio 2.0</a></li>
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">LLM Gateway</a></li>
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">Viz Suite</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 className="font-headline font-bold text-lg text-slate-custom mb-8">Security</h4>
+                <ul className="space-y-4 text-sm">
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">JWT Integration</a></li>
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">RBAC Governance</a></li>
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">Privacy Policy</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 className="font-headline font-bold text-lg text-slate-custom mb-8">Developer</h4>
+                <ul className="space-y-4 text-sm">
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">DuckDB Docs</a></li>
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">API Status</a></li>
+                    <li><a className="text-slate-custom/60 hover:text-indigo-accent transition-colors" href="#">Schema Specs</a></li>
+                </ul>
+            </div>
+        </div>
+        <div className="max-w-7xl mx-auto pt-8 border-t border-border-subtle flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-medium text-slate-custom/40">
+            <p>© 2026 Vizzy Pro Enterprise. All rights reserved.</p>
+            <div className="flex items-center gap-8">
+                <a className="hover:text-slate-custom transition-colors" href="#">Privacy</a>
+                <a className="hover:text-slate-custom transition-colors" href="#">Terms</a>
+            </div>
+        </div>
+    </footer>
+);
+
+export default function Landing() {
+  return (
+    <div className="bg-alabaster font-body selection:bg-indigo-accent/20">
+      <LandingNavbar />
+      <main>
+        <LandingHero />
+        <LandingCapabilities />
+        <LandingDeepDive />
+        <LandingPricing />
+        
+        {/* Final CTA Section */}
+        <section className="py-32 px-8 overflow-hidden">
+          <div className="max-w-7xl mx-auto">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="relative bg-[#0A0B0F] rounded-[3.5rem] p-16 md:p-24 text-center overflow-hidden border border-white/5 shadow-2xl shadow-indigo-950/20"
+            >
+              <div className="absolute inset-0 opacity-20 mix-blend-overlay pointer-events-none">
+                <img alt="Background pattern" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA9XVrtex4FgfLGepu7-v03xRdo2L5UrcnTptxBfTfVowr33TQm11pdSYgwkTmmLCYUVPqG0JlaBTscF3O8flM---a4ces2D_6f1pt41t3CBpZxo0Mzx2RLAZttNtwLajmaK7qXTyqxNSsBdAUqsPvUOBscHbr3ysZW64olROV2ZuaCsBzyB_DzSAe4DUfXft08qz0PGvZrbPtM_mtR3hinPmTJYFJVaAIZ7v59BwaTPAh3u9lhEST_XzInJv-nsgBN-72ce_qOrWFP" />
+              </div>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-indigo-accent/20 to-transparent"></div>
+              <div className="relative z-10">
+                <h2 className="text-5xl md:text-7xl font-headline font-bold text-white mb-8 leading-tight tracking-tight">Experience <span className="italic text-emerald-accent">Vizzy Pro.</span></h2>
+                <p className="text-xl text-white/70 mb-14 max-w-2xl mx-auto leading-relaxed">
+                  Join 500+ global enterprises orchestrating data with conversational intelligence. Secure, deterministic, and blazing fast.
+                </p>
+                <div className="flex flex-col sm:flex-row justify-center gap-6">
+                  <Link to="/register" className="px-12 py-5 bg-indigo-accent text-white rounded-2xl font-bold text-xl hover:scale-105 transition-all shadow-2xl shadow-indigo-600/40 text-center">Request Access</Link>
+                  <button className="px-12 py-5 bg-white/5 text-white/50 border border-white/10 backdrop-blur-md rounded-2xl font-bold text-xl hover:bg-white/10 hover:text-white transition-all">Technical Spec</button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+      </main>
+      <LandingFooter />
+    </div>
+  );
 }

@@ -394,13 +394,25 @@ const ChartCard = ({ title, children, className, actions }: { title: string; chi
 
 // ─── ChartRenderer ────────────────────────────────────────────────────────────
 
-const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: any; chartColors: any; isDark: boolean; onFilterClick?: (col: string, val: string) => void }) => {
+const ChartRenderer = ({
+    chart,
+    chartColors,
+    isDark,
+    onFilterClick,
+    targetColumn,
+}: {
+    chart: any;
+    chartColors: any;
+    isDark: boolean;
+    onFilterClick?: (col: string, val: string) => void;
+    targetColumn?: string | null;
+}) => {
     const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
     const [showOutliers, setShowOutliers] = useState(true);
     const [treemapTip, setTreemapTip] = useState<{ x: number; y: number; name: string; value: number } | null>(null);
     const treemapRef = useRef<HTMLDivElement>(null);
 
-    const chartData = showOutliers ? chart?.data : (chart?.data_without_outliers || chart?.data);
+    const rawChartData = showOutliers ? chart?.data : (chart?.data_without_outliers || chart?.data);
 
     const gridProps = { stroke: chartColors.grid, strokeDasharray: '2 6' };
     const axisProps = { stroke: chartColors.axis, fontSize: 10, tickLine: false, axisLine: false };
@@ -409,7 +421,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
         ? ['#f59e0b', '#6366f1', '#10b981', '#f43f5e', '#14b8a6', '#8b5cf6']
         : ['#f59e0b', '#6366f1', '#22c55e', '#f43f5e', '#14b8a6', '#8b5cf6'];
 
-    if (!chartData?.length) {
+    if (!rawChartData?.length) {
         return (
             <div className="h-48 flex flex-col items-center justify-center gap-2 text-themed-muted dark:text-gray-600">
                 <svg className="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -456,7 +468,7 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
     };
 
     // Auto-detect label key from first data row
-    const firstRow = chartData[0] || {};
+    const firstRow = rawChartData[0] || {};
     const nameKey = 'name' in firstRow ? 'name'
         : Object.keys(firstRow).find(k => typeof firstRow[k] === 'string') || 'name';
     const dateKey = 'date' in firstRow ? 'date' : nameKey;
@@ -464,6 +476,27 @@ const ChartRenderer = ({ chart, chartColors, isDark, onFilterClick }: { chart: a
     // The column name this chart represents (for filtering)
     // Often passed by backend as chart.x_axis or chart.dimension
     const filterCol = chart.dimension || chart.x_axis || nameKey;
+
+    const normalizeColumn = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isTargetSemanticChart = !!(
+        targetColumn && (
+            normalizeColumn(String(filterCol)) === normalizeColumn(String(targetColumn))
+            || normalizeColumn(String(chart?.dimension || '')) === normalizeColumn(String(targetColumn))
+            || normalizeColumn(String(chart?.metric || '')) === normalizeColumn(String(targetColumn))
+            || /churned\s*vs\s*retained|exited\s*vs\s*stayed|attrited\s*vs\s*retained/i.test(String(chart?.title || ''))
+        )
+    );
+
+    const chartData = isTargetSemanticChart
+        ? rawChartData.map((row: any) => {
+            const rawName = row?.[nameKey];
+            if (!isBinaryTargetValue(String(rawName ?? ''))) return row;
+            return {
+                ...row,
+                [nameKey]: formatTargetTabLabel(String(rawName), targetColumn || chart?.dimension),
+            };
+        })
+        : rawChartData;
 
     const handleSliceClick = (data: any) => {
         if (!onFilterClick || !data) return;
@@ -968,6 +1001,9 @@ const FilterDropdown = ({
 const toLabel = (col: string) =>
     col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
+const normalizeColumnKey = (value: string) =>
+    String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
 const MultiFilterPanel = ({
     geoFilters,
     targetColumn,
@@ -995,6 +1031,11 @@ const MultiFilterPanel = ({
 
     const targetRawToSemantic: Record<string, string> = {};
     const targetSemanticToRaw: Record<string, string> = {};
+    const isTargetEquivalentColumn = (col?: string | null): boolean => {
+        if (!targetColumn || !col) return false;
+        return normalizeColumnKey(col) === normalizeColumnKey(targetColumn);
+    };
+
     for (const rawVal of (targetValues || [])) {
         const raw = String(rawVal);
         const semantic = formatTargetTabLabel(raw, targetColumn || undefined);
@@ -1005,15 +1046,20 @@ const MultiFilterPanel = ({
     }
 
     const toRawTargetValue = (col: string, value: string): string => {
-        if (!targetColumn || col !== targetColumn) return value;
+        if (!isTargetEquivalentColumn(col)) return value;
         return targetSemanticToRaw[value] ?? value;
     };
 
     const targetRawValues = Array.from(new Set((targetValues || []).map(v => String(v)).filter(Boolean)));
-    const valueOptionsByCol: Record<string, string[]> = {
-        ...geoFilters,
-        ...(targetColumn ? { [targetColumn]: targetRawValues } : {}),
-    };
+    const valueOptionsByCol: Record<string, string[]> = { ...geoFilters };
+    if (targetColumn && targetRawValues.length > 0) {
+        const matchingTargetKey = Object.keys(valueOptionsByCol).find((col) => isTargetEquivalentColumn(col));
+        if (matchingTargetKey) {
+            valueOptionsByCol[matchingTargetKey] = targetRawValues;
+        } else {
+            valueOptionsByCol[targetColumn] = targetRawValues;
+        }
+    }
 
     const allCols = Object.keys(valueOptionsByCol);
     const totalActive = Object.values(activeFilters).reduce((n, v) => n + v.length, 0);
@@ -1184,7 +1230,7 @@ const MultiFilterPanel = ({
                                                 {slotValues.length === 0
                                                     ? 'All values'
                                                     : slotValues.length === 1
-                                                        ? (selectedCol === targetColumn
+                                                        ? (isTargetEquivalentColumn(selectedCol)
                                                             ? formatTargetTabLabel(String(slotValues[0]), targetColumn || undefined)
                                                             : slotValues[0])
                                                         : `${slotValues.length} selected`}
@@ -1228,7 +1274,9 @@ const MultiFilterPanel = ({
                                                                 className="w-3.5 h-3.5 rounded accent-[#6c63ff]"
                                                             />
                                                             <span className="text-[14px] text-[#2d2f2f] dark:text-[#eceff4] truncate">
-                                                                {selectedCol === targetColumn ? (targetRawToSemantic[String(val)] || formatTargetTabLabel(String(val), targetColumn || undefined)) : val}
+                                                                {isTargetEquivalentColumn(selectedCol)
+                                                                    ? (targetRawToSemantic[String(val)] || formatTargetTabLabel(String(val), targetColumn || undefined))
+                                                                    : val}
                                                             </span>
                                                         </label>
                                                     ))}
@@ -1601,6 +1649,41 @@ export default function UserDashboard() {
     useEffect(() => {
         if (!selectedDatasetId) return;
 
+        // Route-switch fast path: restore from in-memory/session cache immediately
+        // so Dashboard <-> Upload navigation does not show a full reload.
+        const cacheKey = buildDashboardCacheKey();
+        const applyCachedAnalytics = (cachedData: DashboardAnalytics) => {
+            setAnalytics(cachedData);
+            if (cachedData.raw_data && cachedData.chart_configs) {
+                const initial: Record<string, any> = {};
+                if (cachedData.charts) {
+                    Object.entries(cachedData.charts).forEach(([key, chart]: [string, any]) => {
+                        initial[key] = chart.data;
+                    });
+                }
+                setDashboardData(
+                    cachedData.raw_data,
+                    cachedData.chart_configs,
+                    initial,
+                    cachedData.total_rows,
+                    cachedData.target_column
+                );
+            }
+        };
+
+        const memoryCached = cacheRef.current.analytics.get(cacheKey);
+        if (memoryCached && isFresh(memoryCached.createdAt)) {
+            applyCachedAnalytics(memoryCached.value);
+            return;
+        }
+
+        const sessionCached = getSessionCachedAnalytics(cacheKey);
+        if (sessionCached) {
+            cacheRef.current.analytics.set(cacheKey, sessionCached);
+            applyCachedAnalytics(sessionCached);
+            return;
+        }
+
         // 1. Instantly recompute correlation matrix in background if dataset changed
         // (Moved from separate useEffect for cleaner logic)
 
@@ -1624,7 +1707,7 @@ export default function UserDashboard() {
         return stableSerialize({
             schema: DASHBOARD_CACHE_SCHEMA_VERSION,
             datasetId: selectedDatasetId,
-            targetValue: 'all',
+            targetValue: target_value || 'all',
             selectedDomain: selected_domain || 'auto',
             filters: normalizedActiveFilters,
             classificationOverrides: classification_overrides || {},
@@ -1692,7 +1775,7 @@ export default function UserDashboard() {
             setError(null);
             const data = await analyticsService.getDashboardAnalytics(
                 selectedDatasetId,
-                'all',
+                target_value,
                 normalizedActiveFilters,
                 {},
                 classification_overrides,
@@ -1728,7 +1811,7 @@ export default function UserDashboard() {
             setIsKPILoading(true);
             const data = await analyticsService.getDashboardAnalytics(
                 selectedDatasetId,
-                'all',
+                target_value,
                 normalizedActiveFilters,
                 chart_overrides,
                 classification_overrides,
@@ -1764,10 +1847,11 @@ export default function UserDashboard() {
     useEffect(() => {
         if (!selectedDatasetId) return;
 
+        const hasTargetFilter = !!(target_value && target_value.toLowerCase() !== 'all');
         const hasActiveFilters = Object.keys(normalizedActiveFilters).length > 0;
         const hasChartOverrides = Object.keys(chart_overrides || {}).length > 0;
 
-        if (!hasActiveFilters && !hasChartOverrides) {
+        if (!hasTargetFilter && !hasActiveFilters && !hasChartOverrides) {
             const baseKey = stableSerialize({
                 schema: DASHBOARD_CACHE_SCHEMA_VERSION,
                 datasetId: selectedDatasetId,
@@ -1797,7 +1881,7 @@ export default function UserDashboard() {
         return () => {
             clearTimeout(timer);
         };
-    }, [selectedDatasetId, selected_domain, classification_overrides, normalizedActiveFilters, chart_overrides]);
+    }, [selectedDatasetId, selected_domain, classification_overrides, normalizedActiveFilters, chart_overrides, target_value]);
 
     const handleChartFilterClick = (col: string, val: string) => {
         const rawCol = String(col || '').trim();
@@ -2555,6 +2639,13 @@ export default function UserDashboard() {
                         </section>
 
                         <section>
+                            {isKPILoading && (
+                                <div className="mb-3 flex items-center gap-2 text-xs text-[#5a5c5c] dark:text-[#a3a8b3]">
+                                    <div className="w-3.5 h-3.5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                                    Updating filtered results...
+                                </div>
+                            )}
+
                             {chartArray.length > 0 && (
                                 <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-6">
                                     {SHOW_CORRELATION_CHART && (
@@ -2563,12 +2654,13 @@ export default function UserDashboard() {
 
                                     {chartArray.map((chart) => (
                                         <ChartCard key={chart.id} title={chart.title || `Insight ${chart.id}`} actions={renderChartActions(chart)}>
-                                            <div data-chart-id={chart.id}>
+                                            <div data-chart-id={chart.id} className="relative">
                                                 <ChartRenderer
                                                     chart={{ ...chart, type: chart_overrides[chart.id]?.type || chart.type }}
                                                     chartColors={chartColors}
                                                     isDark={isDark}
                                                     onFilterClick={handleChartFilterClick}
+                                                    targetColumn={analytics?.target_column}
                                                 />
                                             </div>
                                         </ChartCard>

@@ -10,6 +10,7 @@ export default function Login() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleNextStep = (e: React.FormEvent) => {
         e.preventDefault();
@@ -217,14 +218,20 @@ export default function Login() {
                                         <label htmlFor="password" className="block font-label text-[11px] font-bold uppercase tracking-widest text-on-surface-variant ml-1">
                                             Password
                                         </label>
-                                        <button className="text-primary text-xs font-semibold flex items-center gap-1 hover:underline" type="button">
-                                            <span className="material-symbols-outlined text-base">visibility</span>
-                                            Show password
+                                        <button 
+                                            className="text-primary text-xs font-semibold flex items-center gap-1 hover:underline" 
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                        >
+                                            <span className="material-symbols-outlined text-base">
+                                                {showPassword ? 'visibility_off' : 'visibility'}
+                                            </span>
+                                            {showPassword ? 'Hide password' : 'Show password'}
                                         </button>
                                     </div>
                                     <div className="relative group">
                                         <input 
-                                            type="password"
+                                            type={showPassword ? 'text' : 'password'}
                                             required
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}

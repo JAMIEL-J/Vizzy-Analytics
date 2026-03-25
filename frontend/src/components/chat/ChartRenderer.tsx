@@ -21,37 +21,29 @@ interface CustomTooltipProps {
     active?: boolean;
     payload?: any[];
     label?: string;
-    currency?: string;
-    isCurrency?: boolean;
-    isPercentage?: boolean;
+    formatValue: (value: any, metricKey?: string) => string;
+    getMetricLabel?: (metricKey?: string) => string;
 }
 
-const CustomTooltip = ({ active, payload, label, currency, isCurrency, isPercentage }: CustomTooltipProps) => {
+const CustomTooltip = ({ active, payload, label, formatValue, getMetricLabel }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
-        let formattedValue = '';
-        const value = payload[0].value || 0;
-
-        if (isPercentage) {
-            formattedValue = new Intl.NumberFormat('en-US', {
-                style: 'decimal',
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2,
-            }).format(value) + '%';
-        } else {
-            formattedValue = new Intl.NumberFormat('en-US', {
-                style: isCurrency ? 'currency' : 'decimal',
-                currency: 'USD',
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2,
-            }).format(value).replace('$', isCurrency ? (currency || '$') : '');
-        }
-
+        const fullCategoryLabel = String(payload?.[0]?.payload?.fullName || label || '');
         return (
             <div className="rounded-sm px-4 py-3 border border-white/10 backdrop-blur-md min-w-[160px] bg-black/90 shadow-[0_0_15px_rgba(108,99,255,0.15)] text-white font-mono z-[9999]">
-                {label && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-white/10 opacity-70 leading-tight">{label}</p>}
-                <div className="mb-0">
-                    <p className="text-[10px] opacity-50 uppercase tracking-widest mb-0.5">Value</p>
-                    <p className="text-sm font-bold truncate max-w-[200px] text-primary">{formattedValue}</p>
+                {fullCategoryLabel && <p className="text-[10px] uppercase font-bold tracking-widest mb-2 pb-2 border-b border-white/10 opacity-70 leading-tight">{fullCategoryLabel}</p>}
+                <div className="space-y-1">
+                    {payload.map((entry: any, index: number) => {
+                        const metricKey = String(entry?.dataKey || entry?.name || 'value');
+                        const metricLabel = getMetricLabel ? getMetricLabel(metricKey) : metricKey;
+                        return (
+                            <div key={`${metricKey}-${index}`} className="mb-0">
+                                <p className="text-[10px] opacity-50 uppercase tracking-widest mb-0.5">{metricLabel}</p>
+                                <p className="text-sm font-bold truncate max-w-[220px] text-primary">
+                                    {formatValue(entry?.value ?? 0, metricKey)}
+                                </p>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -75,6 +67,53 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
     // ── Explicit Formatting Hints (from Phase 1 Coercion) ──
     const columnMetadata = data.column_metadata || data.data?.column_metadata || {};
 
+    const currencySymbolFromCode = (code?: string) => {
+        const curr = String(code || '').toUpperCase();
+        if (curr === 'GBP') return '£';
+        if (curr === 'EUR') return '€';
+        if (curr === 'INR') return '₹';
+        if (curr === 'JPY' || curr === 'CNY') return '¥';
+        return '$';
+    };
+
+    const getDisplayFormat = (metricKey?: string): any => {
+        if (!metricKey) return null;
+        return columnMetadata?.[metricKey]?.display_format || null;
+    };
+
+    const isFinancialMetricName = (metricKey?: string) => {
+        const key = String(metricKey || '').toLowerCase();
+        if (!key) return false;
+
+        if (['quantity', 'qty', 'count', 'unit', 'units', 'volume', 'age', 'tenure', 'day', 'days', 'month', 'months', 'year', 'years'].some((kw) => key.includes(kw))) {
+            return false;
+        }
+
+        return ['revenue', 'profit', 'income', 'earnings', 'cost', 'expense', 'price', 'charge', 'payment', 'budget', 'fee', 'sales', 'discount', 'amount', 'billing'].some((kw) => key.includes(kw));
+    };
+
+    const isCurrencyMetric = (metricKey?: string) => {
+        const displayFormat = getDisplayFormat(metricKey);
+        if (displayFormat?.type === 'currency') return true;
+        if (displayFormat?.type === 'percent') return false;
+        return isFinancialMetricName(metricKey);
+    };
+
+    const isPercentMetric = (metricKey?: string) => {
+        const displayFormat = getDisplayFormat(metricKey);
+        if (displayFormat?.type === 'percent') return true;
+        const key = String(metricKey || '').toLowerCase();
+        return key.includes('rate') || key.includes('percent') || key.includes('%');
+    };
+
+    const currencySymbolForMetric = (metricKey?: string) => {
+        const displayFormat = getDisplayFormat(metricKey);
+        if (displayFormat?.type === 'currency') {
+            return currencySymbolFromCode(displayFormat.currency);
+        }
+        return currency || '$';
+    };
+
     // Determine if this should be formatted as a percentage
     const isPercentage =
         data.is_percentage === true ||
@@ -89,27 +128,20 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
 
     // Determine if this chart should use currency formatting
     const getCurrencyInfo = () => {
-        // Find if any metric in this chart has explicit currency metadata
         const metadataValues: any[] = Object.values(columnMetadata);
         const explicitCurrency = metadataValues.find((m: any) => m.display_format?.type === 'currency');
-
         if (explicitCurrency) {
             return {
                 isCurrency: true,
-                symbol: explicitCurrency.display_format.currency === 'USD' ? '$' :
-                    explicitCurrency.display_format.currency === 'GBP' ? '£' :
-                        explicitCurrency.display_format.currency === 'EUR' ? '€' : '$'
+                symbol: currencySymbolFromCode(explicitCurrency.display_format.currency)
             };
         }
 
-        // Fallback to legacy heuristic
         if (isPercentage) return { isCurrency: false, symbol: '$' };
-        const explicitMoneyKeywords = ['revenue', 'profit', 'income', 'earnings', 'cost', 'expense', 'price', 'charges', 'payment', 'budget', 'salary', 'wage', 'fee', 'sales', 'discount'];
-        const titleLower = (title || '').toLowerCase();
-        const dataStr = JSON.stringify(data).toLowerCase();
-        const hasKeyword = explicitMoneyKeywords.some(keyword => titleLower.includes(keyword) || dataStr.includes(keyword));
 
-        return { isCurrency: hasKeyword, symbol: currency || '$' };
+        const titleLower = (title || '').toLowerCase();
+        const titleLooksFinancial = isFinancialMetricName(titleLower);
+        return { isCurrency: titleLooksFinancial, symbol: currency || '$' };
     };
 
     const currencyInfo = getCurrencyInfo();
@@ -135,6 +167,31 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
         const label = data.label || data.data?.label || title || "Metric";
         const suffix = data.suffix || data.data?.suffix || (isPercentage ? '%' : '');
         const change = data.change;
+        const metrics = Array.isArray(data.data?.metrics)
+            ? data.data.metrics.filter((metric: any) => metric && typeof metric.value === 'number')
+            : [];
+
+        if (metrics.length > 1) {
+            const kpiRows = metrics.map((metric: any) => {
+                const metricKey = String(metric.key || 'value');
+                const metricLabel = toHumanLabel(metric.label || metricKey);
+                const formattedMetric = formatValue(metric.value, metricKey);
+                return {
+                    label: metricLabel,
+                    value: formattedMetric,
+                };
+            });
+
+            return (
+                <KPICard
+                    value={kpiRows[0]?.value || value}
+                    label={label}
+                    metrics={kpiRows}
+                    variant={variant}
+                    compact={false}
+                />
+            );
+        }
 
         return (
             <KPICard
@@ -149,8 +206,11 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
         );
     };
 
-    const formatYAxisValue = (val: number) => {
-        if (isPercentage) {
+    const formatValue = (rawVal: any, metricKey?: string) => {
+        const val = Number(rawVal);
+        if (Number.isNaN(val)) return String(rawVal ?? '');
+
+        if (isPercentage || isPercentMetric(metricKey)) {
             return new Intl.NumberFormat('en-US', {
                 style: 'decimal',
                 minimumFractionDigits: 0,
@@ -158,33 +218,94 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
             }).format(val) + '%';
         }
 
+        if (isCurrencyMetric(metricKey)) {
+            const symbol = currencySymbolForMetric(metricKey) || effectiveCurrency;
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                notation: 'compact',
+                compactDisplay: 'short',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            }).format(val).replace('$', symbol);
+        }
+
         return new Intl.NumberFormat('en-US', {
-            style: isCurrencyChart ? 'currency' : 'decimal',
-            currency: 'USD',
+            style: 'decimal',
             notation: "compact",
             compactDisplay: "short",
             minimumFractionDigits: 0,
             maximumFractionDigits: 2
-        }).format(val).replace('$', effectiveCurrency);
+        }).format(val);
+    };
+
+    const formatYAxisValue = (val: number, metricKey?: string) => {
+        return formatValue(val, metricKey);
+    };
+
+    const toHumanLabel = (key?: string) => {
+        const raw = String(key || '').trim();
+        if (!raw) return 'Value';
+        return raw
+            .replace(/_/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+    };
+
+    const truncateTick = (value: any, max = 14) => {
+        const str = String(value ?? '');
+        return str.length > max ? `${str.slice(0, max)}…` : str;
+    };
+
+    const compactCategoryLabel = (value: any) => {
+        const str = String(value ?? '').trim();
+        if (!str) return '';
+        const firstWord = str.split(/\s+/)[0] || str;
+        if (firstWord.length <= 8 && str.length > firstWord.length) {
+            return `${firstWord}...`;
+        }
+        return truncateTick(str, 10);
+    };
+
+    const parseTopNFromTitle = () => {
+        const match = /\btop\s+(\d+)\b/i.exec(String(title || ''));
+        if (!match) return null;
+        const n = Number(match[1]);
+        return Number.isFinite(n) && n > 0 ? n : null;
     };
 
     const renderBarChart = () => {
         let chartData = [];
+        let valueKey = 'value';
         // Handle different data formats including NL2SQL nested data
         if (data.data?.rows) {
             chartData = data.data.rows.map((row: any) => {
                 const keys = Object.keys(row);
+                valueKey = keys[1] || valueKey;
                 return {
-                    name: row[keys[0]],
+                    name: compactCategoryLabel(row[keys[0]]),
+                    fullName: String(row[keys[0]] ?? ''),
                     value: row[keys[1]]
                 };
             });
         } else if (data.x && data.y) {
             chartData = data.x.map((x: any, i: number) => ({
-                name: x,
+                name: compactCategoryLabel(x),
+                fullName: String(x ?? ''),
                 value: data.y[i]
             }));
         }
+
+        const topN = parseTopNFromTitle();
+        chartData = chartData
+            .map((row: any) => ({ ...row, value: Number(row.value || 0) }))
+            .filter((row: any) => Number.isFinite(row.value));
+
+        if (topN && chartData.length > topN) {
+            chartData = [...chartData].sort((a: any, b: any) => b.value - a.value).slice(0, topN);
+        }
+
+        const metricLabelForBar = () => toHumanLabel(data.value_label || data.metric || data.y_axis || valueKey);
 
         if (chartData.length === 0) return <div className="p-4 text-gray-400 text-sm">No chart data available</div>;
 
@@ -198,7 +319,8 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             tick={{ fontSize: 12, fill: axisColor }}
                             axisLine={{ stroke: gridColor }}
                             tickLine={false}
-                            interval={0}
+                            tickFormatter={(value: any) => String(value ?? '')}
+                            interval={chartData.length > 12 ? Math.ceil(chartData.length / 12) - 1 : 0}
                             angle={0}
                             textAnchor="middle"
                             height={60}
@@ -207,9 +329,9 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             tick={{ fontSize: 12, fill: axisColor }}
                             axisLine={false}
                             tickLine={false}
-                            tickFormatter={(value: any) => formatYAxisValue(Number(value))}
+                            tickFormatter={(value: any) => formatYAxisValue(Number(value), valueKey)}
                         />
-                        <Tooltip content={<CustomTooltip currency={effectiveCurrency} isCurrency={isCurrencyChart} isPercentage={isPercentage} />} cursor={{ fill: cursorFill }} />
+                        <Tooltip content={<CustomTooltip formatValue={formatValue} getMetricLabel={() => metricLabelForBar()} />} cursor={{ fill: cursorFill }} />
                         <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40} fill={STANDARD_BAR_COLOR}>
                             {chartData.map((_: any, index: number) => (
                                 <Cell key={`cell-${index}`} fill={getBarColorByIndex(index, chartData.length)} />
@@ -223,10 +345,11 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
 
     const renderLineChart = () => {
         let chartData = [];
+        let valueKey = 'value';
         if (data.data?.series) {
             chartData = data.data.series.map((s: any) => ({
                 name: s.timestamp || Object.values(s)[0],
-                value: s.value !== undefined ? s.value : Object.values(s)[1]
+                value: s.value !== undefined ? s.value : Object.values(s)[1],
             }));
         } else if (data.x && data.y) {
             chartData = data.x.map((x: any, i: number) => ({
@@ -234,6 +357,10 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                 value: data.y[i]
             }));
         }
+
+        valueKey = data.metric || data.y_axis || valueKey;
+
+        const metricLabelForLine = () => toHumanLabel(data.value_label || data.metric || data.y_axis || valueKey);
 
         if (chartData.length === 0) return <div className="p-4 text-gray-400 text-sm">No line data available</div>;
 
@@ -256,9 +383,9 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             tick={{ fontSize: 12, fill: axisColor }}
                             axisLine={false}
                             tickLine={false}
-                            tickFormatter={(value: any) => formatYAxisValue(Number(value))}
+                            tickFormatter={(value: any) => formatYAxisValue(Number(value), valueKey)}
                         />
-                        <Tooltip content={<CustomTooltip currency={effectiveCurrency} isCurrency={isCurrencyChart} isPercentage={isPercentage} />} />
+                        <Tooltip content={<CustomTooltip formatValue={formatValue} getMetricLabel={() => metricLabelForLine()} />} />
                         <Line
                             type="monotone"
                             dataKey="value"
@@ -275,9 +402,11 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
 
     const renderPieChart = () => {
         let chartData = [];
+        let valueKey = 'value';
         if (data.data?.rows) {
             chartData = data.data.rows.map((row: any) => {
                 const keys = Object.keys(row);
+                valueKey = keys[1] || valueKey;
                 return {
                     name: row[keys[0]],
                     value: row[keys[1]]
@@ -307,7 +436,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                                 <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} strokeWidth={2} stroke="#0a0b0f" />
                             ))}
                         </Pie>
-                        <Tooltip content={<CustomTooltip currency={effectiveCurrency} isCurrency={isCurrencyChart} isPercentage={isPercentage} />} />
+                        <Tooltip content={<CustomTooltip formatValue={(v) => formatValue(v, valueKey)} getMetricLabel={() => toHumanLabel(data.value_label || data.metric || valueKey)} />} />
                         <Legend
                             layout="horizontal"
                             verticalAlign="bottom"
@@ -316,6 +445,76 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                             iconType="circle"
                         />
                     </PieChart>
+                </ResponsiveContainer>
+            </div>
+        );
+    };
+
+    const renderStackedBarChart = () => {
+        const rows = data.data?.rows || data.rows || [];
+        if (!Array.isArray(rows) || rows.length === 0) return <div className="p-4 text-gray-400 text-sm">No chart data available</div>;
+
+        const firstRow = rows[0] || {};
+        const rowKeys = Object.keys(firstRow);
+        const metricKeys = (data.data?.categories || data.categories || rowKeys.filter((k: string) => typeof firstRow[k] === 'number')) as string[];
+        const dimensionKey = (data.dimension as string)
+            || rowKeys.find((k: string) => !metricKeys.includes(k))
+            || rowKeys[0]
+            || 'name';
+
+        let chartData = rows.map((row: any) => {
+            const fullName = String(row[dimensionKey] ?? '');
+            const shaped: any = {
+                name: compactCategoryLabel(fullName),
+                fullName,
+            };
+            metricKeys.forEach((metric: string) => {
+                shaped[metric] = Number(row[metric] || 0);
+            });
+            return shaped;
+        });
+
+        const topN = parseTopNFromTitle();
+        if (topN && chartData.length > topN) {
+            chartData = [...chartData]
+                .sort((a: any, b: any) => {
+                    const sumA = metricKeys.reduce((sum: number, key: string) => sum + (Number(a[key]) || 0), 0);
+                    const sumB = metricKeys.reduce((sum: number, key: string) => sum + (Number(b[key]) || 0), 0);
+                    return sumB - sumA;
+                })
+                .slice(0, topN);
+        }
+
+            const metricLabelForStacked = (metricKey?: string) => toHumanLabel(metricKey);
+
+        return (
+            <div className="h-96 w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 40, bottom: 40 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+                        <XAxis
+                            dataKey="name"
+                            tick={{ fontSize: 12, fill: axisColor }}
+                            axisLine={{ stroke: gridColor }}
+                            tickLine={false}
+                            tickFormatter={(value: any) => String(value ?? '')}
+                            interval={chartData.length > 12 ? Math.ceil(chartData.length / 12) - 1 : 0}
+                            angle={0}
+                            textAnchor="middle"
+                            height={60}
+                        />
+                        <YAxis
+                            tick={{ fontSize: 12, fill: axisColor }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(value: any) => formatYAxisValue(Number(value), metricKeys[0])}
+                        />
+                        <Tooltip content={<CustomTooltip formatValue={formatValue} getMetricLabel={metricLabelForStacked} />} cursor={{ fill: cursorFill }} />
+                        <Legend />
+                        {metricKeys.map((metric: string, idx: number) => (
+                            <Bar key={metric} dataKey={metric} stackId="stack" fill={CHART_COLORS[idx % CHART_COLORS.length]} radius={idx === metricKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                        ))}
+                    </BarChart>
                 </ResponsiveContainer>
             </div>
         );
@@ -341,7 +540,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
                                 {headers.map((h: string) => (
                                     <td key={h} className="px-4 py-3 text-gray-800 dark:text-white text-xs">
                                         {typeof row[h] === 'number' && !h.toLowerCase().includes('id') ?
-                                            formatYAxisValue(row[h]) :
+                                            formatValue(row[h], h) :
                                             String(row[h] || '-')
                                         }
                                     </td>
@@ -390,6 +589,8 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ type, data, title,
     switch (type) {
         case 'kpi': return renderKPI();
         case 'bar': return renderBarChart();
+        case 'stacked_bar': return renderStackedBarChart();
+        case 'stacked': return renderStackedBarChart();
         case 'line': return renderLineChart();
         case 'pie': return renderPieChart();
         case 'table': return renderTable();

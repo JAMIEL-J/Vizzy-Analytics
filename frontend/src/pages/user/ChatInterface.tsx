@@ -34,6 +34,44 @@ const isInsightMessage = (msg: ChatMessage) => {
     return msg.intent_type === 'interpretive' || contentType === 'interpretive_text' || contentType === 'interpretive';
 };
 
+const hasRenderableOutput = (outputData: any) => {
+    if (!outputData || outputData.type === 'clarification') {
+        return false;
+    }
+
+    if (outputData.type === 'kpi') {
+        return true;
+    }
+
+    if (outputData.type === 'nl2sql') {
+        if (outputData.chart?.type === 'kpi') {
+            return true;
+        }
+
+        if (outputData.response_type === 'text') {
+            return false;
+        }
+
+        return Boolean(outputData.chart);
+    }
+
+    if (outputData.response_type === 'text') {
+        return false;
+    }
+
+    return Boolean(outputData.chart || outputData.data);
+};
+
+const isMultiMetricKPIMessage = (msg: ChatMessage) => {
+    const outputData = msg.output_data;
+    if (!outputData) return false;
+
+    const chartPayload = outputData.type === 'nl2sql' ? outputData.chart : outputData;
+    const metrics = chartPayload?.data?.metrics;
+
+    return chartPayload?.type === 'kpi' && Array.isArray(metrics) && metrics.length > 1;
+};
+
 const renderInsightPoints = (content: string) => {
     const lines = (content || '')
         .split(/\n+/)
@@ -436,13 +474,13 @@ export default function ChatInterface() {
                         <>
                             {messages.map((msg) => (
                                 <div key={msg.id} id={`msg-${msg.id}`} className={`flex w-full mb-8 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'max-w-7xl w-full' : 'max-w-xl'} flex items-start space-x-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                                    <div className={`${['analysis', 'visualization', 'dashboard', 'comparative', 'aggregative', 'trend'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'max-w-7xl w-full' : 'max-w-xl'} flex items-start space-x-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                                         {msg.role === 'assistant' && (
                                             <div className="w-10 h-10 rounded-sm bg-primary border-b-2 border-[#4f46e5] flex items-center justify-center flex-shrink-0 font-mono text-xs font-bold text-white font-display font-light shadow-[0_0_15px_rgba(108,99,255,0.3)]">
                                                 VX
                                             </div>
                                         )}
-                                        <div className={`px-5 py-4 ${msg.role === 'user' ? 'bg-primary text-white rounded-xl shadow-sm' : 'bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl text-on-surface'} ${['analysis', 'visualization', 'dashboard'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
+                                        <div className={`px-5 py-4 ${msg.role === 'user' ? 'bg-primary text-white rounded-xl shadow-sm' : 'bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl text-on-surface'} ${['analysis', 'visualization', 'dashboard', 'comparative', 'aggregative', 'trend'].includes(msg.intent_type || '') && msg.output_data?.type !== 'kpi' ? 'w-full' : ''} ${msg.output_data?.type === 'kpi' ? 'w-auto' : ''}`}>
                                             <div className="text-sm leading-relaxed">
                                                 {isInsightMessage(msg) ? (
                                                     <div className="space-y-4 w-full">
@@ -450,26 +488,28 @@ export default function ChatInterface() {
                                                             {renderInsightPoints(msg.content)}
                                                         </div>
                                                     </div>
-                                                ) : ['analysis', 'visualization', 'dashboard', 'text_query', 'clarification'].includes(msg.intent_type || '') ? (
+                                                ) : ['analysis', 'visualization', 'dashboard', 'comparative', 'aggregative', 'trend', 'text_query', 'clarification'].includes(msg.intent_type || '') ? (
                                                     <div className="space-y-4 w-full">
-                                                        <div className="markdown-content text-themed-main">
-                                                            <ReactMarkdown
-                                                                remarkPlugins={[remarkGfm]}
-                                                                components={{
-                                                                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                                                                    h1: ({ node, ...props }) => <h1 className="text-xl font-bold text-themed-main mt-4 mb-2" {...props} />,
-                                                                    h2: ({ node, ...props }) => <h2 className="text-lg font-bold text-themed-main mt-3 mb-2" {...props} />,
-                                                                    ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
-                                                                    ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
-                                                                    li: ({ node, ...props }) => <li className="" {...props} />,
-                                                                    strong: ({ node, ...props }) => <strong className="font-bold text-themed-main" {...props} />,
-                                                                    a: ({ node, ...props }) => <a className="text-primary hover:underline" {...props} />,
-                                                                    code: ({ node, ...props }) => <code className="bg-bg-card px-1 py-0.5 rounded text-sm font-mono text-primary border border-border-main" {...props} />,
-                                                                }}
-                                                            >
-                                                                {msg.content}
-                                                            </ReactMarkdown>
-                                                        </div>
+                                                        {!isMultiMetricKPIMessage(msg) && (
+                                                            <div className="markdown-content text-themed-main">
+                                                                <ReactMarkdown
+                                                                    remarkPlugins={[remarkGfm]}
+                                                                    components={{
+                                                                        p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                                                        h1: ({ node, ...props }) => <h1 className="text-xl font-bold text-themed-main mt-4 mb-2" {...props} />,
+                                                                        h2: ({ node, ...props }) => <h2 className="text-lg font-bold text-themed-main mt-3 mb-2" {...props} />,
+                                                                        ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
+                                                                        ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
+                                                                        li: ({ node, ...props }) => <li className="" {...props} />,
+                                                                        strong: ({ node, ...props }) => <strong className="font-bold text-themed-main" {...props} />,
+                                                                        a: ({ node, ...props }) => <a className="text-primary hover:underline" {...props} />,
+                                                                        code: ({ node, ...props }) => <code className="bg-bg-card px-1 py-0.5 rounded text-sm font-mono text-primary border border-border-main" {...props} />,
+                                                                    }}
+                                                                >
+                                                                    {msg.content}
+                                                                </ReactMarkdown>
+                                                            </div>
+                                                        )}
 
                                                         {/* ── Ambiguity Clarification Cards ── */}
                                                         {msg.output_data?.type === 'clarification' && msg.output_data?.ambiguity && (
@@ -510,7 +550,7 @@ export default function ChatInterface() {
                                                             </div>
                                                         )}
 
-                                                        {msg.output_data && msg.output_data.type !== 'clarification' && (() => {
+                                                        {hasRenderableOutput(msg.output_data) && (() => {
                                                             const targetData = msg.output_data.type === 'nl2sql' && msg.output_data.chart
                                                                 ? { ...msg.output_data.chart, sql: msg.output_data.sql }
                                                                 : msg.output_data;
@@ -519,7 +559,7 @@ export default function ChatInterface() {
                                                             const sqlQuery = targetData.sql || msg.output_data.sql;
 
                                                             return (
-                                                                <div className={`mt-6 w-full vizzy-chart-container bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl p-4 shadow-sm pb-3`}>
+                                                                <div className={`${isMultiMetricKPIMessage(msg) ? 'mt-2' : 'mt-6'} w-full vizzy-chart-container bg-surface-container-lowest dark:bg-surface-container/80 dark:backdrop-blur-md border border-transparent dark:border-white/5 rounded-xl p-4 shadow-sm pb-3`}>
                                                                     <ChartRenderer
                                                                         type={isTableMode ? 'table' : (targetData.type || 'unknown')}
                                                                         data={targetData}

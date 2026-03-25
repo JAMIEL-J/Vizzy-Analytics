@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+import re
 from .db_engine import DBEngine
 from ..llm.sql_validator import SQLValidator
 from ..llm.sql_generator import SQLGenerator
@@ -15,6 +16,124 @@ def _extract_current_question(user_query: str) -> str:
     if marker in user_query:
         return user_query.rsplit(marker, 1)[1].strip()
     return user_query
+
+
+_RESOLUTION_STOPWORDS = {
+    "what", "which", "show", "list", "give", "with", "from", "that", "this", "have", "has",
+    "where", "when", "then", "than", "into", "onto", "about", "like", "these", "those", "there",
+    "across", "over", "under", "between", "performs", "perform", "well", "high", "higher", "highest",
+    "rate", "query", "data", "dataset", "table", "month", "months",
+}
+
+
+def _extract_resolution_keywords(query: str) -> list[str]:
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_\-]*", (query or "").lower())
+    keywords = []
+    seen = set()
+
+    for word in words:
+        if len(word) <= 2 or word in _RESOLUTION_STOPWORDS:
+            continue
+        if word not in seen:
+            seen.add(word)
+            keywords.append(word)
+
+    return keywords
+
+
+def _build_business_semantic_hints(query: str, available_cols: list[str], column_metadata: dict) -> list[dict]:
+    """Add high-value business hints for common analytical phrasing across domains."""
+    from .semantic_resolver import find_column
+
+    q = (query or "").lower()
+    hints: list[dict] = []
+
+    def add_hint(keyword: str, column: str, hint_type: str = "TEXT", was_coerced: bool = False):
+        if not column:
+            return
+        if column in [h["column"] for h in hints]:
+            return
+        hints.append({
+            "keyword": keyword,
+            "column": column,
+            "type": hint_type,
+            "was_coerced": was_coerced,
+        })
+
+    def resolve_metric(metric_keywords: list[str]) -> str | None:
+        return find_column(metric_keywords, available_cols, threshold=0.5)
+
+    asks_subcategory = any(k in q for k in ["sub category", "subcategory", "sub-category", "sub_category"])
+    asks_performance = any(k in q for k in ["performs well", "best", "top", "highest", "high", "good performance"])
+    asks_profit = "profit" in q
+    asks_retention = "retention" in q
+    asks_month_to_month = any(k in q for k in ["month-to-month", "month to month", "monthtomonth", "m2m"])
+
+    if asks_subcategory:
+        subcat_col = find_column(["sub category", "subcategory", "sub_category", "sub-category"], available_cols, threshold=0.5)
+        if subcat_col:
+            add_hint("subcategory_dimension", subcat_col, "DIMENSION", bool(column_metadata.get(subcat_col, {}).get("coerced")))
+
+    if asks_subcategory and (asks_performance or asks_profit):
+        preferred_metric = None
+        if asks_profit:
+            preferred_metric = resolve_metric(["profit", "net profit", "margin"])
+        if not preferred_metric:
+            preferred_metric = resolve_metric(["sales", "revenue", "amount", "income"])
+        if preferred_metric:
+            add_hint("ranking_metric", preferred_metric, "METRIC", bool(column_metadata.get(preferred_metric, {}).get("coerced")))
+
+    if asks_retention:
+        retention_col = resolve_metric(["retention", "retained", "stay", "active rate"])
+        churn_col = resolve_metric(["churn", "churned", "attrition", "cancelled", "is churned"])
+        contract_col = find_column(["contract", "contract type", "plan", "subscription"], available_cols, threshold=0.5)
+
+        if contract_col:
+            add_hint("contract_filter", contract_col, "DIMENSION", bool(column_metadata.get(contract_col, {}).get("coerced")))
+        if churn_col:
+            add_hint("retention_from_churn", churn_col, "METRIC", bool(column_metadata.get(churn_col, {}).get("coerced")))
+        elif retention_col:
+            add_hint("retention_metric", retention_col, "METRIC", bool(column_metadata.get(retention_col, {}).get("coerced")))
+
+        if asks_month_to_month and contract_col:
+            add_hint("month_to_month_scope", contract_col, "FILTER", bool(column_metadata.get(contract_col, {}).get("coerced")))
+
+    return hints
+
+
+def _render_hint_lines(hints: list[dict]) -> list[str]:
+    lines = []
+    for h in hints:
+        kw = h.get("keyword", "keyword")
+        col = h.get("column", "")
+        h_type = h.get("type", "TEXT")
+        was_coerced = bool(h.get("was_coerced", False))
+        msg = f"- [{h_type}] '{kw}' maps to column '{col}'"
+        if was_coerced:
+            msg += " (NOTE: column was auto-cleaned/cast for numeric analysis)"
+        lines.append(msg)
+
+    mapped_cols = {h.get("column") for h in hints if h.get("column")}
+    mapped_keys = {h.get("keyword") for h in hints}
+
+    if "ranking_metric" in mapped_keys:
+        lines.append("- [BUSINESS_RULE] For performance questions, rank by aggregated metric (SUM) descending and return top categories unless user asks otherwise.")
+
+    if "retention_from_churn" in mapped_keys:
+        lines.append("- [BUSINESS_RULE] Retention rate should be computed as (1 - AVG(churn_indicator)) * 100. If churn_indicator is already percentage, normalize first.")
+    elif "retention_metric" in mapped_keys:
+        lines.append("- [BUSINESS_RULE] Use the retention metric directly; if values are 0-1 ratios, multiply by 100 for percentage output.")
+
+    if "month_to_month_scope" in mapped_keys:
+        contract_col = next((h.get("column") for h in hints if h.get("keyword") == "month_to_month_scope"), None)
+        if contract_col:
+            lines.append(f"- [BUSINESS_RULE] Apply filter LOWER(CAST(\"{contract_col}\" AS VARCHAR)) LIKE '%month%to%month%' for month-to-month contract scope.")
+
+    if mapped_cols:
+        col_list = ", ".join(sorted(mapped_cols))
+        lines.append(f"- [STRICT_SCHEMA] Prefer these mapped columns first: {col_list}")
+
+    return lines
 
 
 class Executor:
@@ -51,9 +170,8 @@ class Executor:
         # Pre-resolve semantic hints once (doesn't change across retries)
         from .semantic_resolver import find_column, find_ambiguous_columns
         query_for_resolution = _extract_current_question(user_query)
-        words = query_for_resolution.lower().split()
         hints = []
-        keywords = [w.strip("?,.!") for w in words if len(w) > 3]
+        keywords = _extract_resolution_keywords(query_for_resolution)
         for kw in keywords:
             match = find_column([kw], available_cols, threshold=0.7)
             if match and match not in [h['column'] for h in hints]:
@@ -64,6 +182,12 @@ class Executor:
                     "type": col_meta.get("type", "").upper(),
                     "was_coerced": col_meta.get("coerced", False)
                 })
+
+        # Add domain-aware business hints for robust NL coverage.
+        business_hints = _build_business_semantic_hints(query_for_resolution, available_cols, column_metadata)
+        for hint in business_hints:
+            if hint.get("column") not in [h.get("column") for h in hints]:
+                hints.append(hint)
 
         # ── Ambiguity Detection ──
         # If a keyword matches ≥2 columns strongly, ask user to clarify
@@ -104,12 +228,7 @@ class Executor:
             # Build prompt
             prompt_query = user_query
             if hints:
-                hint_lines = []
-                for h in hints:
-                    msg = f"- '{h['keyword']}' maps to column '{h['column']}'"
-                    if h['was_coerced']:
-                        msg += " (NOTE: This column was automatically cleaned and cast to DOUBLE for numeric analysis)"
-                    hint_lines.append(msg)
+                hint_lines = _render_hint_lines(hints)
                 prompt_query = f"{prompt_query}\n\nColumn Mapping & Hinting:\n" + "\n".join(hint_lines)
 
             if current_error:

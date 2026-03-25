@@ -10,6 +10,7 @@ This bridges the gap between:
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -51,14 +52,51 @@ def _is_currency_metric(label: str, metric_col: Optional[str], column_metadata: 
         if isinstance(display_format, dict) and display_format.get("type") == "currency":
             return True
 
+    metric_text = (metric_col or "").lower()
+    if any(k in metric_text for k in ["quantity", "qty", "count", "unit", "units", "volume"]):
+        return False
+
     text = f"{label or ''} {metric_col or ''}".lower()
     currency_keywords = [
         "revenue", "profit", "income", "earnings", "cost", "expense",
         "price", "charges", "charge", "payment", "budget", "salary", "wage",
-        "fee", "sales", "discount", "amount", "value", "spent", "spend",
+        "fee", "sales", "discount", "amount", "spent", "spend",
         "spending", "mrr", "arr", "billing", "bill"
     ]
     return any(kw in text for kw in currency_keywords)
+
+
+def _auto_chart_type(chart_type: str, data: List[Dict[str, Any]], columns: List[str]) -> str:
+    """Upgrade generic chart hints to better chart types based on result shape."""
+    if not data or not columns:
+        return chart_type
+
+    first_row = data[0] if isinstance(data[0], dict) else {}
+    numeric_cols = [c for c in columns if isinstance(first_row.get(c), (int, float))]
+    non_numeric_cols = [c for c in columns if c not in numeric_cols]
+
+    # Multi-metric category comparisons should render as stacked bars.
+    if len(non_numeric_cols) >= 1 and len(numeric_cols) >= 2 and chart_type in {"bar", "table", "stacked"}:
+        return "stacked_bar"
+
+    # Top-N/tabular category comparisons are better as bars than raw tables.
+    if len(non_numeric_cols) >= 1 and len(numeric_cols) == 1 and chart_type == "table":
+        return "bar"
+
+    return chart_type
+
+
+def _extract_top_n(title: str) -> Optional[int]:
+    """Extract top-N target from chart title if present (e.g., 'Top 10 Products')."""
+    match = re.search(r"\btop\s+(\d+)\b", str(title or ""), flags=re.IGNORECASE)
+    if not match:
+        return None
+
+    try:
+        n = int(match.group(1))
+        return n if n > 0 else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _format_compact_number(value: Any, is_currency: bool = False, symbol: str = "$") -> str:
@@ -120,16 +158,20 @@ def build_chart_from_nl2sql(nl2sql_result: dict) -> Dict[str, Any]:
         return _empty_result(title)
 
     # Route to chart-type-specific builder
+    chart_type = _auto_chart_type(chart_type, data, columns)
+
     builders = {
         "kpi": _build_kpi,
         "bar": _build_bar,
+        "stacked_bar": _build_stacked_bar,
+        "stacked": _build_stacked_bar,
         "line": _build_line,
         "pie": _build_pie,
         "table": _build_table,
     }
 
     builder = builders.get(chart_type, _build_table)
-    chart_spec = builder(data, columns, title, x_axis, y_axis)
+    chart_spec = builder(data, columns, title, x_axis, y_axis, column_metadata)
     
     # Attach column metadata for frontend formatting
     chart_spec["column_metadata"] = {
@@ -151,11 +193,12 @@ def build_chart_from_nl2sql(nl2sql_result: dict) -> Dict[str, Any]:
 # ─── Chart Builders ──────────────────────────────────────────────────────────
 
 
-def _build_kpi(data: list, columns: list, title: str, x_axis: str, y_axis: str) -> dict:
+def _build_kpi(data: list, columns: list, title: str, x_axis: str, y_axis: str, column_metadata: Optional[Dict[str, Any]] = None) -> dict:
     """KPI: single number result."""
     row = data[0] if data else {}
     value = None
     label = title
+    metrics = []
     
     # Check for a string column (e.g., the top winning category name)
     category_context = None
@@ -164,15 +207,27 @@ def _build_kpi(data: list, columns: list, title: str, x_axis: str, y_axis: str) 
         if isinstance(val, str) and not category_context:
             category_context = val
 
-    # Find the numeric value
+    # Find numeric values (all of them for multi-metric KPI cards)
+    primary_set = False
     for col in columns:
         val = row.get(col)
         if isinstance(val, (int, float)):
-            value = val
-            label = (col.replace("_", " ").title() if not title else title)
-            if category_context:
-                label = f"{category_context} ({label})"
-            break
+            is_percentage = _is_likely_percentage(col)
+            metric_value = val * 100 if is_percentage and -1.0 <= val <= 1.0 else val
+            metrics.append({
+                "key": col,
+                "label": col.replace("_", " ").title(),
+                "value": metric_value,
+                "is_percentage": is_percentage,
+                "format_type": "percentage" if is_percentage else ("currency" if _is_currency_metric(title or col, col, column_metadata) else "number"),
+                "suffix": "%" if is_percentage else "",
+            })
+            if not primary_set:
+                value = val
+                label = (col.replace("_", " ").title() if not title else title)
+                if category_context:
+                    label = f"{category_context} ({label})"
+                primary_set = True
 
     if value is None:
         # Fallback: first value regardless of type
@@ -198,7 +253,8 @@ def _build_kpi(data: list, columns: list, title: str, x_axis: str, y_axis: str) 
             "value": value, 
             "label": label, 
             "suffix": suffix,
-            "is_percentage": is_percentage
+            "is_percentage": is_percentage,
+            "metrics": metrics,
         },
     }
 
@@ -229,7 +285,7 @@ def _is_likely_percentage(label: str) -> bool:
     return False
 
 
-def _build_bar(data: list, columns: list, title: str, x_axis: str, y_axis: str) -> dict:
+def _build_bar(data: list, columns: list, title: str, x_axis: str, y_axis: str, column_metadata: Optional[Dict[str, Any]] = None) -> dict:
     """Bar chart: category column + value column."""
     category_col, value_col = _detect_category_value_cols(columns, data)
 
@@ -248,10 +304,20 @@ def _build_bar(data: list, columns: list, title: str, x_axis: str, y_axis: str) 
             value_col: val,
         })
 
+    top_n = _extract_top_n(title)
+    if top_n and len(rows) > top_n:
+        rows = sorted(rows, key=lambda r: r.get(value_col, 0) if isinstance(r.get(value_col), (int, float)) else 0, reverse=True)[:top_n]
+
+    format_type = "percentage" if is_percentage else ("currency" if _is_currency_metric(title, value_col, column_metadata) else "number")
+
     return {
         "type": "bar",
         "title": title,
         "data": {"rows": rows, "is_percentage": is_percentage},
+        "format_type": format_type,
+        "value_label": value_col.replace("_", " ").title(),
+        "metric": value_col,
+        "dimension": category_col,
         "axes": {
             "x": x_axis or category_col.replace("_", " ").title(),
             "y": y_axis or value_col.replace("_", " ").title(),
@@ -259,7 +325,60 @@ def _build_bar(data: list, columns: list, title: str, x_axis: str, y_axis: str) 
     }
 
 
-def _build_line(data: list, columns: list, title: str, x_axis: str, y_axis: str) -> dict:
+def _build_stacked_bar(data: list, columns: list, title: str, x_axis: str, y_axis: str, column_metadata: Optional[Dict[str, Any]] = None) -> dict:
+    """Stacked bar: one category column + multiple numeric metric columns."""
+    if not data or not columns:
+        return _build_table(data, columns, title, x_axis, y_axis, column_metadata)
+
+    first_row = data[0] if isinstance(data[0], dict) else {}
+    numeric_cols = [c for c in columns if isinstance(first_row.get(c), (int, float))]
+    category_candidates = [c for c in columns if c not in numeric_cols]
+
+    # Fallback to basic bar if shape is not suitable for stacked output.
+    if len(category_candidates) < 1 or len(numeric_cols) < 2:
+        return _build_bar(data, columns, title, x_axis, y_axis, column_metadata)
+
+    category_col = category_candidates[0]
+    metric_cols = numeric_cols
+
+    rows = []
+    for row in data:
+        stacked_row = {category_col: str(row.get(category_col, ""))}
+        for metric in metric_cols:
+            val = row.get(metric, 0)
+            stacked_row[metric] = val if isinstance(val, (int, float)) else 0
+        rows.append(stacked_row)
+
+    top_n = _extract_top_n(title)
+    if top_n and len(rows) > top_n:
+        rows = sorted(
+            rows,
+            key=lambda r: sum(r.get(metric, 0) for metric in metric_cols if isinstance(r.get(metric), (int, float))),
+            reverse=True,
+        )[:top_n]
+
+    all_currency = all(_is_currency_metric(title, metric, column_metadata) for metric in metric_cols)
+    any_percentage = any(_is_likely_percentage(metric) for metric in metric_cols)
+    format_type = "percentage" if any_percentage else ("currency" if all_currency else "number")
+
+    return {
+        "type": "stacked_bar",
+        "title": title,
+        "data": {
+            "rows": rows,
+            "categories": metric_cols,
+        },
+        "categories": metric_cols,
+        "format_type": format_type,
+        "dimension": category_col,
+        "axes": {
+            "x": x_axis or category_col.replace("_", " ").title(),
+            "y": y_axis or "Value",
+        },
+    }
+
+
+def _build_line(data: list, columns: list, title: str, x_axis: str, y_axis: str, column_metadata: Optional[Dict[str, Any]] = None) -> dict:
     """Line chart: time/ordered column + value column."""
     time_col, value_col = _detect_time_value_cols(columns, data)
 
@@ -291,7 +410,7 @@ def _build_line(data: list, columns: list, title: str, x_axis: str, y_axis: str)
     }
 
 
-def _build_pie(data: list, columns: list, title: str, x_axis: str, y_axis: str) -> dict:
+def _build_pie(data: list, columns: list, title: str, x_axis: str, y_axis: str, column_metadata: Optional[Dict[str, Any]] = None) -> dict:
     """Pie chart: same structure as bar but rendered as pie."""
     category_col, value_col = _detect_category_value_cols(columns, data)
 
@@ -309,7 +428,7 @@ def _build_pie(data: list, columns: list, title: str, x_axis: str, y_axis: str) 
     }
 
 
-def _build_table(data: list, columns: list, title: str, x_axis: str, y_axis: str) -> dict:
+def _build_table(data: list, columns: list, title: str, x_axis: str, y_axis: str, column_metadata: Optional[Dict[str, Any]] = None) -> dict:
     """Table: raw data rows."""
     return {
         "type": "table",
@@ -386,7 +505,7 @@ def _extract_key_insight(
                 return f"The result is {fmt_val}"
         return "Result computed."
 
-    if chart_type in ("bar", "pie", "table") and len(data) >= 2:
+    if chart_type in ("bar", "pie", "table", "stacked_bar", "stacked") and len(data) >= 2:
         _, value_col = _detect_category_value_cols(columns, data)
         category_col = [c for c in columns if c != value_col][0] if len(columns) > 1 else columns[0]
         top_row = max(data, key=lambda r: r.get(value_col, 0) if isinstance(r.get(value_col), (int, float)) else 0)
@@ -444,6 +563,11 @@ def _suggest_followups(chart_type: str) -> list:
             "Which category performs best?",
             "Show me this as a trend over time",
             "What's the total across all categories?",
+        ],
+        "stacked_bar": [
+            "Which category has the highest combined total?",
+            "Show this as grouped bars instead",
+            "How do these metrics trend over time?",
         ],
         "line": [
             "What's the overall trend direction?",

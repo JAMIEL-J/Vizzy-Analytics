@@ -1,6 +1,11 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { datasetService, uploadService } from '../../lib/api/dataset';
+
+const DUCKDB_POLL_INTERVAL_MS = 2000;
+const DUCKDB_MAX_POLLS = 30;
+
+type UploadPhase = 'idle' | 'uploading' | 'building' | 'ready' | 'failed';
 
 export default function FileUpload() {
     const [file, setFile] = useState<File | null>(null);
@@ -8,8 +13,83 @@ export default function FileUpload() {
     const [showSchema, setShowSchema] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadPhase, setUploadPhase] = useState<UploadPhase>('idle');
+    const [statusMessage, setStatusMessage] = useState('');
+    const [failureMessage, setFailureMessage] = useState('');
+    const [pollCount, setPollCount] = useState(0);
+    const [uploadedDatasetId, setUploadedDatasetId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isMountedRef = useRef(true);
     const navigate = useNavigate();
+
+    useEffect(() => {
+        // React Strict Mode can remount components in development.
+        // Reset mounted flag on each mount so polling does not short-circuit.
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const toActionableFailureMessage = (backendError?: string | null) => {
+        const normalized = (backendError || '').trim();
+        const shortError = normalized.length > 160 ? `${normalized.slice(0, 160)}...` : normalized;
+
+        const base = 'DuckDB optimization failed. Re-upload the dataset to retry, or continue to Dashboard in limited mode.';
+        return shortError ? `${base} Details: ${shortError}` : base;
+    };
+
+    const pollDuckdbReadiness = async (datasetId: string) => {
+        setUploadPhase('building');
+        setStatusMessage('Optimizing dataset for full analytics accuracy...');
+        setPollCount(0);
+
+        for (let attempt = 1; attempt <= DUCKDB_MAX_POLLS; attempt++) {
+            if (!isMountedRef.current) return;
+            setPollCount(attempt);
+
+            try {
+                const status = await datasetService.getDuckdbStatus(datasetId);
+
+                if (!isMountedRef.current) return;
+
+                if (status.status === 'ready' || status.ready) {
+                    setProgress(100);
+                    setUploadPhase('ready');
+                    setStatusMessage('Dataset is ready for full analytics.');
+                    setShowSchema(true);
+                    return;
+                }
+
+                if (status.status === 'failed') {
+                    setUploadPhase('failed');
+                    setFailureMessage(toActionableFailureMessage(status.error));
+                    setStatusMessage('Optimization failed.');
+                    return;
+                }
+
+                // building
+                setProgress(prev => Math.min(prev + 1, 99));
+                setStatusMessage('Building analytical index. This usually takes a few seconds...');
+            } catch (err: any) {
+                setUploadPhase('failed');
+                setFailureMessage(toActionableFailureMessage(err?.response?.data?.detail || err?.message));
+                setStatusMessage('Status check failed.');
+                return;
+            }
+
+            await sleep(DUCKDB_POLL_INTERVAL_MS);
+        }
+
+        if (!isMountedRef.current) return;
+        setUploadPhase('failed');
+        setStatusMessage('Optimization timed out.');
+        setFailureMessage(
+            'DuckDB optimization is taking longer than expected (over 60 seconds). Re-upload to retry, or continue to Dashboard in limited mode while indexing completes.'
+        );
+    };
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
@@ -35,27 +115,43 @@ export default function FileUpload() {
     };
 
     const startUpload = async (selectedFile: File) => {
+        setUploadPhase('uploading');
+        setStatusMessage('Uploading dataset and creating version...');
+        setFailureMessage('');
+        setShowSchema(false);
+        setUploadedDatasetId(null);
+        setPollCount(0);
         setIsUploading(true);
         setProgress(10);
+        let progressInterval: ReturnType<typeof setInterval> | null = null;
 
         try {
             const dataset = await datasetService.createDataset(selectedFile.name, 'Uploaded via Web Interface');
+            setUploadedDatasetId(dataset.id);
+            sessionStorage.setItem('vizzy.dashboard.selectedDatasetId', dataset.id);
             setProgress(30);
 
-            const progressInterval = setInterval(() => {
+            progressInterval = setInterval(() => {
                 setProgress(prev => Math.min(prev + 5, 90));
             }, 200);
 
             await uploadService.uploadFile(dataset.id, selectedFile);
 
-            clearInterval(progressInterval);
-            setProgress(100);
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
             setIsUploading(false);
-            setShowSchema(true);
+            setProgress(92);
+            await pollDuckdbReadiness(dataset.id);
 
         } catch (error) {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
             console.error('Upload failed:', error);
-            alert('Upload failed. Please try again.');
+            setUploadPhase('failed');
+            setFailureMessage('Upload failed. Please retry the upload. If this persists, check file format/size or contact support with the dataset name.');
+            setStatusMessage('Upload failed.');
             setIsUploading(false);
             setProgress(0);
         }
@@ -113,7 +209,13 @@ export default function FileUpload() {
                     <div className="w-full bg-surface-container-low dark:bg-surface-container rounded-xl p-6 mb-12 border dark:border-outline-variant/30 border-transparent transition-all">
                         <div className="flex justify-between items-end mb-4">
                             <div className="space-y-1">
-                                <span className="text-xs font-label font-bold text-primary uppercase tracking-widest">Uploading</span>
+                                <span className="text-xs font-label font-bold text-primary uppercase tracking-widest">
+                                    {uploadPhase === 'uploading' && 'Uploading'}
+                                    {uploadPhase === 'building' && 'Building DuckDB'}
+                                    {uploadPhase === 'failed' && 'Needs Attention'}
+                                    {uploadPhase === 'idle' && 'Preparing'}
+                                    {uploadPhase === 'ready' && 'Ready'}
+                                </span>
                                 <p className="text-sm font-body font-medium text-on-surface">{file.name}</p>
                             </div>
                             <span className="text-xs font-label font-bold text-on-surface-variant">{progress}%</span>
@@ -127,9 +229,52 @@ export default function FileUpload() {
                             ></div>
                         </div>
                         <div className="mt-4 flex items-center gap-2 text-xs text-on-surface-variant font-body">
-                            <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
-                            <span>{isUploading ? 'Processing & cleaning records...' : 'Finalizing...'}</span>
+                            {uploadPhase !== 'failed' && (
+                                <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                            )}
+                            <span>
+                                {uploadPhase === 'uploading' && (isUploading ? 'Uploading and processing records...' : 'Finalizing upload...')}
+                                {uploadPhase === 'building' && `${statusMessage} (polling every 2s, attempt ${pollCount}/${DUCKDB_MAX_POLLS})`}
+                                {uploadPhase === 'failed' && statusMessage}
+                                {uploadPhase === 'idle' && 'Preparing upload...'}
+                                {uploadPhase === 'ready' && 'Ready'}
+                            </span>
                         </div>
+
+                        {uploadPhase === 'failed' && (
+                            <div className="mt-4 rounded-lg border border-red-300/60 bg-red-50/60 dark:bg-red-900/20 p-4">
+                                <p className="text-xs font-semibold text-red-700 dark:text-red-300 uppercase tracking-widest mb-2">DuckDB Build Failed</p>
+                                <p className="text-sm text-red-700 dark:text-red-200 leading-relaxed">{failureMessage}</p>
+                                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => file && startUpload(file)}
+                                        className="w-full py-2.5 bg-primary text-on-primary font-label text-xs font-bold uppercase tracking-widest rounded-lg shadow hover:brightness-110 transition-all"
+                                    >
+                                        Retry Upload
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate('/user/dashboard')}
+                                        className="w-full py-2.5 bg-surface-container text-on-surface font-label text-xs font-bold uppercase tracking-widest rounded-lg border border-outline-variant hover:bg-surface-container-high transition-colors"
+                                    >
+                                        Continue Limited Mode
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {uploadPhase === 'building' && uploadedDatasetId && (
+                            <div className="mt-4 flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/user/dashboard')}
+                                    className="text-xs font-bold uppercase tracking-widest text-primary hover:underline"
+                                >
+                                    Open Dashboard While Building
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
                     </div>

@@ -36,6 +36,7 @@ ABBREVIATION_MAP = {
     "cust": "customer", "cstmr": "customer",
     "seg": "segment", "rgn": "region",
     "cat": "category", "subcat": "subcategory",
+    "subcats": "subcategories", "subcatg": "subcategory",
     "prod": "product", "prd": "product",
     "dept": "department", "dep": "department",
 
@@ -65,6 +66,11 @@ ABBREVIATION_MAP = {
     "grp": "group", "typ": "type", "st": "status",
     "pct": "percent", "perc": "percent",
     "inv": "invoice",
+
+    # Subscription / retention patterns
+    "m2m": "month to month", "monthtomonth": "month to month",
+    "ret": "retention", "retn": "retention",
+    "attr": "attrition", "cncl": "cancelled",
 }
 
 

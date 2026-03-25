@@ -37,7 +37,7 @@ class QueryExecutionError(Exception):
 
 _executor = ThreadPoolExecutor(max_workers=4)
 
-def validate_sql(sql: str, table_name: str) -> Tuple[bool, str, Optional[sqlglot.Expression]]:
+def validate_sql(sql: str, table_name: str) -> Tuple[bool, str, Optional[exp.Expression]]:
     """Validate SQL using AST parsing and pattern scanning."""
     try:
         # sqlglot.parse returns a list of parsed statements

@@ -6,6 +6,7 @@ Responsibility: HTTP interfaces for chat operations
 Restrictions: Thin controller - all logic delegated to services
 """
 from typing import List, Optional, Any, Tuple, Set
+import csv
 import re
 from uuid import UUID
 
@@ -105,6 +106,61 @@ def _format_compact_value(value: object, is_currency: bool = False, currency_sym
     return f"{currency_symbol}{compact}" if is_currency else compact
 
 
+def _looks_currency_metric_name(metric_name: str) -> bool:
+    text = (metric_name or "").lower()
+    if any(k in text for k in ["quantity", "qty", "count", "unit", "units", "volume"]):
+        return False
+    return any(
+        k in text for k in [
+            "revenue", "profit", "income", "earnings", "cost", "expense", "price", "charges", "payment",
+            "budget", "salary", "wage", "fee", "sales", "discount", "amount", "mrr", "arr", "billing",
+        ]
+    )
+
+
+def _metric_currency_symbol(metric_name: str, column_metadata: Optional[dict]) -> str:
+    metadata = column_metadata or {}
+    meta = metadata.get(metric_name, {}) if isinstance(metadata, dict) else {}
+    display_format = meta.get("display_format", {}) if isinstance(meta, dict) else {}
+    if isinstance(display_format, dict) and display_format.get("type") == "currency":
+        return _currency_symbol_from_code(display_format.get("currency", "USD"))
+    return "$"
+
+
+def _build_numbered_metric_summary(
+    data_rows: List[dict],
+    columns: List[str],
+    column_metadata: Optional[dict],
+) -> Optional[str]:
+    """Return metric lines for single-row aggregate outputs."""
+    if not data_rows or len(data_rows) != 1:
+        return None
+
+    row = data_rows[0] if isinstance(data_rows[0], dict) else {}
+    if not isinstance(row, dict) or not row:
+        return None
+
+    candidate_columns = columns or list(row.keys())
+    numeric_metrics = []
+    for col in candidate_columns:
+        value = row.get(col)
+        if isinstance(value, (int, float)):
+            numeric_metrics.append((col, value))
+
+    if not numeric_metrics:
+        return None
+
+    lines: List[str] = []
+    for metric, value in numeric_metrics:
+        is_currency = _looks_currency_metric_name(metric)
+        symbol = _metric_currency_symbol(metric, column_metadata)
+        formatted = _format_compact_value(value, is_currency=is_currency, currency_symbol=symbol)
+        label = metric.replace("_", " ").title()
+        lines.append(f"- **{label}:** {formatted}")
+
+    return "\n".join(lines)
+
+
 def _looks_interpretive_query(query: str) -> bool:
     """Detect analyst-style explanatory queries (why/driver/cause questions)."""
     q = (query or "").lower().strip()
@@ -132,11 +188,88 @@ def _explicitly_requests_visual(query: str) -> bool:
     return any(k in q for k in visual_keywords)
 
 
+def _is_schema_columns_query(query: str) -> bool:
+    """Detect column/schema discovery prompts that should be answered as text."""
+    q = (query or "").lower().strip()
+    if not q:
+        return False
+
+    schema_terms = [
+        "column", "columns", "field", "fields", "schema", "header", "headers", "attributes",
+    ]
+    intent_terms = [
+        "what are", "which", "list", "show", "available", "present", "in dataset", "in the dataset",
+        "dataset has", "table has", "names",
+    ]
+
+    has_schema_term = any(term in q for term in schema_terms)
+    has_intent_term = any(term in q for term in intent_terms)
+    return has_schema_term and has_intent_term
+
+
+def _read_dataset_columns(data_path: str) -> List[str]:
+    """Load column names from dataset file with a safe CSV fallback."""
+    columns: List[str] = []
+
+    try:
+        import pandas as pd
+
+        preview = pd.read_csv(data_path, nrows=0)
+        columns = [str(col).strip() for col in preview.columns if str(col).strip()]
+        if columns:
+            return columns
+    except Exception:
+        pass
+
+    try:
+        with open(data_path, "r", newline="", encoding="utf-8") as handle:
+            reader = csv.reader(handle)
+            header = next(reader, [])
+            columns = [str(col).strip() for col in header if str(col).strip()]
+    except Exception:
+        return []
+
+    return columns
+
+
+def _build_columns_response(columns: List[str]) -> str:
+    """Format schema column names as concise, readable text."""
+    if not columns:
+        return "I could not read the dataset columns right now. Please try again after reloading the dataset."
+
+    max_preview = 40
+    preview = columns[:max_preview]
+    lines = [f"{idx + 1}. {name}" for idx, name in enumerate(preview)]
+    remaining = len(columns) - len(preview)
+
+    response = [f"Available columns ({len(columns)} total):", "", *lines]
+    if remaining > 0:
+        response.extend(["", f"...and {remaining} more columns."])
+
+    response.extend([
+        "",
+        "Ask a metric question like \"top 10 products by revenue\" when you want a chart or KPI.",
+    ])
+
+    return "\n".join(response)
+
+
 def _normalize_orchestrator_response(result: dict, default_intent: str = "analysis") -> tuple[str, str, Optional[dict]]:
     """Support both legacy and new orchestrator response shapes."""
     assistant_content = result.get("message") or result.get("content") or "Here is your analysis."
     metadata = result.get("metadata", {}) if isinstance(result.get("metadata"), dict) else {}
-    intent_type = result.get("intent_type") or metadata.get("intent_type") or default_intent
+    raw_intent_type = result.get("intent_type") or metadata.get("intent_type") or default_intent
+
+    # Canonicalize orchestrator analytical labels so chat UI chart rendering works.
+    intent_map = {
+        "comparative": "analysis",
+        "aggregative": "analysis",
+        "trend": "analysis",
+        "retrieval": "text_query",
+        "ambiguous": "clarification",
+    }
+    intent_type = intent_map.get(str(raw_intent_type).lower(), raw_intent_type)
+
     output_data = result.get("output_data") or result.get("dashboard") or result.get("chart") or result.get("data")
     return assistant_content, intent_type, output_data
 
@@ -540,6 +673,7 @@ async def send_message(
             )
 
         is_interpretive_query = _looks_interpretive_query(request.content)
+        is_schema_columns_query = _is_schema_columns_query(request.content) and not _explicitly_requests_visual(request.content)
 
         if cached_content:
             if is_interpretive_query:
@@ -556,6 +690,17 @@ async def send_message(
                 )
                 # Skip replay for old KPI/chart answers so the new interpretive path can run.
                 if not cached_is_interpretive:
+                    cached_content = None
+                    cached_output = None
+                    cached_intent = None
+
+            if cached_content and is_schema_columns_query:
+                cached_has_visual_payload = isinstance(cached_output, dict) and (
+                    cached_output.get("chart") is not None
+                    or cached_output.get("type") == "kpi"
+                    or cached_output.get("response_type") == "chart"
+                )
+                if cached_has_visual_payload:
                     cached_content = None
                     cached_output = None
                     cached_intent = None
@@ -588,7 +733,18 @@ async def send_message(
             is_dashboard = detected_intent == 'dashboard'
             interpretive_text_mode = _looks_interpretive_query(request.content) and not _explicitly_requests_visual(request.content)
 
-            if is_dashboard:
+            if is_schema_columns_query:
+                from app.models.dataset_version import DatasetVersion
+
+                version = session.get(DatasetVersion, chat_session.dataset_version_id)
+                data_path = (version.cleaned_reference or version.source_reference) if version else None
+                columns = _read_dataset_columns(data_path) if data_path else []
+
+                assistant_content = _build_columns_response(columns)
+                intent_type = "text_query"
+                output_data = None
+
+            elif is_dashboard:
                 # ══════════════════════════════════════════════════
                 # DASHBOARD → Legacy Orchestrator (multi-widget)
                 # ══════════════════════════════════════════════════
@@ -603,6 +759,10 @@ async def send_message(
                 assistant_content, intent_type, output_data = _normalize_orchestrator_response(result, default_intent="dashboard")
                 if output_data and isinstance(output_data, dict):
                     output_data["detected_intent"] = intent_label
+
+                # If user explicitly requested a visual, keep chat in chart-renderable mode.
+                if _explicitly_requests_visual(request.content) and intent_type in {"text_query", "retrieval"}:
+                    intent_type = "analysis"
 
             elif interpretive_text_mode:
                 # ══════════════════════════════════════════════════
@@ -716,9 +876,15 @@ async def send_message(
                         is_currency_kpi = _is_currency_kpi(kpi_label, chart_spec)
                         currency_symbol = _kpi_currency_symbol(chart_spec)
                         formatted_val = _format_compact_value(kpi_value, is_currency=is_currency_kpi, currency_symbol=currency_symbol)
+                        numbered_summary = _build_numbered_metric_summary(
+                            nl2sql_result.get("data", []),
+                            nl2sql_result.get("columns", []),
+                            nl2sql_result.get("column_metadata", {}),
+                        )
                         
                         assistant_content = (
-                            explanation.get("summary", "")
+                            numbered_summary
+                            or explanation.get("summary", "")
                             or f"**{kpi_label}:** {formatted_val}"
                         )
                         intent_type = "text_query"
@@ -787,6 +953,9 @@ async def send_message(
                     )
 
                     assistant_content, intent_type, output_data = _normalize_orchestrator_response(result)
+
+                    if _explicitly_requests_visual(request.content) and intent_type in {"text_query", "retrieval"}:
+                        intent_type = "analysis"
 
                     # Attach diagnostics for the frontend to optionally display
                     if output_data and isinstance(output_data, dict) and diagnostics:

@@ -811,7 +811,18 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const state = get();
         set({
             target_value: value,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, state.active_filters, state.chart_overrides, state.target_column, value, state.chartData, undefined, state.total_records, state.initialChartData)
+            chartData: recomputeCharts(
+                state.rawData || [],
+                state.chartConfigs || {},
+                state.active_filters,
+                state.chart_overrides,
+                state.target_column,
+                value,
+                state.chartData,
+                undefined,
+                state.total_records,
+                state.initialChartData
+            )
         });
     },
 
@@ -821,7 +832,18 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const newFilters = normalizeFilters({ ...state.active_filters, [column]: [value] });
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
+            chartData: recomputeCharts(
+                state.rawData || [],
+                state.chartConfigs || {},
+                newFilters,
+                state.chart_overrides,
+                state.target_column,
+                state.target_value,
+                state.chartData,
+                undefined,
+                state.total_records,
+                state.initialChartData
+            )
         });
     },
 
@@ -831,7 +853,18 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const newFilters = normalizeFilters({ ...state.active_filters, [column]: values });
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
+            chartData: recomputeCharts(
+                state.rawData || [],
+                state.chartConfigs || {},
+                newFilters,
+                state.chart_overrides,
+                state.target_column,
+                state.target_value,
+                state.chartData,
+                undefined,
+                state.total_records,
+                state.initialChartData
+            )
         });
     },
 
@@ -842,7 +875,18 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const newFilters = normalizeFilters({ ...state.active_filters, [column]: next });
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
+            chartData: recomputeCharts(
+                state.rawData || [],
+                state.chartConfigs || {},
+                newFilters,
+                state.chart_overrides,
+                state.target_column,
+                state.target_value,
+                state.chartData,
+                undefined,
+                state.total_records,
+                state.initialChartData
+            )
         });
     },
 
@@ -852,7 +896,18 @@ export const useFilterStore = create<DashboardState>((set, get) => ({
         const newFilters = normalizeFilters({ ...state.active_filters, [column]: next });
         set({
             active_filters: newFilters,
-            chartData: recomputeCharts(state.rawData || [], state.chartConfigs || {}, newFilters, state.chart_overrides, state.target_column, state.target_value, state.chartData, undefined, state.total_records, state.initialChartData)
+            chartData: recomputeCharts(
+                state.rawData || [],
+                state.chartConfigs || {},
+                newFilters,
+                state.chart_overrides,
+                state.target_column,
+                state.target_value,
+                state.chartData,
+                undefined,
+                state.total_records,
+                state.initialChartData
+            )
         });
     },
 

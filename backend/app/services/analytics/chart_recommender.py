@@ -795,7 +795,7 @@ def _get_churn_rate_by_segment(df, target_col, segment_col, limit=10):
     try:
         pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
         tmp = df[[target_col, segment_col]].dropna().copy()
-        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
         
         # Auto-detect positive class: if values are 0/1 ints, '1' is positive
         unique_lower = set(target_vals.unique())
@@ -821,7 +821,7 @@ def _get_value_at_risk(df, target_col, segment_col, value_col, limit=10):
     try:
         pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
         tmp = df[[target_col, segment_col, value_col]].dropna().copy()
-        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
         unique_lower = set(target_vals.unique())
         if unique_lower <= {'0', '1'}:
             mask = target_vals == '1'
@@ -881,7 +881,7 @@ def _get_lifecycle_cohorts(df, numeric_col, target_col=None):
         )
         if target_col and target_col in df.columns:
             pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
-            target_vals = df[target_col].astype(str).str.strip().str.lower()
+            target_vals = df[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
             unique_lower = set(target_vals.unique())
             if unique_lower <= {'0', '1'}:
                 tmp['_c'] = (target_vals == '1').astype(int)
@@ -907,7 +907,7 @@ def _find_highest_variance_dim(df, target_col, dimensions, exclude=None):
     best_var = -1
     try:
         pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
-        target_vals = df[target_col].astype(str).str.strip().str.lower()
+        target_vals = df[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
         unique_lower = set(target_vals.unique())
         if unique_lower <= {'0', '1'}:
             is_positive = (target_vals == '1').astype(int)
@@ -1005,7 +1005,7 @@ def _get_stacked_churn_counts(df, target_col, segment_col, limit=10):
     try:
         pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
         tmp = df[[target_col, segment_col]].dropna().copy()
-        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
         unique_lower = set(target_vals.unique())
         if unique_lower <= {'0', '1'}:
             tmp['_pos'] = (target_vals == '1').astype(int)
@@ -1032,7 +1032,7 @@ def _get_churned_vs_retained_avg(df, target_col, metric_col):
     try:
         pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
         tmp = df[[target_col, metric_col]].dropna().copy()
-        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
         unique_lower = set(target_vals.unique())
         if unique_lower <= {'0', '1'}:
             mask = target_vals == '1'
@@ -1057,7 +1057,7 @@ def _get_churn_count_by_segment(df, target_col, segment_col, limit=10):
     try:
         pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
         tmp = df[[target_col, segment_col]].dropna().copy()
-        target_vals = tmp[target_col].astype(str).str.strip().str.lower()
+        target_vals = tmp[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
         unique_lower = set(target_vals.unique())
         if unique_lower <= {'0', '1'}:
             tmp['_c'] = (target_vals == '1').astype(int)
@@ -1098,7 +1098,7 @@ def _get_metric_cohort_analysis(df, metric_col, target_col, n_bins=4, limit=8):
                                 right=True, include_lowest=True, duplicates='drop')
         if target_col and target_col in df.columns:
             pos = {'yes', 'true', '1', 'churned', 'churn', 'exited', 'attrition', 'left'}
-            target_vals = df[target_col].astype(str).str.strip().str.lower()
+            target_vals = df[target_col].astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
             unique_lower = set(target_vals.unique())
             if unique_lower <= {'0', '1'}:
                 tmp['_c'] = (target_vals == '1').astype(int)
@@ -1882,7 +1882,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                     slot='', title=f"Profit Margin (%) by {_beautify_column_name(category_col)}",
                     chart_type="hbar", data=data, confidence="HIGH",
                     reason="Unit Economics: Which segments are actually profitable?",
-                    format_type="percentage"
+                    format_type="percentage",
+                    dimension=None, metric=None, aggregation=None
                 ))
         except: pass
 
@@ -1976,7 +1977,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=_create_smart_title(revenue_col, geo_col),
                 chart_type="hbar", data=data, confidence="HIGH",
                 reason="Market Penetration: Top performing regions",
-                format_type="currency"
+                format_type="currency",
+                dimension=geo_col, metric=revenue_col, aggregation="sum"
             ))
             
     # 12. Quantity Trend
@@ -1987,7 +1989,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=f"{_get_metric_prefix(qty_col)} Movement Trend",
                 chart_type="line", data=data, confidence="MEDIUM",
                 reason="Operational Volume Forecasting",
-                format_type="number"
+                format_type="number",
+                dimension=date_col, metric=qty_col, aggregation="sum", granularity="month"
             ))
 
     # 13. Top Products by Quantity
@@ -1998,7 +2001,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 slot='', title=_create_smart_title(qty_col, product_col),
                 chart_type="hbar", data=data, confidence="MEDIUM",
                 reason="Velocity: Products with highest movement/turnover",
-                format_type="number"
+                format_type="number",
+                dimension=product_col, metric=qty_col, aggregation="sum"
             ))
 
     # ── TIER 5: SMART FALLBACKS (Ensure 15+ rich charts) ─────────────
@@ -2026,7 +2030,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                 add_chart(ChartRecommendation(
                     slot='', title=f"{_get_metric_prefix(revenue_col)} by {_beautify_column_name(edim)}",
                     chart_type="hbar", data=data, confidence="MEDIUM",
-                    reason="Deep Dive: Uncovering hidden revenue pockets"
+                    reason="Deep Dive: Uncovering hidden revenue pockets",
+                    dimension=edim, metric=revenue_col, aggregation="sum"
                 ))
     
     # Fill remaining slots using secondary metrics with primary dimensions
@@ -2042,7 +2047,8 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
                  add_chart(ChartRecommendation(
                      slot='', title=f"{_beautify_column_name(metric)} by {_beautify_column_name(category_col)}",
                      chart_type="bar", data=data, confidence="LOW",
-                     reason="Exhaustive metric coverage fallback"
+                     reason="Exhaustive metric coverage fallback",
+                     dimension=category_col, metric=metric, aggregation="sum"
                  ))
 
     # Final guarantee to ensure we don't fall short if data is extremely simple

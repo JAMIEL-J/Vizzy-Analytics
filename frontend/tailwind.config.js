@@ -60,12 +60,18 @@ export default {
                 "secondary-fixed-dim": "#4edea3",
                 "on-surface-variant": "#464555",
                 "on-error-container": "#93000a",
-                "background": "#f9f9ff"
+                "background": "#f9f9ff",
+                // Landing Page Specific Tokens
+                "alabaster": "#F8F9FA",
+                "slate-custom": "#1E293B",
+                "indigo-accent": "#4F46E5",
+                "emerald-accent": "#10B981",
+                "border-subtle": "#E2E8F0"
             },
             fontFamily: {
-                "headline": ["Plus Jakarta Sans"],
-                "body": ["Inter"],
-                "label": ["Inter"]
+                "headline": ["Syne", "Plus Jakarta Sans", "sans-serif"],
+                "body": ["DM Sans", "Inter", "sans-serif"],
+                "label": ["Inter", "sans-serif"]
             },
             keyframes: {
                 'fade-scale': {

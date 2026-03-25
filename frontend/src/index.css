@@ -48,11 +48,30 @@
     --color-secondary-container: var(--secondary-container);
     --color-on-secondary-container: var(--on-secondary-container);
 
-    --font-headline: "Plus Jakarta Sans", "Space Grotesk", sans-serif;
-    --font-body: "Inter", sans-serif;
+    --font-headline: "Syne", "Plus Jakarta Sans", "Space Grotesk", sans-serif;
+    --font-body: "DM Sans", "Inter", sans-serif;
     --font-label: "Inter", sans-serif;
     --font-display: "Aptos", "Segoe UI", "Inter", system-ui, sans-serif;
     --font-mono: "DM Sans", "Inter", "Segoe UI", system-ui, sans-serif;
+
+    /* Landing Page specific - Themes */
+    --color-alabaster: var(--landing-page-bg);
+    --color-slate-custom: var(--landing-page-text);
+    --color-indigo-accent: var(--landing-accent);
+    --color-emerald-accent-custom: #10B981;
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.text-gradient {
+    background: linear-gradient(135deg, #4F46E5 0%, #10B981 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
 /* Keep Newsreader only on selected public pages (landing/login/register). */
@@ -159,6 +178,9 @@
     --landing-footer-text: #9ca3af;
     --landing-cta-bg: #f4f4f5;
     --landing-how-bg: #fafafa;
+    --landing-page-bg: #F8F9FA;
+    --landing-page-text: #1E293B;
+    --landing-accent: #4F46E5;
 }
 
 .dark {
@@ -212,6 +234,9 @@
     --landing-footer-text: #4b5563;
     --landing-cta-bg: #050505;
     --landing-how-bg: #050505;
+    --landing-page-bg: #0A0B0F;
+    --landing-page-text: #F8F9FA;
+    --landing-accent: #818CF8;
 }
 
 @keyframes fade-in-up {

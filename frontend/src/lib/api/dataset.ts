@@ -11,6 +11,15 @@ export interface Dataset {
     current_version_id?: string;
 }
 
+export interface DuckDBStatus {
+    dataset_id: string;
+    version_id: string;
+    status: 'building' | 'ready' | 'failed' | string;
+    ready: boolean;
+    error?: string | null;
+    duckdb_path?: string | null;
+}
+
 export const datasetService = {
     // List datasets
     listDatasets: async () => {
@@ -30,6 +39,12 @@ export const datasetService = {
     // Get single dataset
     getDataset: async (datasetId: string) => {
         const response = await apiClient.get<Dataset>(`/datasets/${datasetId}`);
+        return response.data;
+    },
+
+    // Get DuckDB build status for latest dataset version
+    getDuckdbStatus: async (datasetId: string) => {
+        const response = await apiClient.get<DuckDBStatus>(`/datasets/${datasetId}/duckdb-status`);
         return response.data;
     },
 

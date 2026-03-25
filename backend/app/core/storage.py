@@ -31,3 +31,8 @@ def get_raw_data_path(dataset_id: UUID, version_id: UUID) -> Path:
 def get_cleaned_data_path(dataset_id: UUID, version_id: UUID) -> Path:
     """Get path for cleaned data CSV."""
     return get_version_dir(dataset_id, version_id) / "cleaned.csv"
+
+
+def get_duckdb_path(dataset_id: UUID, version_id: UUID) -> Path:
+    """Get path for DuckDB file (persistent analytical engine)."""
+    return get_version_dir(dataset_id, version_id) / "data.duckdb"
