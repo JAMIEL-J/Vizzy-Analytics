@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { datasetService, type Dataset } from '../../lib/api/dataset';
 import { cleaningService } from '../../services/cleaningService';
 import type { InspectionReport } from '../../services/cleaningService';
 import { HealthDashboard } from '../../components/cleaning/HealthDashboard';
 import { RecommendationList } from '../../components/cleaning/RecommendationList';
 import { toast } from 'react-hot-toast';
+
+const EMPTY_ARRAY: any[] = [];
 
 export default function DataCleaning() {
     const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -16,6 +18,11 @@ export default function DataCleaning() {
     // State for user selections
     const [selectedRecIds, setSelectedRecIds] = useState<string[]>([]);
     const [selectedStrategies, setSelectedStrategies] = useState<Record<string, string>>({});
+
+    const handleSelectionChange = useCallback((ids: string[], strategies: Record<string, string>) => {
+        setSelectedRecIds(prev => JSON.stringify(prev) === JSON.stringify(ids) ? prev : ids);
+        setSelectedStrategies(prev => JSON.stringify(prev) === JSON.stringify(strategies) ? prev : strategies);
+    }, []);
 
     useEffect(() => {
         loadDatasets();
@@ -157,6 +164,8 @@ export default function DataCleaning() {
         }
     };
 
+    const recommendationsList = inspection?.issues_detected?.recommendations || EMPTY_ARRAY;
+
     return (
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative selection:bg-primary selection:text-white">
             <div className="flex-1 overflow-y-auto p-8 pb-32 bg-background">
@@ -235,11 +244,8 @@ export default function DataCleaning() {
                             {/* Recommendations (Right Panel) */}
                             <div className="lg:col-span-7 space-y-4">
                                 <RecommendationList
-                                    recommendations={inspection.issues_detected?.recommendations || []}
-                                    onSelectionChange={(ids, strategies) => {
-                                        setSelectedRecIds(ids);
-                                        setSelectedStrategies(strategies);
-                                    }}
+                                    recommendations={recommendationsList}
+                                    onSelectionChange={handleSelectionChange}
                                 />
                             </div>
                         </div>

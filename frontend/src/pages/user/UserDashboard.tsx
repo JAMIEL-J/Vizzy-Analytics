@@ -12,6 +12,7 @@ import {
     RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import { ColumnClassificationPanel } from '../../components/dashboard/ColumnClassificationPanel';
+import { DashboardSkeleton } from '../../components/dashboard/DashboardSkeleton';
 import { Button } from '@/components/ui/button';
 import { VIZZY_THEME } from '../../theme/tokens';
 
@@ -2491,10 +2492,8 @@ export default function UserDashboard() {
                     </div>
                 )}
 
-                {isLoading && (
-                    <div className="h-64 flex items-center justify-center">
-                        <div className="w-12 h-12 rounded-full border-2 border-[#c7c2ff] border-t-[#6c63ff] animate-spin" />
-                    </div>
+                {(isLoading || (!analytics && !!selectedDatasetId && !error)) && (
+                    <DashboardSkeleton isDark={isDark} />
                 )}
 
                 {!isLoading && error && (
