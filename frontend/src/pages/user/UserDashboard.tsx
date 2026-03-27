@@ -22,7 +22,7 @@ type CachedEntry<T> = {
 
 const DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
 const DASHBOARD_SESSION_CACHE_KEY = 'vizzy.dashboard.analyticsCache.v2';
-const DASHBOARD_CACHE_SCHEMA_VERSION = 'v2';
+const DASHBOARD_CACHE_SCHEMA_VERSION = 'v3';
 const SHOW_CORRELATION_CHART = false;
 
 class BoundedCache<T> {
@@ -467,11 +467,19 @@ const ChartRenderer = ({
         return Math.round(total).toLocaleString();
     };
 
+    const formatMonthYearLabel = (value: any): string => {
+        const raw = String(value ?? '').trim();
+        if (!raw) return raw;
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return raw;
+        return parsed.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    };
+
     // Auto-detect label key from first data row
     const firstRow = rawChartData[0] || {};
     const nameKey = 'name' in firstRow ? 'name'
         : Object.keys(firstRow).find(k => typeof firstRow[k] === 'string') || 'name';
-    const dateKey = 'date' in firstRow ? 'date' : nameKey;
+    const dateKey = 'timestamp' in firstRow ? 'timestamp' : ('date' in firstRow ? 'date' : nameKey);
 
     // The column name this chart represents (for filtering)
     // Often passed by backend as chart.x_axis or chart.dimension
@@ -482,7 +490,6 @@ const ChartRenderer = ({
         targetColumn && (
             normalizeColumn(String(filterCol)) === normalizeColumn(String(targetColumn))
             || normalizeColumn(String(chart?.dimension || '')) === normalizeColumn(String(targetColumn))
-            || normalizeColumn(String(chart?.metric || '')) === normalizeColumn(String(targetColumn))
             || /churned\s*vs\s*retained|exited\s*vs\s*stayed|attrited\s*vs\s*retained/i.test(String(chart?.title || ''))
         )
     );
@@ -493,7 +500,7 @@ const ChartRenderer = ({
             if (!isBinaryTargetValue(String(rawName ?? ''))) return row;
             return {
                 ...row,
-                [nameKey]: formatTargetTabLabel(String(rawName), targetColumn || chart?.dimension),
+                [nameKey]: formatTargetTabLabel(String(rawName), targetColumn || undefined),
             };
         })
         : rawChartData;
@@ -504,6 +511,7 @@ const ChartRenderer = ({
         // Recharts emits different click payload shapes by chart type.
         const payload = data?.payload || data;
         const val = payload?.[nameKey]
+            ?? payload?.timestamp
             ?? payload?.name
             ?? payload?.date
             ?? payload?.x
@@ -554,7 +562,13 @@ const ChartRenderer = ({
                     <ResponsiveContainer width="100%" height={192} debounce={50}>
                         <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 26, left: 0 }} barCategoryGap="16%">
                             <XAxis dataKey={nameKey} {...axisProps} stroke={chartColors.axis} tick={{ ...textStyle }} />
-                            <YAxis hide />
+                            <YAxis
+                                {...axisProps}
+                                stroke={chartColors.axis}
+                                tickFormatter={fmtTick}
+                                tick={{ ...textStyle, fontSize: 10 }}
+                                width={44}
+                            />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} cursor={{ fill: isDark ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.05)' }} />
                             <Bar dataKey="value" radius={[6, 6, 0, 0]} fill={STANDARD_BAR_COLOR} maxBarSize={52} onClick={handleSliceClick} cursor={onFilterClick ? "pointer" : "default"}>
                                 {chartData.map((_: any, i: number) => (
@@ -699,11 +713,25 @@ const ChartRenderer = ({
 
         case 'line':
         case 'area':
+            {
+                const trendData = chartData
+                    .map((row: any) => ({
+                        ...row,
+                        timestamp: row?.timestamp ?? row?.date ?? row?.name,
+                    }))
+                    .filter((row: any) => row?.timestamp !== undefined && row?.timestamp !== null && row?.timestamp !== 'Unknown')
+                    .sort((a: any, b: any) => {
+                        const ta = new Date(String(a.timestamp)).getTime();
+                        const tb = new Date(String(b.timestamp)).getTime();
+                        if (!Number.isNaN(ta) && !Number.isNaN(tb)) return ta - tb;
+                        return String(a.timestamp).localeCompare(String(b.timestamp));
+                    });
+
             return (
                 <div className="flex flex-col h-full w-full">
                     {renderOutlierToggle()}
                     <ResponsiveContainer width="100%" height={192} debounce={50}>
-                        <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
+                        <AreaChart data={trendData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
                             <defs>
                                 <linearGradient id="areaDark" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="0%" stopColor={CHART_COLORS[0]} stopOpacity={0.28} />
@@ -712,11 +740,7 @@ const ChartRenderer = ({
                             </defs>
                             <CartesianGrid {...gridProps} vertical={false} />
                             <XAxis dataKey={dateKey} {...axisProps} stroke={chartColors.axis}
-                                tickFormatter={v => {
-                                    const s = String(v);
-                                    if (s.length > 15) return s.slice(0, 12) + '...';
-                                    return s;
-                                }} tick={{ ...textStyle }} />
+                                tickFormatter={formatMonthYearLabel} tick={{ ...textStyle }} />
                             <YAxis {...axisProps} stroke={chartColors.axis} tickFormatter={fmtTick} tick={{ ...textStyle }} />
                             <Tooltip content={<ThemedTooltip formatter={fmtVal} chartColors={chartColors} chartTitle={chart.title} valueLabel={chart.value_label} formatType={chart.format_type} />} />
                             <Area type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2.75}
@@ -728,6 +752,7 @@ const ChartRenderer = ({
                     </ResponsiveContainer>
                 </div>
             );
+            }
 
         case 'stacked':
             return (
@@ -2013,17 +2038,35 @@ export default function UserDashboard() {
     };
 
     const kpiEntries = analytics?.kpis ? Object.entries(analytics.kpis) : [];
-    const chartArrayRaw = analytics?.charts ? Object.entries(analytics.charts).map(([id, val]) => ({
-        id,
-        ...(val as any),
-        dimension: (val as any).dimension ?? analytics?.chart_configs?.[id]?.dimension,
-        metric: (val as any).metric ?? analytics?.chart_configs?.[id]?.metric,
-        aggregation: (val as any).aggregation ?? analytics?.chart_configs?.[id]?.aggregation,
-        data: chartData?.[id] || (val as any).data,
-        data_without_outliers: (Object.keys(active_filters).length === 0 && target_value === 'all')
-            ? ((val as any).data_without_outliers || (val as any).data)
-            : (chartData?.[id] || (val as any).data)
-    })) : [];
+    const hasInteractiveScope =
+        Object.keys(normalizedActiveFilters).length > 0
+        || (target_value && target_value.toLowerCase() !== 'all')
+        || Object.keys(chart_overrides || {}).length > 0;
+    const isChurnDashboard = String(analytics?.domain || '').toLowerCase() === 'churn';
+
+    const chartArrayRaw = analytics?.charts ? Object.entries(analytics.charts).map(([id, val]) => {
+        const resolvedType = chart_overrides[id]?.type || (val as any).type;
+        const chartConfig = (analytics?.chart_configs as Record<string, any> | undefined)?.[id];
+        const isDateTrend = ['line', 'area', 'area_bounds', 'area-bounds'].includes(String(resolvedType || '').toLowerCase())
+            && !!((val as any).is_date ?? chartConfig?.is_date);
+        const shouldUseServerData = isDateTrend || isChurnDashboard;
+
+        const resolvedData = shouldUseServerData
+            ? (val as any).data
+            : ((hasInteractiveScope ? chartData?.[id] : undefined) || (val as any).data);
+
+        return {
+            id,
+            ...(val as any),
+            dimension: (val as any).dimension ?? analytics?.chart_configs?.[id]?.dimension,
+            metric: (val as any).metric ?? analytics?.chart_configs?.[id]?.metric,
+            aggregation: (val as any).aggregation ?? analytics?.chart_configs?.[id]?.aggregation,
+            data: resolvedData,
+            data_without_outliers: (Object.keys(active_filters).length === 0 && target_value === 'all')
+                ? ((val as any).data_without_outliers || (val as any).data)
+                : resolvedData,
+        };
+    }) : [];
 
     // Sort: regular charts first, tall hbar charts last so they don't break grid row alignment
     const chartArray = [...chartArrayRaw].sort((a: any, b: any) => {

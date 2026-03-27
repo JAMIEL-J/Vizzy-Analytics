@@ -178,11 +178,11 @@ def build_chart_query(
     if dimension:
         # Categorical breakdown
         if is_date:
-            # Date grouping - simplified to daily/monthly based on range
-            select_parts.append(f'DATE_TRUNC(\'day\', TRY_CAST("{dimension}" AS DATE)) as date')
+            # Match chat analytics trend SQL semantics: month-level time buckets.
+            select_parts.append(f'DATE_TRUNC(\'month\', TRY_CAST("{dimension}" AS DATE)) as date')
             group_by_parts.append('1')
             order_by = 'ORDER BY date'
-            limit_clause = 'LIMIT 30'  # Last 30 time points
+            limit_clause = ''
         else:
             select_parts.append(f'CAST("{dimension}" AS VARCHAR) as name')
             group_by_parts.append('1')

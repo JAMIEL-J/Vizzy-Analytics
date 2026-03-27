@@ -244,14 +244,20 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
             order_col = None
     
     total_orders = df[order_col].nunique() if order_col else len(df)
-    product_col = None
-    region_col = None
-    for dim in classification.dimensions:
-        dim_lower = dim.lower().replace('_', '')
-        if not product_col and any(kw in dim_lower for kw in ['product', 'item', 'sku', 'category']):
-            product_col = dim
-        if not region_col and any(kw in dim_lower for kw in ['region', 'state', 'city', 'country', 'market']):
-            region_col = dim
+    product_col = _find_column(df, ['product', 'item', 'sku', 'category'], classification)
+    region_col = _find_column(df, ['region', 'market', 'zone', 'territory'], classification)
+    state_col = _find_column(df, ['state', 'province'], classification)
+
+    # Fallback discovery from dimensions when semantic search misses.
+    if not product_col or not region_col or not state_col:
+        for dim in classification.dimensions:
+            dim_lower = dim.lower().replace('_', '')
+            if not product_col and any(kw in dim_lower for kw in ['product', 'item', 'sku', 'category']):
+                product_col = dim
+            if not region_col and any(kw in dim_lower for kw in ['region', 'market', 'zone', 'territory']):
+                region_col = dim
+            if not state_col and any(kw in dim_lower for kw in ['state', 'province']):
+                state_col = dim
     
     total_orders = df[order_col].nunique() if order_col else len(df)
     total_customers = df[customer_col].nunique() if customer_col else None
@@ -344,7 +350,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
             if trend is not None:
                 trend_label = "YoY (YTD)"
         
-        if trend is None and has_trend:
+        if trend is None and has_trend and df_prev is not None:
             curr_rev = _safe_sum(df_curr, revenue_col)
             prev_rev = _safe_sum(df_prev, revenue_col)
             trend = _calc_trend(curr_rev, prev_rev)
@@ -396,7 +402,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
         total_quantity = _safe_sum(df, quantity_col)
         
         trend = None
-        if has_trend:
+        if has_trend and df_prev is not None:
             curr_qty = _safe_sum(df_curr, quantity_col)
             prev_qty = _safe_sum(df_prev, quantity_col)
             trend = _calc_trend(curr_qty, prev_qty)
@@ -528,10 +534,15 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
         subtitle=order_subtitle
     ))
     
-    # 9. Top Region (if region exists)
-    if region_col and revenue_col:
+    # 9. Top Region (Revenue-based if available, otherwise transaction volume)
+    if region_col:
         try:
-            top_region = df.groupby(region_col)[revenue_col].sum().idxmax()
+            if revenue_col and revenue_col in df.columns:
+                top_region = df.groupby(region_col)[revenue_col].sum().idxmax()
+                top_region_reason = "Region with highest revenue"
+            else:
+                top_region = df[region_col].value_counts().idxmax()
+                top_region_reason = "Region with highest transaction volume"
             if len(str(top_region)) > 20:
                 top_region = str(top_region)[:17] + "..."
             kpis.append(KPI(
@@ -541,15 +552,49 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
                 format="text",
                 icon="map",
                 confidence="HIGH",
-                reason="Region with highest revenue"
+                reason=top_region_reason
+            ))
+        except:
+            pass
+
+    # 10. Top Performing State (Revenue-based if available, otherwise transaction volume)
+    if state_col:
+        try:
+            if revenue_col and revenue_col in df.columns:
+                top_state = df.groupby(state_col)[revenue_col].sum().idxmax()
+                top_state_reason = "State with highest revenue"
+            else:
+                top_state = df[state_col].value_counts().idxmax()
+                top_state_reason = "State with highest transaction volume"
+
+            if len(str(top_state)) > 24:
+                top_state = str(top_state)[:21] + "..."
+
+            kpis.append(KPI(
+                key="top_state",
+                title="Top Performing State",
+                value=str(top_state),
+                format="text",
+                icon="map-pin",
+                confidence="HIGH",
+                reason=top_state_reason
             ))
         except:
             pass
     
-    # 10. Best Seller (if product exists)
-    if product_col and revenue_col:
+    # 11. Best Seller (prefer revenue; fallback to quantity/volume)
+    if product_col:
         try:
-            top_product = df.groupby(product_col)[revenue_col].sum().idxmax()
+            if revenue_col and revenue_col in df.columns:
+                top_product = df.groupby(product_col)[revenue_col].sum().idxmax()
+                top_product_reason = "Product with highest revenue"
+            elif quantity_col and quantity_col in df.columns:
+                top_product = df.groupby(product_col)[quantity_col].sum().idxmax()
+                top_product_reason = "Product with highest units sold"
+            else:
+                top_product = df[product_col].value_counts().idxmax()
+                top_product_reason = "Most frequently sold product"
+
             if len(str(top_product)) > 20:
                 top_product = str(top_product)[:17] + "..."
             kpis.append(KPI(
@@ -559,7 +604,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
                 format="text",
                 icon="star",
                 confidence="HIGH",
-                reason="Product with highest revenue"
+                reason=top_product_reason
             ))
         except:
             pass
@@ -600,7 +645,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
             reason="Orders / Unique Customers"
         ))
     
-    return kpis[:10]  # Allow up to 10 KPIs
+    return kpis
 
 
 
@@ -753,7 +798,7 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
                 key="arpu",
                 title="ARPU",
                 value=round(float(arpu), 2),
-                format="currency" if any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
+                format="currency" if value_col and any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
                 icon="user-plus",
                 confidence="HIGH",
                 reason=f"Average {_beautify_column_name(value_col)} per customer",
@@ -768,7 +813,7 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
             key="ltv",
             title="Estimated LTV",
             value=round(float(ltv), 2),
-            format="currency" if any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
+            format="currency" if value_col and any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
             icon="trending-up",
             confidence="MEDIUM",
             reason="ARPU / Churn Rate",
@@ -782,7 +827,7 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
             key="ltv",
             title="Projected LTV",
             value=round(float(ltv), 2),
-            format="currency" if any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
+            format="currency" if value_col and any(h in value_col.lower() for h in ['charge', 'balance', 'salary', 'income']) else "number",
             icon="trending-up",
             confidence="LOW",
             reason="ARPU × Avg Tenure",
@@ -805,7 +850,61 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
             subtitle=f"{int(total_tickets)} total tickets"
         ))
 
-    # 10. High Value Churners (Count of churned customers above 75th percentile of value)
+    # 10. Service Ops KPIs (Tech/Admin tickets) for senior-level churn diagnostics
+    tech_ticket_col = _find_column(
+        df,
+        ['techticket', 'tech_ticket', 'tech tickets', 'technicalticket', 'technical_ticket'],
+        classification,
+        search_excluded=True,
+    )
+    admin_ticket_col = _find_column(
+        df,
+        ['adminticket', 'admin_ticket', 'admin tickets', 'administrativeticket', 'administrative_ticket'],
+        classification,
+        search_excluded=True,
+    )
+
+    if tech_ticket_col and tech_ticket_col in df.columns:
+        total_tech_tickets = _safe_sum(df, tech_ticket_col)
+        kpis.append(KPI(
+            key="total_tech_tickets",
+            title="Total Tech Tickets",
+            value=int(round(total_tech_tickets)),
+            format="number",
+            icon="settings",
+            confidence="HIGH",
+            reason=f"Sum of {tech_ticket_col}"
+        ))
+
+    if admin_ticket_col and admin_ticket_col in df.columns:
+        total_admin_tickets = _safe_sum(df, admin_ticket_col)
+        kpis.append(KPI(
+            key="total_admin_tickets",
+            title="Total Admin Tickets",
+            value=int(round(total_admin_tickets)),
+            format="number",
+            icon="briefcase",
+            confidence="HIGH",
+            reason=f"Sum of {admin_ticket_col}"
+        ))
+
+    if tech_ticket_col and admin_ticket_col and tech_ticket_col in df.columns and admin_ticket_col in df.columns:
+        tech_total = _safe_sum(df, tech_ticket_col)
+        admin_total = _safe_sum(df, admin_ticket_col)
+        total_service_tickets = tech_total + admin_total
+        if total_service_tickets > 0:
+            tech_share = (tech_total / total_service_tickets) * 100
+            kpis.append(KPI(
+                key="tech_ticket_share",
+                title="Tech Ticket Share",
+                value=round(tech_share, 1),
+                format="percent",
+                icon="pie-chart",
+                confidence="HIGH",
+                reason="Tech tickets / (Tech + Admin) × 100"
+            ))
+
+    # 11. High Value Churners (Count of churned customers above 75th percentile of value)
     if value_col and churned_mask is not None:
         try:
             q75 = df[value_col].quantile(0.75)
@@ -824,7 +923,7 @@ def _generate_churn_kpis(df: pd.DataFrame, classification: ColumnClassification)
         except:
             pass
 
-    return kpis[:12] # Increased limit to accommodate new KPIs
+    return kpis
 
 
 def _generate_marketing_kpis(df: pd.DataFrame, classification: ColumnClassification) -> List[KPI]:
@@ -889,7 +988,7 @@ def _generate_marketing_kpis(df: pd.DataFrame, classification: ColumnClassificat
                 reason="Conversions / Clicks × 100"
             ))
     
-    return kpis[:4]
+    return kpis
 
 
 def _generate_finance_kpis(df: pd.DataFrame, classification: ColumnClassification) -> List[KPI]:
@@ -948,7 +1047,7 @@ def _generate_finance_kpis(df: pd.DataFrame, classification: ColumnClassificatio
         reason="Row count"
     ))
     
-    return kpis[:4]
+    return kpis
 
 
 def _generate_healthcare_kpis(df: pd.DataFrame, classification: ColumnClassification) -> List[KPI]:
@@ -1044,7 +1143,7 @@ def _generate_healthcare_kpis(df: pd.DataFrame, classification: ColumnClassifica
             reason=f"Sum of {cost_col}"
         ))
     
-    return kpis[:5]
+    return kpis
 
 
 def _generate_generic_kpis(df: pd.DataFrame, classification: ColumnClassification) -> List[KPI]:
@@ -1103,7 +1202,130 @@ def _generate_generic_kpis(df: pd.DataFrame, classification: ColumnClassificatio
             reason=f"Positive / Total × 100"
         ))
     
-    return kpis[:4]
+    return kpis
+
+
+def _kpi_confidence_score(confidence: str) -> int:
+    score_map = {
+        "HIGH": 3,
+        "MEDIUM": 2,
+        "LOW": 1,
+    }
+    return score_map.get(str(confidence or "").upper(), 0)
+
+
+def _dedupe_kpis(kpis: List[KPI]) -> List[KPI]:
+    """Remove duplicate KPIs by key/title while preserving first occurrence order."""
+    out: List[KPI] = []
+    seen_keys = set()
+    seen_titles = set()
+
+    for k in kpis:
+        key = str(getattr(k, "key", "") or "").strip().lower()
+        title = str(getattr(k, "title", "") or "").strip().lower()
+
+        if key and key in seen_keys:
+            continue
+        if title and title in seen_titles:
+            continue
+
+        if key:
+            seen_keys.add(key)
+        if title:
+            seen_titles.add(title)
+        out.append(k)
+
+    return out
+
+
+def _dynamic_kpi_limit(
+    df: pd.DataFrame,
+    domain: DomainType,
+    classification: ColumnClassification,
+    available_count: int,
+) -> int:
+    """Compute KPI count dynamically from dataset signal strength and domain complexity."""
+    if available_count <= 0:
+        return 0
+
+    metric_count = len(set(classification.metrics or []))
+    target_count = len(set(classification.targets or []))
+    date_count = len(set(classification.dates or []))
+
+    # Dimensions with usable cardinality often provide meaningful KPI context.
+    low_card_dims = 0
+    for dim in classification.dimensions or []:
+        if dim in df.columns:
+            try:
+                nunique = int(df[dim].nunique(dropna=True))
+                if 2 <= nunique <= 20:
+                    low_card_dims += 1
+            except Exception:
+                continue
+
+    signal_count = metric_count + target_count + date_count + min(low_card_dims, 3)
+
+    domain_baseline = {
+        DomainType.SALES: 6,
+        DomainType.CHURN: 6,
+        DomainType.MARKETING: 4,
+        DomainType.FINANCE: 4,
+        DomainType.HEALTHCARE: 5,
+        DomainType.GENERIC: 3,
+    }.get(domain, 3)
+
+    dynamic_target = domain_baseline + max(0, signal_count - 1) // 2
+    if len(df) >= 50_000:
+        dynamic_target += 1
+
+    # Keep within practical UI limits and available KPI count.
+    dynamic_target = max(3, min(14, dynamic_target))
+    return min(available_count, dynamic_target)
+
+
+def _kpi_priority_bonus(kpi: KPI, domain: DomainType) -> int:
+    """Domain-aware boost so executive-friendly KPIs are retained under dynamic limits."""
+    text = f"{getattr(kpi, 'key', '')} {getattr(kpi, 'title', '')}".lower()
+    bonus = 0
+
+    if domain == DomainType.CHURN:
+        churn_priority = [
+            'churn rate', 'retention rate', 'value at risk', 'total tech tickets',
+            'total admin tickets', 'support tickets', 'arpu', 'ltv', 'tech ticket share'
+        ]
+        for token in churn_priority:
+            if token in text:
+                bonus += 3
+
+    if domain == DomainType.SALES:
+        sales_priority = [
+            'total revenue', 'total profit', 'avg order value', 'sales volume',
+            'best seller', 'top region', 'top performing state', 'revenue/customer'
+        ]
+        for token in sales_priority:
+            if token in text:
+                bonus += 3
+
+    return bonus
+
+
+def _select_top_kpis(kpis: List[KPI], limit: int, domain: DomainType) -> List[KPI]:
+    """Select most meaningful KPIs by confidence + domain priority, then preserve original order."""
+    if limit <= 0 or not kpis:
+        return []
+    if len(kpis) <= limit:
+        return kpis
+
+    indexed = list(enumerate(kpis))
+    indexed.sort(
+        key=lambda item: (
+            -_kpi_priority_bonus(item[1], domain),
+            -_kpi_confidence_score(getattr(item[1], "confidence", "")),
+            item[0],
+        )
+    )
+    selected_idx = sorted(i for i, _ in indexed[:limit])
+    return [kpis[i] for i in selected_idx]
 
 
 # =============================================================================
@@ -1128,6 +1350,9 @@ def generate_kpis(df: pd.DataFrame, domain: DomainType, classification: ColumnCl
     
     generator = generators.get(domain, _generate_generic_kpis)
     kpis = generator(df, classification)
+    kpis = _dedupe_kpis(kpis)
+    dynamic_limit = _dynamic_kpi_limit(df, domain, classification, len(kpis))
+    kpis = _select_top_kpis(kpis, dynamic_limit, domain)
     
     # Convert to dict format for API
     result = {}

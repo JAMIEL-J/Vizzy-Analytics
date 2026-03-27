@@ -8,11 +8,14 @@ Restrictions: Returns computed metrics from actual dataset data
 Version: 3.0 - Dynamic Analytics Engine with Domain Detection
 """
 
+# pyright: reportGeneralTypeIssues=false
+
 from typing import Dict, Any, Optional, List, Tuple
 from uuid import UUID
 from datetime import datetime, timezone
 import json
 import logging
+import os
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -36,51 +39,14 @@ from app.services.analytics import (
     recommend_charts,
     DomainType
 )
+from app.services.analytics.csv_loader import safe_read_csv
 from app.services.analytics.pivot_generator import generate_pivot_config, generate_pivot_data
 from app.services.analytics.duckdb_builder import get_or_build_duckdb
 from app.services.analytics.duckdb_chart_builder import execute_chart_queries, execute_kpi_queries
 from sqlmodel import select
 import pandas as pd
 import numpy as np
-import os
 import duckdb
-from functools import lru_cache
-
-
-def _safe_read_csv_impl(file_path: str) -> pd.DataFrame:
-    """
-    Load a CSV and safely coerce object columns that are actually numeric.
-    Phase 1 Expert Sanitizer: strips currency symbols, commas, percentage signs,
-    and whitespace before attempting numeric conversion.
-    """
-    import re
-    df = pd.read_csv(file_path, low_memory=False)
-    for col in df.select_dtypes(include=["object"]).columns:
-        try:
-            # Phase 1: Strip common non-numeric symbols ($, commas, %, spaces)
-            series = df[col].astype(str).str.replace(r'[$,% ]', '', regex=True)
-            converted = pd.to_numeric(series, errors="coerce")
-            total_non_null = df[col].notna().sum()
-            if total_non_null > 0 and (converted.notna().sum() / total_non_null) > 0.8:
-                df[col] = converted
-        except Exception:
-            pass
-    return df
-
-
-@lru_cache(maxsize=8)
-def _cached_read_csv(file_path: str, mtime: float) -> pd.DataFrame:
-    """LRU-cached CSV reader keyed by (path, mtime). Auto-invalidates on file change."""
-    return _safe_read_csv_impl(file_path)
-
-
-def _safe_read_csv(file_path: str) -> pd.DataFrame:
-    """Read CSV with automatic caching. Cache busts when file is modified."""
-    try:
-        mtime = os.path.getmtime(file_path)
-    except OSError:
-        mtime = 0.0
-    return _cached_read_csv(file_path, mtime).copy()
 
 
 
@@ -370,16 +336,17 @@ def _build_duckdb_chart_configs(
             })
             continue
 
-        # Date / Time-series aggregations (YoY, YTD, dynamic trend bucketing) 
-        # are complex in standard SQL and require specific 'name' vs 'date' key 
-        # mappings for the frontend charts. We delegate these to the robust Pandas logic.
+        # Keep complex time intelligence in pandas, but allow standard date trends in DuckDB.
         if dim and dim in date_columns:
-            unsupported_slots.append({
-                "slot": slot,
-                "title": str(chart.get("title") or ""),
-                "reason": "complex_time_series_delegated_to_pandas",
-            })
-            continue
+            granularity = str(chart.get("granularity") or "").lower()
+            is_simple_date_trend = chart_type in {"line", "area"} and granularity not in {"year", "ytd"}
+            if not is_simple_date_trend:
+                unsupported_slots.append({
+                    "slot": slot,
+                    "title": str(chart.get("title") or ""),
+                    "reason": "complex_time_series_delegated_to_pandas",
+                })
+                continue
 
         chart_configs[slot] = {
             "type": chart.get("type", "bar"),
@@ -477,6 +444,97 @@ def _try_duckdb_analytics(
                 pass
 
 
+def _backfill_date_trends_with_duckdb(
+    *,
+    dataset_id: UUID,
+    version_id: UUID,
+    csv_path: str,
+    charts: Dict[str, Dict[str, Any]],
+    date_columns: List[str],
+    filters: Optional[Dict[str, List[str]]] = None,
+    target_col: Optional[str] = None,
+    target_value: str = "all",
+) -> Dict[str, Dict[str, Any]]:
+    """Replace date trend chart data with DuckDB month-truncated results for consistency with chat SQL."""
+    chart_configs: Dict[str, Dict[str, Any]] = {}
+    for slot, chart in (charts or {}).items():
+        ctype = str(chart.get("type") or "").lower()
+        dim = chart.get("dimension")
+        if ctype not in {"line", "area"}:
+            continue
+        if not dim or dim not in date_columns:
+            continue
+
+        chart_configs[slot] = {
+            "type": chart.get("type", "line"),
+            "dimension": dim,
+            "metric": chart.get("metric"),
+            "aggregation": chart.get("aggregation", "sum"),
+            "granularity": chart.get("granularity"),
+            "is_date": True,
+            "x_column": chart.get("x_column"),
+            "y_column": chart.get("y_column"),
+        }
+
+    if not chart_configs:
+        return charts
+
+    conn = None
+    try:
+        duckdb_path = get_or_build_duckdb(dataset_id, version_id, csv_path)
+        conn = duckdb.connect(str(duckdb_path), read_only=True)
+
+        duckdb_trends = execute_chart_queries(
+            conn=conn,
+            chart_configs=chart_configs,
+            filters=filters or {},
+            target_column=target_col,
+            target_value=target_value or "all",
+        )
+
+        merged = {**charts}
+        for slot, rows in duckdb_trends.items():
+            normalized_rows = []
+            for row in rows or []:
+                raw_date = row.get("date") or row.get("timestamp") or row.get("name")
+                if raw_date is None:
+                    continue
+                ts = pd.to_datetime(raw_date, errors="coerce")
+                if pd.notna(ts):
+                    label = ts.strftime("%b %Y")
+                    iso_date = str(ts.date())
+                else:
+                    label = str(raw_date)
+                    iso_date = str(raw_date)
+
+                try:
+                    value = float(row.get("value", 0))
+                except (TypeError, ValueError):
+                    value = 0.0
+
+                normalized_rows.append(
+                    {
+                        "timestamp": label,
+                        "date": iso_date,
+                        "value": value,
+                    }
+                )
+
+            if slot in merged and normalized_rows:
+                merged[slot] = {**merged[slot], "data": normalized_rows}
+
+        return merged
+    except Exception as exc:
+        logger.exception("[DUCKDB TREND BACKFILL FALLBACK] reason=%s", exc)
+        return charts
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 # =============================================================================
 # API Endpoints
 # =============================================================================
@@ -487,7 +545,7 @@ def _try_duckdb_analytics(
     response_model=DashboardAnalyticsResponse,
     summary="Get dashboard analytics",
 )
-def get_dashboard_analytics(
+def get_dashboard_analytics(  # pyright: ignore
     state: DashboardStateRequest,
     session: DBSession,
     current_user: AuthenticatedUser,
@@ -520,7 +578,7 @@ def get_dashboard_analytics(
             if latest_version.cleaned_reference
             else latest_version.source_reference
         )
-        df = _safe_read_csv(file_path)
+        df = safe_read_csv(file_path)
         
         # Detect domain
         domain, scores = detect_domain(df)
@@ -618,8 +676,8 @@ def get_dashboard_analytics(
                     if _scalar_filter_match(row_val, filter_val):
                         matches.append(idx)
                         break  # Found a match for this row, move to next row
-                    # Also check binary equivalence if target column
-                    elif col == target_col and _binary_target_value_match(row_val, filter_val):
+                    # Also check binary semantic equivalence (Yes/No vs True/False/1/0) for any column
+                    elif _binary_target_value_match(row_val, filter_val):
                         matches.append(idx)
                         break
             
@@ -689,16 +747,29 @@ def get_dashboard_analytics(
         if is_filtered:
             charts_filtered = recommend_charts(df_filtered, domain, classification, overrides=state.chart_overrides)
 
-            # Build a title → filtered chart lookup.
-            filtered_by_title: Dict[str, Any] = {
-                v["title"]: v for v in charts_filtered.values()
+            def _norm_chart_key_part(value: Any) -> str:
+                return str(value or "").strip().lower()
+
+            def _chart_identity_key(chart_obj: Dict[str, Any]) -> tuple[str, str, str, str, str]:
+                return (
+                    _norm_chart_key_part(chart_obj.get("title")),
+                    _norm_chart_key_part(chart_obj.get("type")),
+                    _norm_chart_key_part(chart_obj.get("dimension")),
+                    _norm_chart_key_part(chart_obj.get("metric")),
+                    _norm_chart_key_part(chart_obj.get("aggregation") or "sum"),
+                )
+
+            # Build identity lookup; this avoids slot/title drift under filtering.
+            filtered_by_identity: Dict[tuple[str, str, str, str, str], Any] = {
+                _chart_identity_key(v): v for v in charts_filtered.values()
             }
 
             from app.services.analytics.chart_recommender import (
                 _smart_aggregate, _safe_groupby_sum, _safe_groupby_mean, 
                 _get_time_trend, _get_churn_rate_by_segment, _get_value_at_risk,
                 _get_stacked_churn_counts, _get_lifecycle_cohorts, _distribution_chart,
-                _get_churn_count_by_segment, _get_churned_vs_retained_avg, _safe_value_counts
+                _get_churn_count_by_segment, _get_churned_vs_retained_avg, _safe_value_counts,
+                _safe_to_datetime,
             )
 
             charts: Dict[str, Any] = {}
@@ -707,12 +778,15 @@ def get_dashboard_analytics(
             
             for slot, full_chart in charts_full.items():
                 title = full_chart["title"]
-                flt = filtered_by_title.get(title)
+                full_identity = _chart_identity_key(full_chart)
+
+                # Strict identity match only; otherwise recompute from full_chart metadata.
+                flt = filtered_by_identity.get(full_identity)
 
                 if duckdb_success and slot in duckdb_slots:
                     charts[slot] = duckdb_result["charts"][slot]
                 elif flt and flt.get("data"):
-                    # Correct match: same chart title found in filtered run.
+                    # Correct match: same chart identity found in filtered run.
                     charts[slot] = {**full_chart, "data": flt["data"]}
                 elif full_chart.get("dimension"):
                     # Chart dropped by recommendation engine (e.g. due to nunique < 2).
@@ -740,10 +814,24 @@ def get_dashboard_analytics(
                         # 2. Financial / Time / Numeric Handling
                         elif ctype in ('line', 'area', 'area_bounds'):
                             if dim in classification.dates:
-                                # Guard against empty metrics list
-                                fallback_metric = classification.metrics[0] if classification.metrics else None
-                                if met or fallback_metric:
-                                    manual_data = _get_time_trend(df_filtered, dim, met or fallback_metric)
+                                if met:
+                                    manual_data = _get_time_trend(df_filtered, dim, met, aggregation=str(agg))
+                                else:
+                                    # Count-based trends (no explicit metric) must aggregate row counts,
+                                    # not fallback to an arbitrary metric column.
+                                    df_time = df_filtered[[dim]].copy()
+                                    df_time[dim] = _safe_to_datetime(df_time[dim])
+                                    df_time = df_time.dropna(subset=[dim]).sort_values(dim)
+                                    if not df_time.empty:
+                                        trend = df_time.groupby(pd.Grouper(key=dim, freq='MS')).size()
+                                        manual_data = [
+                                            {
+                                                "timestamp": k.strftime('%b %Y'),
+                                                "date": str(k.date()),
+                                                "value": int(v),
+                                            }
+                                            for k, v in trend.items()
+                                        ]
                             elif met:
                                 manual_data = _safe_groupby_mean(df_filtered, dim, met)
                         
@@ -790,14 +878,22 @@ def get_dashboard_analytics(
                                     manual_data = _safe_groupby_sum(df_filtered, dim, met)
                             else:
                                 # Distribution charts for categorical inputs or fallback
+                                from app.services.analytics.chart_recommender import _format_categorical_value
                                 manual_data = _safe_value_counts(df_filtered, dim, limit=15)
+                                # Format categorical values with proper column semantics (Yes/No for Partner, Churned/Retained for Churn, etc.)
+                                for d in manual_data:
+                                    d['name'] = _format_categorical_value(dim, d['name'])
                         
                         charts[slot] = {**full_chart, "data": manual_data or []}
                     except Exception as e:
                         print(f"Error in manual re-aggregation for {title}: {e}")
                         # Final resort: raw value counts of the dimension
                         try:
+                            from app.services.analytics.chart_recommender import _format_categorical_value
                             fallback_counts = _safe_value_counts(df_filtered, dim, limit=15)
+                            # Format categorical values with proper column semantics
+                            for d in fallback_counts:
+                                d['name'] = _format_categorical_value(dim, d['name'])
                             charts[slot] = {**full_chart, "data": fallback_counts}
                         except Exception as e:
                             print(f"Final resort failed for {title}: {e}")
@@ -806,6 +902,18 @@ def get_dashboard_analytics(
                     charts[slot] = {**full_chart, "data": []}
         else:
             charts = charts_full
+
+        # Enforce chat-consistent month trend semantics for both initial and filtered dashboard loads.
+        charts = _backfill_date_trends_with_duckdb(
+            dataset_id=state.dataset_id,
+            version_id=latest_version.id,
+            csv_path=file_path,
+            charts=charts,
+            date_columns=classification.dates,
+            filters=state.active_filters or {},
+            target_col=target_col,
+            target_value=state.target_value or "all",
+        )
 
 
         
@@ -1031,7 +1139,7 @@ def get_pivot_table(
             if latest_version.cleaned_reference
             else latest_version.source_reference
         )
-        df = _safe_read_csv(file_path)
+        df = safe_read_csv(file_path)
         
         # Detect domain
         domain, _ = detect_domain(df)
@@ -1093,7 +1201,7 @@ def get_correlation_matrix(
             if latest_version.cleaned_reference
             else latest_version.source_reference
         )
-        df = _safe_read_csv(file_path)
+        df = safe_read_csv(file_path)
 
         # Select numeric columns — drop constants, near-binary, sparse
         numeric = df.select_dtypes(include=["number"])
@@ -1117,13 +1225,21 @@ def get_correlation_matrix(
         display_labels = [lbl if len(lbl) <= 14 else lbl[:13] + "…" for lbl in labels]
         matrix = corr.values.tolist()
 
+        def _to_corr_float(value: Any) -> float:
+            try:
+                if isinstance(value, complex):
+                    return float(value.real)
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+
         pairs = [
             {
                 "row": ri,
                 "col": ci,
                 "rowLabel": labels[ri],
                 "colLabel": labels[ci],
-                "value": round(float(corr.iloc[ri, ci]), 3),
+                "value": round(_to_corr_float(corr.iloc[ri, ci]), 3),
             }
             for ri in range(len(labels))
             for ci in range(len(labels))
@@ -1285,7 +1401,12 @@ async def generate_narrative(
 
     try:
         # Authorization check
-        if not check_dataset_access(session, payload.dataset_id, UUID(current_user.user_id), current_user.role):
+        if not check_dataset_access(
+            session,
+            payload.dataset_id,
+            UUID(current_user.user_id),
+            ModelUserRole(current_user.role.value),
+        ):
             raise HTTPException(status_code=403, detail="Unauthorized access to dataset.")
 
         # Determine narrative currency symbol

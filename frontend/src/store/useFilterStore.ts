@@ -67,6 +67,16 @@ const isPositiveTargetValue = (value: any): boolean => POSITIVE_TARGET_VALUES.ha
 
 const isNegativeTargetValue = (value: any): boolean => NEGATIVE_TARGET_VALUES.has(normalizeScalar(value));
 
+const isBinarySemanticMatch = (rowValue: any, filterValue: any): boolean => {
+    const rowNorm = normalizeScalar(rowValue);
+    const filterNorm = normalizeScalar(filterValue);
+    if (!rowNorm || !filterNorm) return false;
+
+    if (POSITIVE_TARGET_VALUES.has(rowNorm) && POSITIVE_TARGET_VALUES.has(filterNorm)) return true;
+    if (NEGATIVE_TARGET_VALUES.has(rowNorm) && NEGATIVE_TARGET_VALUES.has(filterNorm)) return true;
+    return false;
+};
+
 const seenUnknownTargetValues = new Set<string>();
 
 const toTargetBinary = (value: any): number | null => {
@@ -292,6 +302,7 @@ const applyFilters = (data: any[], filters: Record<string, string[]>, targetCol:
 
             return values.some(v => {
                 if (scalarMatches(rowVal, v)) return true;
+                if (isBinarySemanticMatch(rowVal, v)) return true;
 
                 if (isTargetFilterKey) {
                     const filterNorm = normalizeScalar(v);
@@ -641,14 +652,21 @@ const recomputeCharts = (
             let freq: 'D' | 'W' | 'M' = 'D';
             let maxMonthDay = '';
             if (isTrend || config.granularity === 'ytd' || config.granularity === 'year') {
+                if (isTrend) {
+                    // Keep client-side filtered trend behavior identical to backend trend aggregation.
+                    freq = 'M';
+                }
+
                 const dates = filtered.map(r => new Date(getRowValue(r, dimension))).filter(d => !isNaN(d.getTime()));
                 if (dates.length > 0) {
                     const times = dates.map(d => d.getTime());
                     const minDate = Math.min(...times);
                     const maxDate = Math.max(...times);
                     const days = (maxDate - minDate) / (1000 * 60 * 60 * 24);
-                    if (days > 365) freq = 'M';
-                    else if (days > 60) freq = 'W';
+                    if (!isTrend) {
+                        if (days > 365) freq = 'M';
+                        else if (days > 60) freq = 'W';
+                    }
 
                     if (config.granularity === 'ytd') {
                         const dMax = new Date(maxDate);
@@ -721,6 +739,7 @@ const recomputeCharts = (
                 }
                 const item: any = { value: computed };
                 if (isTrend) {
+                    item.timestamp = name;
                     item.date = name;
                 } else {
                     item.name = name;
@@ -761,10 +780,6 @@ const recomputeCharts = (
                         return labelA.localeCompare(labelB);
                     });
 
-                    // Cap at 30 points to match backend .tail(30) and maintain readability
-                    if (chartData.length > 30) {
-                        chartData = chartData.slice(-30);
-                    }
                 }
                 charts[slotId] = chartData;
             } else {

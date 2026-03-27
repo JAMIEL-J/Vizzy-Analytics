@@ -10,8 +10,8 @@ from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass
 import warnings
 import pandas as pd
-from .domain_detector import DomainType
-from .column_filter import ColumnClassification, _clean_header
+from .domain_detector import DomainType, detect_domain
+from .column_filter import ColumnClassification, _clean_header, filter_columns
 from .business_questions import get_smart_chart_title, get_tenure_group, get_tenure_group_order
 from .outlier_detection import detect_outliers_iqr
 
@@ -24,14 +24,41 @@ class AggregationData(list):
 logger = logging.getLogger(__name__)
 
 
+def _coerce_numeric_metric_series(series: pd.Series) -> pd.Series:
+    """Coerce numeric-like metric strings (currency, commas, percentages) to numbers."""
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors='coerce')
+
+    s = series.astype(str).str.strip()
+    # Handle accounting negatives like (1234.56)
+    s = s.str.replace(r'^\((.*)\)$', r'-\1', regex=True)
+    # Remove common numeric formatting symbols
+    s = s.str.replace(r'[$,% ]', '', regex=True)
+    return pd.to_numeric(s, errors='coerce')
+
+
 def _safe_to_datetime(series: pd.Series) -> pd.Series:
     """Parse mixed date formats without noisy parser warnings."""
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return series
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        try:
-            return pd.to_datetime(series, errors='coerce', format='mixed', dayfirst=True)
-        except (TypeError, ValueError):
-            return pd.to_datetime(series, errors='coerce', dayfirst=True)
+
+        def _parse(dayfirst: bool) -> pd.Series:
+            try:
+                return pd.to_datetime(series, errors='coerce', format='mixed', dayfirst=dayfirst)
+            except (TypeError, ValueError):
+                return pd.to_datetime(series, errors='coerce', dayfirst=dayfirst)
+
+        parsed_default = _parse(dayfirst=False)
+        parsed_dayfirst = _parse(dayfirst=True)
+
+        # Choose the parse that successfully converts more rows.
+        # Tie-break in favor of month-first, which better matches common dashboard CSV exports.
+        if parsed_dayfirst.notna().sum() > parsed_default.notna().sum():
+            return parsed_dayfirst
+        return parsed_default
 
 
 # ============================================================================
@@ -170,6 +197,11 @@ def _should_average_metric(metric: str) -> bool:
         return False
     metric_lower = metric.lower().replace('-', '').replace('_', '').replace(' ', '')
     return any(kw in metric_lower for kw in AVG_KEYWORDS)
+
+
+def _trend_aggregation_for_metric(metric: Optional[str]) -> str:
+    """Return explicit trend aggregation for a metric."""
+    return 'mean' if _should_average_metric(metric or '') else 'sum'
 
 def _smart_aggregate(df: pd.DataFrame, group_col: str, metric_col: str, limit: int = 10) -> List[Dict[str, Any]]:
     """Smartly decide between SUM and MEAN based on metric nature."""
@@ -451,7 +483,7 @@ WORLD_KEYWORDS = {
     'japan', 'russia', 'mexico', 'italy', 'spain', 'south korea'
 }
 
-def _detect_map_type(col_values: List[str]) -> str:
+def _detect_map_type(col_values: List[str]) -> Optional[str]:
     """
     Detect the appropriate map type based on the values in a geo column.
     Returns: 'us_states', 'world'
@@ -503,11 +535,24 @@ class ChartRecommendation:
     metric: Optional[str] = None
     aggregation: Optional[str] = None  # 'sum', 'mean', 'count'
     granularity: Optional[str] = None  # 'year', 'ytd', 'month', 'week', 'day'
+    variance_score: float = 0.0
 
     def __post_init__(self):
-        if hasattr(self.data, "outliers") and self.data.outliers:
+        if isinstance(self.data, AggregationData) and self.data.outliers:
             self.outliers = self.data.outliers
-            self.data_without_outliers = getattr(self.data, "data_without_outliers", None)
+            self.data_without_outliers = self.data.data_without_outliers
+
+
+def _to_trend_point_key(value: Any) -> tuple[str, str]:
+    """Normalize a grouped date key to (month-year label, ISO date string)."""
+    try:
+        ts = pd.Timestamp(value)
+        if pd.isna(ts):
+            raise ValueError("NaT")
+        return ts.strftime('%b %Y'), str(ts.date())
+    except Exception:
+        raw = str(value)
+        return raw, raw
 
 
 def _safe_groupby_sum(df: pd.DataFrame, group_col: str, value_col: str, limit: int = 10) -> List[Dict]:
@@ -607,6 +652,10 @@ def _distribution_chart(
     if not data:
         return None
 
+    # Format categorical values with column-specific semantics (Yes/No for Partner, etc.)
+    for d in data:
+        d['name'] = _format_categorical_value(col, d['name'])
+
     return ChartRecommendation(
         slot="",
         title=title,
@@ -635,7 +684,7 @@ def _get_target_by_segment(df: pd.DataFrame, target_col: str, segment_col: str) 
         return []
 
 
-def _get_time_trend(df: pd.DataFrame, date_col: str, value_col: str) -> List[Dict]:
+def _get_time_trend(df: pd.DataFrame, date_col: str, value_col: str, aggregation: Optional[str] = None) -> List[Dict]:
     """Get time trend data."""
     if not date_col or not value_col:
         return []
@@ -643,23 +692,34 @@ def _get_time_trend(df: pd.DataFrame, date_col: str, value_col: str) -> List[Dic
     try:
         df_temp = df.copy()
         df_temp[date_col] = _safe_to_datetime(df_temp[date_col])
-        df_temp = df_temp.dropna(subset=[date_col])
+        # Force numeric metric values for stable trend aggregation.
+        if value_col in df_temp.columns:
+            df_temp[value_col] = _coerce_numeric_metric_series(df_temp[value_col])
+
+        df_temp = df_temp.dropna(subset=[date_col, value_col])
         df_temp = df_temp.sort_values(date_col)
         
-        # Group by day/week/month based on date range
-        date_range = (df_temp[date_col].max() - df_temp[date_col].min()).days
-        if date_range > 365:
-            freq = 'ME'  # Monthly (end)
-        elif date_range > 60:
-            freq = 'W-MON'  # Weekly (Monday start)
-        else:
-            freq = 'D'  # Daily
+        # Always compute trend at month-year granularity for dashboard consistency.
+        freq = 'MS'  # Monthly (month start)
             
-        if _should_average_metric(value_col):
-            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].mean().tail(30)
+        agg = str(aggregation or '').strip().lower()
+        if agg in {'avg', 'mean'}:
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].mean()
+        elif agg == 'count':
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].count()
+        elif _should_average_metric(value_col):
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].mean()
         else:
-            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].sum().tail(30)
-        return [{"date": str(k.date()), "value": float(v)} for k, v in trend.items() if pd.notna(v)]
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq))[value_col].sum()
+        return [
+            {
+                "timestamp": _to_trend_point_key(k)[0],
+                "date": _to_trend_point_key(k)[1],
+                "value": float(v),
+            }
+            for k, v in trend.items()
+            if pd.notna(v)
+        ]
     except Exception:
         return []
 
@@ -688,7 +748,7 @@ def _get_yoy_comparison(df: pd.DataFrame, date_col: str, value_col: str) -> List
             grp = df_temp.groupby('year')[value_col].mean().sort_index()
         else:
             grp = df_temp.groupby('year')[value_col].sum().sort_index()
-        return [{"name": str(int(k)), "value": float(v)} for k, v in grp.items() if pd.notna(v)]
+        return [{"name": str(k), "value": float(v)} for k, v in grp.items() if pd.notna(v)]
     except Exception:
         return []
 
@@ -733,7 +793,7 @@ def _get_ytd_comparison(df: pd.DataFrame, date_col: str, value_col: str) -> List
         return []
 
 
-def _get_scatter_data(df: pd.DataFrame, x_col: str, y_col: str, limit: int = 100, label_col: str = None) -> List[Dict]:
+def _get_scatter_data(df: pd.DataFrame, x_col: str, y_col: str, limit: int = 100, label_col: Optional[str] = None) -> List[Dict]:
     """Get scatter plot data with optional labels for tooltips."""
     try:
         # Find a good label column if not specified - prioritize names over IDs
@@ -1018,9 +1078,7 @@ def _get_stacked_churn_counts(df, target_col, segment_col, limit=10):
         grp = grp.sort_values('_pos', ascending=False).head(limit)
         result = []
         for seg, row in grp.iterrows():
-            name = str(seg)
-            if name == '0': name = 'No'
-            elif name == '1': name = 'Yes'
+            name = _format_categorical_value(segment_col, str(seg))
             result.append({'name': name, 'positive': int(row['_pos']), 'negative': int(row['_neg'])})
         return result
     except Exception:
@@ -1066,9 +1124,7 @@ def _get_churn_count_by_segment(df, target_col, segment_col, limit=10):
         grp = tmp.groupby(segment_col)['_c'].sum().sort_values(ascending=False).head(limit)
         result = []
         for k, v in grp.items():
-            name = str(k)
-            if name == '0': name = 'No'
-            elif name == '1': name = 'Yes'
+            name = _format_categorical_value(segment_col, str(k))
             result.append({'name': name, 'value': int(v)})
         return result
     except Exception:
@@ -1488,7 +1544,12 @@ def _generate_churn_charts(df, classification):
     # 14. Time trend OR Value at Risk by another dimension
     if classification.dates and primary_value_metric:
         date_col = classification.dates[0]
-        data = _get_time_trend(df, date_col, primary_value_metric)
+        data = _get_time_trend(
+            df,
+            date_col,
+            primary_value_metric,
+            aggregation=_trend_aggregation_for_metric(primary_value_metric),
+        )
         if data:
             # Dynamically determine aggregation metadata to match _get_time_trend logic
             trend_agg = 'mean' if _should_average_metric(primary_value_metric) else 'sum'
@@ -1806,7 +1867,12 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
 
     # 3. Time Intelligence (Line/Area)
     if date_col and revenue_col:
-        data = _get_time_trend(df, date_col, revenue_col)
+        data = _get_time_trend(
+            df,
+            date_col,
+            revenue_col,
+            aggregation=_trend_aggregation_for_metric(revenue_col),
+        )
         if data:
             add_chart(ChartRecommendation(
                 slot='', title=_create_smart_title(revenue_col, date_col) + " Trend",
@@ -1983,7 +2049,12 @@ def _generate_sales_charts(df: pd.DataFrame, classification: ColumnClassificatio
             
     # 12. Quantity Trend
     if date_col and qty_col:
-        data = _get_time_trend(df, date_col, qty_col)
+        data = _get_time_trend(
+            df,
+            date_col,
+            qty_col,
+            aggregation=_trend_aggregation_for_metric(qty_col),
+        )
         if data:
             add_chart(ChartRecommendation(
                 slot='', title=f"{_get_metric_prefix(qty_col)} Movement Trend",
@@ -2215,7 +2286,12 @@ def _generate_generic_charts(df: pd.DataFrame, classification: ColumnClassificat
     if classification.dates and classification.metrics:
         date_col = classification.dates[0]
         metric = classification.metrics[0]
-        data = _get_time_trend(df, date_col, metric)
+        data = _get_time_trend(
+            df,
+            date_col,
+            metric,
+            aggregation=_trend_aggregation_for_metric(metric),
+        )
         if data:
             charts.append(ChartRecommendation(
                 slot="slot_3", title=_create_smart_title(metric, date_col) + " Trend",
@@ -2289,7 +2365,12 @@ def _generate_marketing_charts(df: pd.DataFrame, classification: ColumnClassific
         add_chart(ChartRecommendation('', 'Spend vs Conversions', 'scatter', data, 'HIGH', 'Cost acquisition efficiency', format_type='number', dimension=spend_col, metric=conv_col, aggregation='sum'))
 
     if dates and click_col:
-        data = _get_time_trend(df, dates[0], click_col)
+        data = _get_time_trend(
+            df,
+            dates[0],
+            click_col,
+            aggregation=_trend_aggregation_for_metric(click_col),
+        )
         add_chart(ChartRecommendation('', 'Daily Traffic (Clicks)', 'line', data, 'HIGH', 'Traffic volume over time', format_type='number', dimension=dates[0], metric=click_col, aggregation='sum'))
 
     charts.extend(_generate_generic_charts(df, classification))
@@ -2322,7 +2403,12 @@ def _generate_finance_charts(df: pd.DataFrame, classification: ColumnClassificat
         add_chart(ChartRecommendation('', f'Expenses by {_beautify_column_name(primary_dim)}', 'donut', data, 'HIGH', 'Cost centers', format_type='currency', dimension=primary_dim, metric=expense_col, aggregation='sum'))
 
     if dates and income_col:
-        data = _get_time_trend(df, dates[0], income_col)
+        data = _get_time_trend(
+            df,
+            dates[0],
+            income_col,
+            aggregation=_trend_aggregation_for_metric(income_col),
+        )
         add_chart(ChartRecommendation('', 'Cash Flow Trend', 'line', data, 'HIGH', 'Historical cashflow', format_type='currency', dimension=dates[0], metric=income_col, aggregation='sum'))
         
     charts.extend(_generate_generic_charts(df, classification))
@@ -2422,7 +2508,12 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
 
     # ── 6. Billing Trend Over Time (Line) ────────────────────────────────────
     if dates and cost_col:
-        data = _get_time_trend(df, dates[0], cost_col)
+        data = _get_time_trend(
+            df,
+            dates[0],
+            cost_col,
+            aggregation=_trend_aggregation_for_metric(cost_col),
+        )
         if data:
             add_chart(ChartRecommendation(
                 '', 'Hospital Billing Trend', 'line', data, 'HIGH',
@@ -2438,12 +2529,16 @@ def _generate_healthcare_charts(df: pd.DataFrame, classification: ColumnClassifi
             df_temp = df.copy()
             df_temp[date_col] = _safe_to_datetime(df_temp[date_col])
             df_temp = df_temp.dropna(subset=[date_col])
-            
-            date_range = (df_temp[date_col].max() - df_temp[date_col].min()).days
-            freq = 'ME' if date_range > 365 else 'W-MON' if date_range > 60 else 'D'
-            
-            trend = df_temp.groupby(pd.Grouper(key=date_col, freq=freq)).size().tail(30)
-            data = [{"date": str(k.date()), "value": int(v)} for k, v in trend.items()]
+
+            trend = df_temp.groupby(pd.Grouper(key=date_col, freq='MS')).size()
+            data = [
+                {
+                    "timestamp": _to_trend_point_key(k)[0],
+                    "date": _to_trend_point_key(k)[1],
+                    "value": int(v),
+                }
+                for k, v in trend.items()
+            ]
             if data:
                 add_chart(ChartRecommendation(
                     '', 'Patient Admissions Over Time', 'area', data, 'HIGH',
@@ -2548,7 +2643,12 @@ def _generate_templated_charts(df: pd.DataFrame, classification: ColumnClassific
         metrics = [v for k, v in maps.items() if k.startswith('metric_')][:2]
         for metric in metrics:
             if any(metric == c.metric and c.chart_type == "area_bounds" for c in charts): continue
-            data = _get_time_trend(df, date_col, metric)
+            data = _get_time_trend(
+                df,
+                date_col,
+                metric,
+                aggregation=_trend_aggregation_for_metric(metric),
+            )
             if data:
                 charts.append(ChartRecommendation(
                     slot='', title=_create_smart_title(metric, date_col) + " Trend",
@@ -2592,7 +2692,7 @@ def _generate_templated_charts(df: pd.DataFrame, classification: ColumnClassific
 
     return charts
 
-def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: ColumnClassification, overrides: Dict[str, Any] = None) -> Dict[str, Any]:
+def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: ColumnClassification, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Recommend charts based on domain and data classification.
     
@@ -2622,7 +2722,7 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
     df = df.copy()
     for col in classification.metrics:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = _coerce_numeric_metric_series(df[col])
     
     for col in classification.dates:
         if col in df.columns:
@@ -2729,9 +2829,9 @@ def recommend_charts(df: pd.DataFrame, domain: DomainType, classification: Colum
                         chart.aggregation = "mean"
                     
                     # Refresh outlier detection for new aggregation
-                    if hasattr(chart.data, "outliers"):
+                    if isinstance(chart.data, AggregationData):
                         chart.outliers = chart.data.outliers
-                        chart.data_without_outliers = getattr(chart.data, "data_without_outliers", None)
+                        chart.data_without_outliers = chart.data.data_without_outliers
 
         # Smart unit detection
         format_type = getattr(chart, "format_type", None)
