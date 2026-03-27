@@ -21,10 +21,14 @@ def _safe_read_csv_impl(file_path: str) -> pd.DataFrame:
     df = pd.read_csv(file_path, low_memory=False)
     for col in df.select_dtypes(include=["object"]).columns:
         try:
-            series = df[col].astype(str).str.replace(r"[$,% ]", "", regex=True)
+            series = df[col].astype(str)
+            is_percent_like = series.where(df[col].notna(), "").str.contains("%", regex=False).any()
+            series = series.str.replace(r"[$,% ]", "", regex=True)
             converted = pd.to_numeric(series, errors="coerce")
             total_non_null = df[col].notna().sum()
             if total_non_null > 0 and (converted.notna().sum() / total_non_null) > 0.8:
+                if is_percent_like:
+                    converted = converted / 100
                 df[col] = converted
         except Exception:
             continue

@@ -667,6 +667,12 @@ def get_dashboard_analytics(  # pyright: ignore
         for col, values in active_filters.items():
             if col not in df_filtered.columns or not values:
                 continue
+
+            col_series_for_match = df[col] if col in df.columns else df_filtered[col]
+            should_apply_binary_semantic = bool(
+                (target_col and col == target_col)
+                or (col_series_for_match.dropna().nunique() == 2)
+            )
             
             # For each row, check if ANY of the filter values match
             matches = []
@@ -676,8 +682,8 @@ def get_dashboard_analytics(  # pyright: ignore
                     if _scalar_filter_match(row_val, filter_val):
                         matches.append(idx)
                         break  # Found a match for this row, move to next row
-                    # Also check binary semantic equivalence (Yes/No vs True/False/1/0) for any column
-                    elif _binary_target_value_match(row_val, filter_val):
+                    # Only apply binary semantic equivalence on true binary columns or target column.
+                    elif should_apply_binary_semantic and _binary_target_value_match(row_val, filter_val):
                         matches.append(idx)
                         break
             

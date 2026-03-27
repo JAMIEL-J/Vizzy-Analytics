@@ -2062,7 +2062,7 @@ export default function UserDashboard() {
             metric: (val as any).metric ?? analytics?.chart_configs?.[id]?.metric,
             aggregation: (val as any).aggregation ?? analytics?.chart_configs?.[id]?.aggregation,
             data: resolvedData,
-            data_without_outliers: (Object.keys(active_filters).length === 0 && target_value === 'all')
+            data_without_outliers: (Object.keys(normalizedActiveFilters).length === 0 && String(target_value || 'all').toLowerCase() === 'all')
                 ? ((val as any).data_without_outliers || (val as any).data)
                 : resolvedData,
         };

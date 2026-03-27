@@ -258,8 +258,7 @@ def _generate_sales_kpis(df: pd.DataFrame, classification: ColumnClassification)
                 region_col = dim
             if not state_col and any(kw in dim_lower for kw in ['state', 'province']):
                 state_col = dim
-    
-    total_orders = df[order_col].nunique() if order_col else len(df)
+
     total_customers = df[customer_col].nunique() if customer_col else None
     
     # =========================================================================
